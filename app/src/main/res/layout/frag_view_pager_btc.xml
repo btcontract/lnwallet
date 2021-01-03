@@ -53,27 +53,16 @@
             style="@style/LineLinearLayout"
             android:orientation="horizontal"
             android:layout_width="fill_parent"
-            android:background="@color/bgfiat"
+            android:background="#FFB20D"
             android:gravity="center">
 
             <TextView
-                android:maxLines="1"
+                android:text="Hosted channel will stop working on Jan 2, 2022. Please withdraw funds before that date."
                 style="@style/BaseText"
                 android:ellipsize="end"
                 android:layout_weight="14"
                 android:layout_width="0dp"
-                android:textColor="#FFFFFF"
-                android:id="@+id/fiatBalance"/>
-
-            <TextView
-                android:maxLines="1"
-                style="@style/BaseText"
-                android:ellipsize="end"
-                android:layout_weight="12"
-                android:layout_width="0dp"
-                android:id="@+id/fiatRate"
-                android:textColor="#afd0e6"
-                android:gravity="end"/>
+                android:textColor="#FFFFFF"/>
 
         </LinearLayout>
 

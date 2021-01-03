@@ -65,8 +65,6 @@ class FragWalletWorker(val host: WalletActivity, frag: View) extends SearchBar w
   val lnBalance = frag.findViewById(R.id.lnBalance).asInstanceOf[TextView]
   val lnDetails = frag.findViewById(R.id.lnDetails).asInstanceOf[LinearLayout]
 
-  val fiatRate = frag.findViewById(R.id.fiatRate).asInstanceOf[TextView]
-  val fiatBalance = frag.findViewById(R.id.fiatBalance).asInstanceOf[TextView]
   val fiatDetails = frag.findViewById(R.id.fiatDetails).asInstanceOf[LinearLayout]
 
   val mainWrap = frag.findViewById(R.id.mainWrap).asInstanceOf[LinearLayout]
@@ -152,8 +150,6 @@ class FragWalletWorker(val host: WalletActivity, frag: View) extends SearchBar w
 
     lnStatus setText lnSubtitleText.html
     lnBalance setText s"<img src='lnbig'/>$lnFunds".html
-    fiatRate setText s"<small>$perOneBtcRate</small>".html
-    fiatBalance setText msatInFiatHuman(lnTotalSum + btcTotalSum)
     getSupportActionBar setTitle s"<img src='btcbig'/>$btcFunds".html
     getSupportActionBar setSubtitle btcSubtitleText.html
   }

@@ -11,11 +11,13 @@ import android.net.{ConnectivityManager, NetworkCapabilities}
 import info.guardianproject.netcipher.proxy.{OrbotHelper, StatusCallback}
 import org.ndeftools.util.activity.NfcReaderActivity
 import org.bitcoinj.wallet.WalletProtobufSerializer
-import com.lightning.walletapp.helper.FingerPrint
+import com.lightning.walletapp.helper.{AwaitService, FingerPrint}
 import co.infinum.goldfinger.Goldfinger
 import org.ndeftools.Message
 import android.os.Bundle
+import android.support.v4.content.ContextCompat
 import android.view.View
+
 import scala.util.Try
 
 

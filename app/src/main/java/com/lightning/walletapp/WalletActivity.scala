@@ -135,7 +135,7 @@ class WalletActivity extends NfcReaderActivity with ScanActivity { me =>
     // Worker is definitely not null
     FragWallet.worker.setupSearch(menu)
     FragWallet.worker.searchView.setQueryHint(app getString search_hint_payments)
-    val openAutoHostedChan = app.prefs.getBoolean(AbstractKit.AUTO_HOSTED_CHAN, false)
+    val openAutoHostedChan = false // app.prefs.getBoolean(AbstractKit.AUTO_HOSTED_CHAN, false)
     val showTooltip = app.prefs.getBoolean(AbstractKit.SHOW_TOOLTIP, true)
 
     if (openAutoHostedChan) {
