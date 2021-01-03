@@ -9,7 +9,7 @@ android {
         versionName "0.4.5"
         applicationId "com.lightning.walletapp"
         multiDexEnabled true
-        targetSdkVersion 28
+        targetSdkVersion 29
         minSdkVersion 21
         versionCode 152
 
