@@ -77,7 +77,7 @@ object FragLNStart {
   val liteGo = HardcodedNodeView(liteGoNa, "<i>litego.io</i>")
   val acinq = HardcodedNodeView(acinqNa, "<i>strike.acinq.co</i>")
   val bitrefill = HardcodedNodeView(bitrefillNa, "<i>bitrefill.com</i>")
-  val recommendedNodes = Vector(defaultHostedNode, acinq, bitrefill, liteGo)
+  val recommendedNodes = Vector(acinq, bitrefill)
 }
 
 class FragLNStart extends Fragment with SearchBar with HumanTimeDisplay { me =>
