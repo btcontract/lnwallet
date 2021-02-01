@@ -1,6 +1,7 @@
 package com.lightning.walletapp.ln.wire
 
 import java.net._
+
 import scodec.codecs._
 import fr.acinq.eclair.UInt64.Conversions._
 import scodec.bits.{BitVector, ByteVector}
@@ -9,10 +10,12 @@ import fr.acinq.bitcoin.Crypto.{Point, PublicKey, Scalar}
 import scodec.{Attempt, Codec, DecodeResult, Decoder, Err}
 import com.lightning.walletapp.ln.{LightningException, RevocationInfo}
 import org.apache.commons.codec.binary.Base32
-import fr.acinq.bitcoin.Crypto
+import fr.acinq.bitcoin.{Crypto, MilliSatoshi}
 import fr.acinq.eclair.UInt64
+
 import scala.reflect.ClassTag
 import java.math.BigInteger
+
 import scala.util.Try
 
 
@@ -129,12 +132,11 @@ object LightningMessageCodecs { me =>
       default)
   }
 
-  val varintoverflow: Codec[Long] = varint.narrow(f = {
-    case value if value > UInt64(Long.MaxValue) => Attempt failure Err(s"Overflow $value")
-    case value => Attempt successful value.toBigInt.toLong
-  }, UInt64.apply)
+  // This codec can be safely used for values < 2^63 and will fail otherwise.
+  // It is useful in combination with variableSizeBytesLong to encode/decode TLV lengths because those will always be < 2^63.
+  val varintoverflow: Codec[Long] = varint.narrow(l => if (l <= UInt64(Long.MaxValue)) Attempt.successful(l.toBigInt.toLong) else Attempt.failure(Err(s"overflow for value $l")), l => UInt64(l))
 
-  val bytes32: Codec[ByteVector] = limitedSizeBytes(codec = bytesStrict(32).xmap(identity, identity), limit = 32)
+  val bytes32: Codec[ByteVector] = limitedSizeBytes(32, bytesStrict(32))
   val zeropaddedstring: Codec[String] = fixedSizeBytes(32, utf8).xmap(_.takeWhile(_ != '\u0000'), identity)
   val varsizebinarydataLong: Codec[ByteVector] = variableSizeBytesLong(uint32, bytes)
   val varsizebinarydata: Codec[ByteVector] = variableSizeBytes(uint16, bytes)
@@ -170,31 +172,58 @@ object LightningMessageCodecs { me =>
   private def variableSizeUInt64(size: Int, min: Long): Codec[UInt64] =
     minimalValue(bytes(size).xmap(f => UInt64(f), _.toByteVector takeRight size), min)
 
-  val tu64: Codec[UInt64] = discriminated[UInt64].by(uint8)
-    .\(0x00) { case value if value < 0x01 => value } (variableSizeUInt64(0, 0x00))
-    .\(0x01) { case value if value < 0x0100 => value } (variableSizeUInt64(1, 0x01))
-    .\(0x02) { case value if value < 0x010000 => value } (variableSizeUInt64(2, 0x0100))
-    .\(0x03) { case value if value < 0x01000000 => value } (variableSizeUInt64(3, 0x010000))
-    .\(0x04) { case value if value < 0x0100000000L => value } (variableSizeUInt64(4, 0x01000000))
-    .\(0x05) { case value if value < 0x010000000000L => value } (variableSizeUInt64(5, 0x0100000000L))
-    .\(0x06) { case value if value < 0x01000000000000L => value } (variableSizeUInt64(6, 0x010000000000L))
-    .\(0x07) { case value if value < 0x0100000000000000L => value } (variableSizeUInt64(7, 0x01000000000000L))
-    .\(0x08) { case value if value <= UInt64.MaxValue => value } (variableSizeUInt64(8, 0x0100000000000000L))
+
+  /**
+    * Truncated uint64 (0 to 8 bytes unsigned integer).
+    * The encoder minimally-encodes every value, and the decoder verifies that values are minimally-encoded.
+    * Note that this codec can only be used at the very end of a TLV record.
+    */
+  val tu64: Codec[UInt64] = Codec(
+    (u: UInt64) => {
+      val b = u match {
+        case u if u < 0x01 => ByteVector.empty
+        case u if u < 0x0100 => u.toByteVector.takeRight(1)
+        case u if u < 0x010000 => u.toByteVector.takeRight(2)
+        case u if u < 0x01000000 => u.toByteVector.takeRight(3)
+        case u if u < 0x0100000000L => u.toByteVector.takeRight(4)
+        case u if u < 0x010000000000L => u.toByteVector.takeRight(5)
+        case u if u < 0x01000000000000L => u.toByteVector.takeRight(6)
+        case u if u < 0x0100000000000000L => u.toByteVector.takeRight(7)
+        case u if u <= UInt64.MaxValue => u.toByteVector.takeRight(8)
+      }
+      Attempt.successful(b.bits)
+    },
+    b => b.length match {
+      case l if l <= 0 => minimalValue(uint64, UInt64(0x00)).decode(b.padLeft(64))
+      case l if l <= 8 => minimalValue(uint64, UInt64(0x01)).decode(b.padLeft(64))
+      case l if l <= 16 => minimalValue(uint64, UInt64(0x0100)).decode(b.padLeft(64))
+      case l if l <= 24 => minimalValue(uint64, UInt64(0x010000)).decode(b.padLeft(64))
+      case l if l <= 32 => minimalValue(uint64, UInt64(0x01000000)).decode(b.padLeft(64))
+      case l if l <= 40 => minimalValue(uint64, UInt64(0x0100000000L)).decode(b.padLeft(64))
+      case l if l <= 48 => minimalValue(uint64, UInt64(0x010000000000L)).decode(b.padLeft(64))
+      case l if l <= 56 => minimalValue(uint64, UInt64(0x01000000000000L)).decode(b.padLeft(64))
+      case l if l <= 64 => minimalValue(uint64, UInt64(0x0100000000000000L)).decode(b.padLeft(64))
+      case _ => Attempt.failure(Err(s"too many bytes to decode for truncated uint64 (${b.toHex})"))
+    })
+
 
   val tu64Overflow: Codec[Long] = tu64.exmap(
-    u => if (u <= Long.MaxValue) Attempt Successful u.toBigInt.toLong else Attempt Failure Err(s"overflow for value $u"),
-    l => if (l >= 0) Attempt Successful UInt64(l) else Attempt Failure Err(s"uint64 must be positive, actual is $l")
-  )
+    u => if (u <= Long.MaxValue) Attempt.Successful(u.toBigInt.toLong) else Attempt.Failure(Err(s"overflow for value $u")),
+    l => if (l >= 0) Attempt.Successful(UInt64(l)) else Attempt.Failure(Err(s"uint64 must be positive (actual=$l)")))
 
-  val tu32: Codec[Long] = tu64.exmap(f = {
-    case value if value > 0xFFFFFFFFL => Attempt Failure Err("tu32 overflow")
-    case value => Attempt Successful value.toBigInt.toLong
-  }, long => Attempt Successful long)
+  val tmillisatoshi: Codec[MilliSatoshi] = tu64Overflow.xmap(l => MilliSatoshi(l), m => m.toLong)
 
-  val tu16: Codec[Int] = tu32.exmap(f = {
-    case value if value > 0xFFFF => Attempt Failure Err("tu16 overflow")
-    case value => Attempt Successful value.toBigInt.toInt
-  }, long => Attempt Successful long)
+  /** Truncated uint32 (0 to 4 bytes unsigned integer). */
+  val tu32: Codec[Long] = tu64.exmap({
+    case i if i > 0xffffffffL => Attempt.Failure(Err("tu32 overflow"))
+    case i => Attempt.Successful(i.toBigInt.toLong)
+  }, l => Attempt.Successful(l))
+
+  /** Truncated uint16 (0 to 2 bytes unsigned integer). */
+  val tu16: Codec[Int] = tu32.exmap({
+    case i if i > 0xffff => Attempt.Failure(Err("tu16 overflow"))
+    case i => Attempt.Successful(i.toInt)
+  }, l => Attempt.Successful(l))
 
   def tlvStream[T <: Tlv](codec: DiscriminatorCodec[T, UInt64]): Codec[TlvStream[T]] = {
     val withFallback = discriminatorFallback(genericTlvCodec, codec)
@@ -232,40 +261,40 @@ object LightningMessageCodecs { me =>
 
   // Onion
 
-  def onionRoutingPacketCodec(payloadLength: Int) = {
-    (uint8 withContext "version") ::
-      (bytes(33) withContext "publicKey") ::
-      (bytes(payloadLength) withContext "payload") ::
-      (bytes32 withContext "hmac")
-  }.as[OnionRoutingPacket]
+  def onionRoutingPacketCodec(payloadLength: Int): Codec[OnionRoutingPacket] = (
+    ("version" | uint8) ::
+      ("publicKey" | bytes(33)) ::
+      ("onionPayload" | bytes(payloadLength)) ::
+      ("hmac" | bytes32)).as[OnionRoutingPacket]
 
   val paymentOnionPacketCodec: Codec[OnionRoutingPacket] = onionRoutingPacketCodec(Sphinx.PaymentPacket.PayloadLength)
 
-  val payloadLengthDecoder = Decoder[Long] { bits: BitVector =>
-    varintoverflow.decode(bits) map { decResult: DecodeResult[Long] =>
-      val payload = decResult.value + (bits.length - decResult.remainder.length) / 8
-      DecodeResult(payload, decResult.remainder)
-    }
-  }
+  val payloadLengthDecoder = Decoder[Long]((bits: BitVector) =>
+    varintoverflow.decode(bits).map(d => DecodeResult(d.value + (bits.length - d.remainder.length) / 8, d.remainder)))
 
-  private val outgoingCltv: Codec[OnionTlv.OutgoingCltv] = (tu32 withContext "cltv").xmap(OnionTlv.OutgoingCltv, _.cltv)
-  private val amountToForward: Codec[OnionTlv.AmountToForward] = (tu64Overflow withContext "amountMsat").xmap(OnionTlv.AmountToForward, _.amountMsat)
-  private val outgoingChannelId: Codec[OnionTlv.OutgoingChannelId] = variableSizeBytesLong(varintoverflow, int64 withContext "shortChannelId").as[OnionTlv.OutgoingChannelId]
+  /** Length-prefixed truncated millisatoshi (1 to 9 bytes unsigned). */
+  val ltmillisatoshi: Codec[MilliSatoshi] = variableSizeBytes(uint8, tmillisatoshi)
 
-  private val paymentData: Codec[OnionTlv.PaymentData] = {
-    val base = (bytes32 withContext "secret") :: (tu64Overflow withContext "totalAmountMsat")
-    variableSizeBytesLong(varintoverflow, base).as[OnionTlv.PaymentData]
-  }
+  private val amountToForward: Codec[OnionTlv.AmountToForward] = ("amount_msat" | ltmillisatoshi).as[OnionTlv.AmountToForward]
 
-  private val onionTlvCodec =
-    discriminated[OnionTlv].by(varint)
-      .typecase(UInt64(2), amountToForward)
-      .typecase(UInt64(4), outgoingCltv)
-      .typecase(UInt64(6), outgoingChannelId)
-      .typecase(UInt64(8), paymentData)
+  /** Length-prefixed truncated uint32 (1 to 5 bytes unsigned integer). */
+  val ltu32: Codec[Long] = variableSizeBytes(uint8, tu32)
 
-  private val tlvPerHopPayloadCodec: Codec[OnionTlv.Stream] =
-    variableSizeBytesLong(value = tlvStream(onionTlvCodec), size = varintoverflow)
+  private val outgoingCltv: Codec[OnionTlv.OutgoingCltv] = ("cltv" | ltu32).xmap(cltv => OnionTlv.OutgoingCltv(cltv), (c: OnionTlv.OutgoingCltv) => c.cltv)
+
+  private val outgoingChannelId: Codec[OnionTlv.OutgoingChannelId] = variableSizeBytesLong(varintoverflow, "short_channel_id" | int64).as[OnionTlv.OutgoingChannelId]
+
+  val paymentData: Codec[OnionTlv.PaymentData] = variableSizeBytesLong(varintoverflow, ("payment_secret" | bytes32) :: ("total_msat" | tmillisatoshi)).as[OnionTlv.PaymentData]
+
+  private val onionTlvCodec = discriminated[OnionTlv].by(varint)
+    .typecase(UInt64(2), amountToForward)
+    .typecase(UInt64(4), outgoingCltv)
+    .typecase(UInt64(6), outgoingChannelId)
+    .typecase(UInt64(8), paymentData)
+
+  def lengthPrefixedTlvStream[T <: Tlv](codec: DiscriminatorCodec[T, UInt64]): Codec[TlvStream[T]] = variableSizeBytesLong(varintoverflow, tlvStream(codec))
+
+  val tlvPerHopPayloadCodec: Codec[OnionTlv.Stream] = lengthPrefixedTlvStream[OnionTlv](onionTlvCodec).complete
 
   private val legacyRelayPerHopPayloadCodec: Codec[RelayLegacyPayload] = {
     (constant(ByteVector fromByte 0) withContext "realm") ::
@@ -289,32 +318,26 @@ object LightningMessageCodecs { me =>
     override def context: List[String] = Nil
   }
 
-  val relayPerHopPayloadCodec: Codec[RelayPayload] =
-    fallback(tlvPerHopPayloadCodec, legacyRelayPerHopPayloadCodec).narrow(
-      f = {
-        case Left(tlvs) if tlvs.get[OnionTlv.OutgoingChannelId].isEmpty => Attempt failure MissingRequiredTlv(6)
-        case Left(tlvs) if tlvs.get[OnionTlv.AmountToForward].isEmpty => Attempt failure MissingRequiredTlv(2)
-        case Left(tlvs) if tlvs.get[OnionTlv.OutgoingCltv].isEmpty => Attempt failure MissingRequiredTlv(4)
-        case Left(tlvs) => Attempt successful RelayTlvPayload(tlvs)
-        case Right(legacy) => Attempt successful legacy
-      }, g = {
-        case legacy: RelayLegacyPayload => Right(legacy)
-        case RelayTlvPayload(tlvs) => Left(tlvs)
-      }
-    )
+  val relayPerHopPayloadCodec: Codec[RelayPayload] = fallback(tlvPerHopPayloadCodec, legacyRelayPerHopPayloadCodec).narrow({
+    case Left(tlvs) if tlvs.get[OnionTlv.AmountToForward].isEmpty => Attempt.failure(MissingRequiredTlv(UInt64(2)))
+    case Left(tlvs) if tlvs.get[OnionTlv.OutgoingCltv].isEmpty => Attempt.failure(MissingRequiredTlv(UInt64(4)))
+    case Left(tlvs) if tlvs.get[OnionTlv.OutgoingChannelId].isEmpty => Attempt.failure(MissingRequiredTlv(UInt64(6)))
+    case Left(tlvs) => Attempt.successful(RelayTlvPayload(tlvs))
+    case Right(legacy) => Attempt.successful(legacy)
+  }, {
+    case legacy: RelayLegacyPayload => Right(legacy)
+    case RelayTlvPayload(tlvs) => Left(tlvs)
+  })
 
-  val finalPerHopPayloadCodec: Codec[FinalPayload] =
-    fallback(tlvPerHopPayloadCodec, legacyFinalPerHopPayloadCodec).narrow(
-      f = {
-        case Left(tlvs) if tlvs.get[OnionTlv.AmountToForward].isEmpty => Attempt failure MissingRequiredTlv(2)
-        case Left(tlvs) if tlvs.get[OnionTlv.OutgoingCltv].isEmpty => Attempt failure MissingRequiredTlv(4)
-        case Left(tlvs) => Attempt successful FinalTlvPayload(tlvs)
-        case Right(legacy) => Attempt successful legacy
-      }, g = {
-        case legacy: FinalLegacyPayload => Right(legacy)
-        case FinalTlvPayload(tlvs) => Left(tlvs)
-      }
-    )
+  val finalPerHopPayloadCodec: Codec[FinalPayload] = fallback(tlvPerHopPayloadCodec, legacyFinalPerHopPayloadCodec).narrow({
+    case Left(tlvs) if tlvs.get[OnionTlv.AmountToForward].isEmpty => Attempt.failure(MissingRequiredTlv(UInt64(2)))
+    case Left(tlvs) if tlvs.get[OnionTlv.OutgoingCltv].isEmpty => Attempt.failure(MissingRequiredTlv(UInt64(4)))
+    case Left(tlvs) => Attempt.successful(FinalTlvPayload(tlvs))
+    case Right(legacy) => Attempt.successful(legacy)
+  }, {
+    case legacy: FinalLegacyPayload => Right(legacy)
+    case FinalTlvPayload(tlvs) => Left(tlvs)
+  })
 
   // LN messages
 
@@ -656,8 +679,8 @@ case class OnionRoutingPacket(version: Int, publicKey: ByteVector, payload: Byte
 object OnionTlv {
   type Stream = TlvStream[OnionTlv]
   case class OutgoingChannelId(shortChannelId: Long) extends OnionTlv // Id of the channel to use to forward a payment to the next node
-  case class PaymentData(secret: ByteVector, totalAmountMsat: Long) extends OnionTlv // Bolt 11 payment details for the last node
-  case class AmountToForward(amountMsat: Long) extends OnionTlv // Amount to forward to the next node
+  case class PaymentData(secret: ByteVector, totalAmount: MilliSatoshi) extends OnionTlv // Bolt 11 payment details for the last node
+  case class AmountToForward(amount: MilliSatoshi) extends OnionTlv // Amount to forward to the next node
   case class OutgoingCltv(cltv: Long) extends OnionTlv
 }
 
@@ -682,7 +705,7 @@ sealed trait LegacyFormat extends PerHopPayloadFormat
 case class RelayLegacyPayload(outgoingChannelId: Long, amountToForwardMsat: Long, outgoingCltv: Long) extends RelayPayload with LegacyFormat
 
 case class RelayTlvPayload(records: OnionTlv.Stream) extends RelayPayload {
-  override val amountToForwardMsat = records.get[OnionTlv.AmountToForward].get.amountMsat
+  override val amountToForwardMsat = records.get[OnionTlv.AmountToForward].get.amount.toLong
   override val outgoingCltv = records.get[OnionTlv.OutgoingCltv].get.cltv
 }
 
@@ -693,12 +716,12 @@ case class FinalLegacyPayload(amountMsat: Long, cltvExpiry: Long) extends FinalP
 
 case class FinalTlvPayload(records: OnionTlv.Stream) extends FinalPayload {
   override val paymentSecretOpt = records.get[OnionTlv.PaymentData].map(_.secret)
-  override val amountMsat = records.get[OnionTlv.AmountToForward].get.amountMsat
+  override val amountMsat = records.get[OnionTlv.AmountToForward].get.amount.toLong
   override val cltvExpiry = records.get[OnionTlv.OutgoingCltv].get.cltv
 
   override val totalAmountMsat = records.get[OnionTlv.PaymentData] match {
-    case Some(paymentData) if paymentData.totalAmountMsat == 0L => amountMsat
-    case Some(paymentData) => paymentData.totalAmountMsat
+    case Some(paymentData) if paymentData.totalAmount.toLong == 0L => amountMsat
+    case Some(paymentData) => paymentData.totalAmount.toLong
     case None => amountMsat
   }
 }

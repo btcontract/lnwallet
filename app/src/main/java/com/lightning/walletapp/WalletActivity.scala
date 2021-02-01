@@ -35,11 +35,14 @@ import android.text.format.DateFormat
 import fr.acinq.bitcoin.MilliSatoshi
 import org.bitcoinj.uri.BitcoinURI
 import java.text.SimpleDateFormat
+
 import android.app.AlertDialog
 import scodec.bits.ByteVector
 import org.ndeftools.Message
 import android.os.Bundle
 import java.util.Date
+
+import com.lightning.walletapp.test.PaymentRequestSpec
 
 
 trait SearchBar { me =>

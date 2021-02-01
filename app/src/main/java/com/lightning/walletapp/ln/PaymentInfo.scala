@@ -4,6 +4,7 @@ import com.softwaremill.quicklens._
 import com.lightning.walletapp.ln.wire._
 import com.lightning.walletapp.ln.crypto.Sphinx._
 import com.lightning.walletapp.ln.RoutingInfoTag._
+import com.lightning.walletapp.ln.wire.OnionTlv.{AmountToForward, OutgoingCltv, PaymentData}
 import com.lightning.walletapp.lnutils.ImplicitJsonFormats._
 
 import scala.util.{Success, Try}
@@ -45,13 +46,19 @@ object PaymentInfo {
     if (rest.isEmpty) Left(rd) else useRoute(rest.head, rest.tail, rd)
 
   def onChainThreshold = Scripts.weight2fee(LNParams.broadcaster.perKwSixSat, 750)
+
   def useRoute(route: PaymentRoute, rest: PaymentRouteVec, rd: RoutingData): FullOrEmptyRD = {
-    val firstExpiry = LNParams.broadcaster.currentHeight + rd.pr.adjustedMinFinalCltvExpiry
-    val payloadVec = RelayLegacyPayload(0L, rd.firstMsat, firstExpiry) +: Vector.empty
-    val start = (payloadVec, Vector.empty[PublicKey], rd.firstMsat, firstExpiry)
+    val firstPayeeCltvAdjustedExpiry = LNParams.broadcaster.currentHeight + rd.pr.adjustedMinFinalCltvExpiry
+
+    val payloadVec: FinalPayload = rd.pr.paymentSecretOpt match {
+      case Some(paymentSecret) => FinalTlvPayload(TlvStream(Seq(AmountToForward(MilliSatoshi(rd.firstMsat)), OutgoingCltv(firstPayeeCltvAdjustedExpiry), PaymentData(paymentSecret, MilliSatoshi(rd.firstMsat))), Nil))
+      case None => FinalLegacyPayload(rd.firstMsat, firstPayeeCltvAdjustedExpiry)
+    }
+
+    val finalHopState = Tuple4(payloadVec +: Vector.empty[PerHopPayload], Vector.empty[PublicKey], rd.firstMsat, firstPayeeCltvAdjustedExpiry)
 
     // Walk in reverse direction from receiver to sender and accumulate cltv deltas + fees
-    val (allPayloads, nodeIds, lastMsat, lastExpiry) = route.reverse.foldLeft(start) { case (payloads, nodes, msat, expiry) \ hop =>
+    val (allPayloads, nodeIds, lastMsat, lastExpiry) = route.reverse.foldLeft(finalHopState) { case (payloads, nodes, msat, expiry) \ hop =>
       (RelayLegacyPayload(hop.shortChannelId, msat, expiry) +: payloads, hop.nodeId +: nodes, hop.fee(msat) + msat, hop.cltvExpiryDelta + expiry)
     }
 

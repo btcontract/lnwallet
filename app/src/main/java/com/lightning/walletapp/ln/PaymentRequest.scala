@@ -14,6 +14,9 @@ import com.lightning.walletapp.ln.wire.Hop
 import fr.acinq.eclair.crypto.BitStream
 import java.nio.ByteOrder.BIG_ENDIAN
 import java.math.BigInteger
+
+import scodec.{Attempt, Codec, Err}
+
 import scala.util.Try
 
 
@@ -249,6 +252,14 @@ object PaymentRequest {
     }
   }
 
+  import fr.acinq.bitcoin.Crypto.{PrivateKey, PublicKey}
+  import scodec.bits.{BitVector, ByteOrdering, ByteVector}
+  import scodec.codecs.{list, ubyte, uint, paddedVarAlignedBits, bits}
+  import scodec.{Codec, Err}
+
+  import scala.concurrent.duration._
+  import scala.util.Try
+
   object Tag {
     def parse(input: Bytes): Tag = {
       val len = input(1) * 32 + input(2)
@@ -292,16 +303,21 @@ object PaymentRequest {
           val expiry = readUnsignedLong(len, ints)
           MinFinalCltvExpiryTag(expiry)
 
-        case tag9 if tag9 == 5 =>
-          val mask = Bech32 five2eight input.slice(3, len + 3)
-          FeaturesTag(BitVector view mask)
-
         case _ =>
           val unknown = input.slice(3, len + 3)
           UnknownTag(input.head, unknown)
       }
     }
   }
+
+
+
+  val dataLengthCodec: Codec[Long] = uint(10).xmap(_ * 5, s => (s / 5 + (if (s % 5 == 0) 0 else 1)).toInt)
+
+  def dataCodec[A](valueCodec: Codec[A], expectedLength: Option[Long] = None): Codec[A] = paddedVarAlignedBits(
+    dataLengthCodec.narrow(l => if (expectedLength.getOrElse(l) == l) Attempt.successful(l) else Attempt.failure(Err(s"invalid length $l")), l => l),
+    valueCodec,
+    multipleForPadding = 5)
 
   def toBits(value: Int5): Seq[Bit] =
     Seq(elems = (value & 16) != 0, (value & 8) != 0,

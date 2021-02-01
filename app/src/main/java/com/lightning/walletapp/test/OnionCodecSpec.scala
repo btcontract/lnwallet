@@ -3,6 +3,7 @@ package com.lightning.walletapp.test
 import com.lightning.walletapp.ln.wire._
 import com.lightning.walletapp.ln.wire.LightningMessageCodecs._
 import com.lightning.walletapp.ln.wire.OnionTlv.{AmountToForward, OutgoingChannelId, OutgoingCltv, PaymentData}
+import fr.acinq.bitcoin.MilliSatoshi
 import fr.acinq.eclair.UInt64
 import scodec.Attempt
 import scodec.bits.ByteVector
@@ -84,8 +85,8 @@ class OnionCodecSpec {
     {
       println("encode/decode variable-length (tlv) relay per-hop payload")
       val testCases = Map(
-        TlvStream[OnionTlv](AmountToForward(561), OutgoingCltv(42), OutgoingChannelId(1105)) -> ByteVector.fromValidHex("11 02020231 04012a 06080000000000000451"),
-        TlvStream[OnionTlv](Seq(AmountToForward(561), OutgoingCltv(42), OutgoingChannelId(1105)), Seq(GenericTlv(UInt64(65535), ByteVector.fromValidHex("06c1")))) -> ByteVector.fromValidHex("17 02020231 04012a 06080000000000000451 fdffff0206c1")
+        TlvStream[OnionTlv](AmountToForward(MilliSatoshi(561)), OutgoingCltv(42), OutgoingChannelId(1105)) -> ByteVector.fromValidHex("11 02020231 04012a 06080000000000000451"),
+        TlvStream[OnionTlv](Seq(AmountToForward(MilliSatoshi(561)), OutgoingCltv(42), OutgoingChannelId(1105)), Seq(GenericTlv(UInt64(65535), ByteVector.fromValidHex("06c1")))) -> ByteVector.fromValidHex("17 02020231 04012a 06080000000000000451 fdffff0206c1")
       )
 
       for ((expected, bin) <- testCases) {
@@ -102,12 +103,12 @@ class OnionCodecSpec {
     {
       println("encode/decode variable-length (tlv) final per-hop payload")
       val testCases = Map(
-        TlvStream[OnionTlv](AmountToForward(561), OutgoingCltv(42)) -> ByteVector.fromValidHex("07 02020231 04012a"),
-        TlvStream[OnionTlv](AmountToForward(561), OutgoingCltv(42), PaymentData(ByteVector.fromValidHex("eec7245d6b7d2ccb30380bfbe2a3648cd7a942653f5aa340edcea1f283686619"), 0)) -> ByteVector.fromValidHex("2a 02020231 04012a 0821eec7245d6b7d2ccb30380bfbe2a3648cd7a942653f5aa340edcea1f28368661900"),
-        TlvStream[OnionTlv](AmountToForward(561), OutgoingCltv(42), PaymentData(ByteVector.fromValidHex("eec7245d6b7d2ccb30380bfbe2a3648cd7a942653f5aa340edcea1f283686619"), 1105)) -> ByteVector.fromValidHex("2c 02020231 04012a 0823eec7245d6b7d2ccb30380bfbe2a3648cd7a942653f5aa340edcea1f283686619020451"),
-        TlvStream[OnionTlv](AmountToForward(561), OutgoingCltv(42), PaymentData(ByteVector.fromValidHex("eec7245d6b7d2ccb30380bfbe2a3648cd7a942653f5aa340edcea1f283686619"), 1099511627775L)) -> ByteVector.fromValidHex("2f 02020231 04012a 0826eec7245d6b7d2ccb30380bfbe2a3648cd7a942653f5aa340edcea1f28368661905ffffffffff"),
-        TlvStream[OnionTlv](AmountToForward(561), OutgoingCltv(42), OutgoingChannelId(1105)) -> ByteVector.fromValidHex("11 02020231 04012a 06080000000000000451"),
-        TlvStream[OnionTlv](Seq(AmountToForward(561), OutgoingCltv(42)), Seq(GenericTlv(UInt64(65535), ByteVector.fromValidHex("06c1")))) -> ByteVector.fromValidHex("0d 02020231 04012a fdffff0206c1")
+        TlvStream[OnionTlv](AmountToForward(MilliSatoshi(561)), OutgoingCltv(42)) -> ByteVector.fromValidHex("07 02020231 04012a"),
+        TlvStream[OnionTlv](AmountToForward(MilliSatoshi(561)), OutgoingCltv(42), PaymentData(ByteVector.fromValidHex("eec7245d6b7d2ccb30380bfbe2a3648cd7a942653f5aa340edcea1f283686619"), MilliSatoshi(0L))) -> ByteVector.fromValidHex("2a 02020231 04012a 0821eec7245d6b7d2ccb30380bfbe2a3648cd7a942653f5aa340edcea1f28368661900"),
+        TlvStream[OnionTlv](AmountToForward(MilliSatoshi(561)), OutgoingCltv(42), PaymentData(ByteVector.fromValidHex("eec7245d6b7d2ccb30380bfbe2a3648cd7a942653f5aa340edcea1f283686619"), MilliSatoshi(1105))) -> ByteVector.fromValidHex("2c 02020231 04012a 0823eec7245d6b7d2ccb30380bfbe2a3648cd7a942653f5aa340edcea1f283686619020451"),
+        TlvStream[OnionTlv](AmountToForward(MilliSatoshi(561)), OutgoingCltv(42), PaymentData(ByteVector.fromValidHex("eec7245d6b7d2ccb30380bfbe2a3648cd7a942653f5aa340edcea1f283686619"), MilliSatoshi(1099511627775L))) -> ByteVector.fromValidHex("2f 02020231 04012a 0826eec7245d6b7d2ccb30380bfbe2a3648cd7a942653f5aa340edcea1f28368661905ffffffffff"),
+        TlvStream[OnionTlv](AmountToForward(MilliSatoshi(561)), OutgoingCltv(42), OutgoingChannelId(1105)) -> ByteVector.fromValidHex("11 02020231 04012a 06080000000000000451"),
+        TlvStream[OnionTlv](Seq(AmountToForward(MilliSatoshi(561)), OutgoingCltv(42)), Seq(GenericTlv(UInt64(65535), ByteVector.fromValidHex("06c1")))) -> ByteVector.fromValidHex("0d 02020231 04012a fdffff0206c1")
       )
 
       for ((expected, bin) <- testCases) {
