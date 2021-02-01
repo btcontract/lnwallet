@@ -171,7 +171,7 @@ class FragWalletWorker(val host: WalletActivity, frag: View) extends SearchBar w
 
   val chanListener = new ChannelListener {
     def informOfferClose(chan: Channel, message: String, natRes: Int) = UITask {
-      val bld = baseBuilder(title = chan.data.announce.htmlString.html, body = message)
+      val bld = baseBuilder(title = chan.data.announce.asString.html, body = message)
       def onAccepted(alert: AlertDialog) = rm(alert)(chan process ChannelManager.CMDLocalShutdown)
       if (errorLimit > 0) mkCheckFormNeutral(_.dismiss, none, onAccepted, bld, dialog_ok, noResource = -1, natRes)
       errorLimit -= 1
@@ -202,7 +202,7 @@ class FragWalletWorker(val host: WalletActivity, frag: View) extends SearchBar w
 
       // Peer now has some incompatible features, display details to user and offer to force-close a channel
       case (chan: NormalChannel, _: NormalData, cr: ChannelReestablish) if cr.myCurrentPerCommitmentPoint.isEmpty =>
-        informOfferClose(chan, app.getString(err_ln_peer_incompatible).format(chan.data.announce.cutAlias), ln_chan_close).run
+        informOfferClose(chan, app.getString(err_ln_peer_incompatible).format(chan.data.announce.alias), ln_chan_close).run
     }
 
     override def onBecome = {
@@ -223,7 +223,7 @@ class FragWalletWorker(val host: WalletActivity, frag: View) extends SearchBar w
 
       case chan \ internalException =>
         val bld = negTextBuilder(dialog_ok, UncaughtHandler toText internalException)
-        UITask(host showForm bld.setCustomTitle(chan.data.announce.htmlString.html).create).run
+        UITask(host showForm bld.setCustomTitle(chan.data.announce.asString.html).create).run
     }
   }
 
@@ -259,7 +259,7 @@ class FragWalletWorker(val host: WalletActivity, frag: View) extends SearchBar w
     val currentBalance = s"<strong>${denom.parsedWithSign(chan.estCanSendMsat.toTruncatedMsat).html}</strong>"
     val proposedBalance = s"<strong>${denom.parsedWithSign(hc.newLocalBalanceMsat(cmd.so).toTruncatedMsat).html}</strong>"
     val hostedOverrideDetails = app.getString(ln_hosted_override_warn).format(currentBalance, proposedBalance).html
-    val bld = host.baseTextBuilder(hostedOverrideDetails).setCustomTitle(chan.data.announce.htmlString.html)
+    val bld = host.baseTextBuilder(hostedOverrideDetails).setCustomTitle(chan.data.announce.asString.html)
     mkCheckForm(alert => rm(alert)(chan process cmd), none, bld, dialog_ok, dialog_cancel)
   }
 
@@ -293,7 +293,7 @@ class FragWalletWorker(val host: WalletActivity, frag: View) extends SearchBar w
   }
 
   val adapter = new BaseAdapter {
-    def getCount = math.min(allItems.size, currentCut)
+    def getCount = scala.math.min(allItems.size, currentCut)
     def getItem(position: Int) = allItems(position)
     def getItemId(position: Int) = position
 
@@ -628,7 +628,7 @@ class FragWalletWorker(val host: WalletActivity, frag: View) extends SearchBar w
     }
 
   def lnurlPayOffChainSend(lnUrl: LNUrl, payReq: PayRequest) =
-    new OffChainSender(maxCanSend = math.min(ChannelManager.estimateAIRCanSend, payReq.maxSendable).millisatoshi, minCanSend = payReq.minSendable.millisatoshi) {
+    new OffChainSender(maxCanSend = scala.math.min(ChannelManager.estimateAIRCanSend, payReq.maxSendable).millisatoshi, minCanSend = payReq.minSendable.millisatoshi) {
       def displayPaymentForm = mkCheckFormNeutral(sendAttempt, none, _ => viewHost, baseBuilder(getTitle, baseContent), dialog_ok, dialog_cancel, dialog_info)
       def viewHost = browse(s"${lnUrl.uri.getScheme}://${lnUrl.uri.getHost}")
 
@@ -699,13 +699,13 @@ class FragWalletWorker(val host: WalletActivity, frag: View) extends SearchBar w
 
   def startAIR(toChan: Channel, origEmptyRD: RoutingData) = {
     val rd1 = origEmptyRD.copy(airLeft = origEmptyRD.airLeft - 1)
-    val deltaAmountToSend = maxAcceptableFee(rd1.firstMsat, hops = 3) + rd1.firstMsat - math.max(toChan.estCanSendMsat, 0L)
+    val deltaAmountToSend = maxAcceptableFee(rd1.firstMsat, hops = 3) + rd1.firstMsat - scala.math.max(toChan.estCanSendMsat, 0L)
     val amountPossibleRebalance = ChannelManager.airCanSendInto(targetChan = toChan).reduceOption(_ max _) getOrElse 0L
     require(deltaAmountToSend > 0, "Accumulator already has enough money for a final payment + fees")
     require(amountPossibleRebalance > 0, "No channel is able to send funds into accumulator")
 
     val Some(_ \ extraHop) = channelAndHop(toChan)
-    val finalAmount = math.min(deltaAmountToSend, amountPossibleRebalance).millisatoshi
+    val finalAmount = scala.math.min(deltaAmountToSend, amountPossibleRebalance).millisatoshi
     val rbRD = PaymentInfoWrap.recordRoutingDataWithPr(Vector(extraHop), finalAmount, ByteVector(random getBytes 32), REBALANCING).copy(isRebalancing = true)
 
     val listener = new ChannelListener {

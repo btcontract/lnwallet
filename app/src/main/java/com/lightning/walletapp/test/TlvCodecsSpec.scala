@@ -17,7 +17,7 @@ class TlvCodecsSpec {
 
     {
       println("encode/decode truncated uint16")
-      
+
       val testCases = Seq(
         (ByteVector.fromValidHex("00"), 0),
         (ByteVector.fromValidHex("01 01"), 1),
@@ -39,7 +39,7 @@ class TlvCodecsSpec {
 
     {
       println("encode/decode truncated uint32")
-      
+
       val testCases = Seq(
         (ByteVector.fromValidHex("00"), 0L),
         (ByteVector.fromValidHex("01 01"), 1L),
@@ -66,7 +66,7 @@ class TlvCodecsSpec {
 
     {
       println("encode/decode truncated uint64")
-      
+
       val testCases = Seq(
         (ByteVector.fromValidHex("00"), UInt64(0)),
         (ByteVector.fromValidHex("01 01"), UInt64(1)),
@@ -105,7 +105,7 @@ class TlvCodecsSpec {
 
     {
       println("decode invalid truncated integers")
-      
+
       val testCases = Seq(
         (tu16, ByteVector.fromValidHex("01 00")), // not minimal
         (tu16, ByteVector.fromValidHex("02 0001")), // not minimal
@@ -133,7 +133,7 @@ class TlvCodecsSpec {
 
     {
       println("encode/decode tlv stream")
-      
+
       val testCases = Seq(
         (ByteVector.fromValidHex(""), TlvStream[Tlv](Nil, Nil)),
         (ByteVector.fromValidHex("21 00"), TlvStream[Tlv](Nil, Seq(GenericTlv(33, ByteVector.fromValidHex(""))))),
@@ -169,7 +169,7 @@ class TlvCodecsSpec {
 
     {
       println("decode invalid tlv stream")
-      
+
       val testCases = Seq(
         // Type truncated.
         ByteVector.fromValidHex("fd"),
@@ -235,7 +235,7 @@ class TlvCodecsSpec {
 
     {
       println("encode/decode length-prefixed tlv stream")
-      
+
       val testCases = Seq(
         ByteVector.fromValidHex("41 01020231 02080000000000000451 033102eec7245d6b7d2ccb30380bfbe2a3648cd7a942653f5aa340edcea1f28368661900000000000002310000000000000451"),
         ByteVector.fromValidHex("fd014d 01020231 02080000000000000451 033102eec7245d6b7d2ccb30380bfbe2a3648cd7a942653f5aa340edcea1f28368661900000000000002310000000000000451 ff6543210987654321 fd0100 10101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010010101010101")
@@ -248,7 +248,7 @@ class TlvCodecsSpec {
 
     {
       println("decode invalid length-prefixed tlv stream")
-      
+
       val testCases = Seq(
         // Length too big.
         ByteVector.fromValidHex("42 01020231 02080000000000000451 033102eec7245d6b7d2ccb30380bfbe2a3648cd7a942653f5aa340edcea1f28368661900000000000002310000000000000451"),
@@ -271,7 +271,7 @@ class TlvCodecsSpec {
 
     {
       println("encode unordered tlv stream (codec should sort appropriately)")
-      
+
       val stream = TlvStream[Tlv](Seq(TestType254(42), TestType1(42)), Seq(GenericTlv(13, ByteVector.fromValidHex("2a")), GenericTlv(11, ByteVector.fromValidHex("2b"))))
       assert(testTlvStreamCodec.encode(stream).require.toByteVector == ByteVector.fromValidHex("01012a 0b012b 0d012a fd00fe02002a"))
       assert(lengthPrefixedTestTlvStreamCodec.encode(stream).require.toByteVector == ByteVector.fromValidHex("0f 01012a 0b012b 0d012a fd00fe02002a"))
@@ -279,7 +279,7 @@ class TlvCodecsSpec {
 
     {
       println("encode invalid tlv stream")
-      
+
       val testCases = Seq(
         // Unknown even type.
         TlvStream[Tlv](Nil, Seq(GenericTlv(42, ByteVector.fromValidHex("2a")))),

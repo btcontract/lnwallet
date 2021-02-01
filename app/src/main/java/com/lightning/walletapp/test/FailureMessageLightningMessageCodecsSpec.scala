@@ -1,5 +1,6 @@
 package com.lightning.walletapp.test
 
+import com.lightning.walletapp.ln.Tools
 import com.lightning.walletapp.ln.crypto.Hmac256
 import com.lightning.walletapp.ln.wire._
 import fr.acinq.bitcoin.{Block, Protocol}
@@ -143,6 +144,25 @@ class FailureMessageLightningMessageCodecsSpec {
 
       for (testCase <- testCases) {
         assert(codec.decode(testCase.toBitVector).isFailure)
+      }
+    }
+
+    {
+      println("encode/decode all failure messages")
+      import com.lightning.walletapp.ln.wire.FailureMessageCodecs._
+      val msgs: List[FailureMessage] =
+        InvalidRealm :: TemporaryNodeFailure :: PermanentNodeFailure :: RequiredNodeFeatureMissing ::
+          InvalidOnionVersion(ByteVector(Tools.random.getBytes(32))) :: InvalidOnionHmac(ByteVector(Tools.random.getBytes(32))) :: InvalidOnionKey(ByteVector(Tools.random.getBytes(32))) ::
+          TemporaryChannelFailure(channelUpdate) :: PermanentChannelFailure :: RequiredChannelFeatureMissing :: UnknownNextPeer ::
+          AmountBelowMinimum(123456L, channelUpdate) :: FeeInsufficient(546463L, channelUpdate) :: IncorrectCltvExpiry(1211, channelUpdate) :: ExpiryTooSoon(channelUpdate) ::
+          IncorrectOrUnknownPaymentDetails(123456L, 1105) :: FinalIncorrectCltvExpiry(1234) :: ChannelDisabled(0, 1, channelUpdate) :: ExpiryTooFar :: InvalidOnionPayload(UInt64(561), 1105) :: PaymentTimeout :: Nil
+
+      msgs.foreach {
+        msg => {
+          val encoded = failureMessageCodec.encode(msg).require
+          val decoded = failureMessageCodec.decode(encoded).require
+          assert(msg == decoded.value)
+        }
       }
     }
   }

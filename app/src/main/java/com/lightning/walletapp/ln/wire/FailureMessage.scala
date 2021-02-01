@@ -36,6 +36,7 @@ case object PermanentNodeFailure extends Perm with Node
 case object RequiredNodeFeatureMissing extends Perm with Node
 
 case object ExpiryTooFar extends FailureMessage
+case object PaymentTimeout extends FailureMessage
 case class FinalIncorrectCltvExpiry(expiry: Long) extends FailureMessage
 case class FinalIncorrectHtlcAmount(amountMsat: Long) extends FailureMessage
 
@@ -91,7 +92,8 @@ object FailureMessageCodecs {
         .typecase(cr = (uint64Overflow withContext "amountMsat").as[FinalIncorrectHtlcAmount], tag = 19)
         .typecase(cr = disabled.as[ChannelDisabled], tag = UPDATE | 20)
         .typecase(cr = provide(ExpiryTooFar), tag = 21)
-        .typecase(cr = invalidOnionPayload.as[InvalidOnionPayload], tag = PERM | 22),
+        .typecase(cr = invalidOnionPayload.as[InvalidOnionPayload], tag = PERM | 22)
+        .typecase(cr = provide(PaymentTimeout), tag = 23),
       uint16.xmap(unknownFailureFromCode(_).asInstanceOf[FailureMessage], (_: FailureMessage).code)
     )
 

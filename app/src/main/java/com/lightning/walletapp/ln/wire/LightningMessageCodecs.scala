@@ -3,7 +3,6 @@ package com.lightning.walletapp.ln.wire
 import java.net._
 import scodec.codecs._
 import fr.acinq.eclair.UInt64.Conversions._
-
 import scodec.bits.{BitVector, ByteVector}
 import com.lightning.walletapp.ln.crypto.{Mac32, Sphinx}
 import fr.acinq.bitcoin.Crypto.{Point, PublicKey, Scalar}
@@ -240,8 +239,7 @@ object LightningMessageCodecs { me =>
       (bytes32 withContext "hmac")
   }.as[OnionRoutingPacket]
 
-  val paymentOnionPacketCodec: Codec[OnionRoutingPacket] =
-    onionRoutingPacketCodec(Sphinx.PaymentPacket.PayloadLength)
+  val paymentOnionPacketCodec: Codec[OnionRoutingPacket] = onionRoutingPacketCodec(Sphinx.PaymentPacket.PayloadLength)
 
   val payloadLengthDecoder = Decoder[Long] { bits: BitVector =>
     varintoverflow.decode(bits) map { decResult: DecodeResult[Long] =>
@@ -250,16 +248,13 @@ object LightningMessageCodecs { me =>
     }
   }
 
-  private val amountToForward: Codec[OnionTlv.AmountToForward] =
-    (tu64Overflow withContext "amount_msat").xmap(OnionTlv.AmountToForward, _.amountMsat)
+  private val outgoingCltv: Codec[OnionTlv.OutgoingCltv] = (tu32 withContext "cltv").xmap(OnionTlv.OutgoingCltv, _.cltv)
+  private val amountToForward: Codec[OnionTlv.AmountToForward] = (tu64Overflow withContext "amountMsat").xmap(OnionTlv.AmountToForward, _.amountMsat)
+  private val outgoingChannelId: Codec[OnionTlv.OutgoingChannelId] = variableSizeBytesLong(varintoverflow, int64 withContext "shortChannelId").as[OnionTlv.OutgoingChannelId]
 
-  private val outgoingCltv: Codec[OnionTlv.OutgoingCltv] =
-    (tu32 withContext "cltv").xmap(OnionTlv.OutgoingCltv, _.cltv)
-
-  private val outgoingChannelId: Codec[OnionTlv.OutgoingChannelId] = {
-    val outgoingChannelIdLengthConstant = constant(ByteVector fromValidHex "08") withContext "length"
-    val codec = outgoingChannelIdLengthConstant :: (int64 withContext "short_channel_id")
-    codec.as[OnionTlv.OutgoingChannelId]
+  private val paymentData: Codec[OnionTlv.PaymentData] = {
+    val base = (bytes32 withContext "secret") :: (tu64Overflow withContext "totalAmountMsat")
+    variableSizeBytesLong(varintoverflow, base).as[OnionTlv.PaymentData]
   }
 
   private val onionTlvCodec =
@@ -267,6 +262,7 @@ object LightningMessageCodecs { me =>
       .typecase(UInt64(2), amountToForward)
       .typecase(UInt64(4), outgoingCltv)
       .typecase(UInt64(6), outgoingChannelId)
+      .typecase(UInt64(8), paymentData)
 
   private val tlvPerHopPayloadCodec: Codec[OnionTlv.Stream] =
     variableSizeBytesLong(value = tlvStream(onionTlvCodec), size = varintoverflow)
@@ -294,7 +290,8 @@ object LightningMessageCodecs { me =>
   }
 
   val relayPerHopPayloadCodec: Codec[RelayPayload] =
-    fallback(tlvPerHopPayloadCodec, legacyRelayPerHopPayloadCodec).narrow(f = {
+    fallback(tlvPerHopPayloadCodec, legacyRelayPerHopPayloadCodec).narrow(
+      f = {
         case Left(tlvs) if tlvs.get[OnionTlv.OutgoingChannelId].isEmpty => Attempt failure MissingRequiredTlv(6)
         case Left(tlvs) if tlvs.get[OnionTlv.AmountToForward].isEmpty => Attempt failure MissingRequiredTlv(2)
         case Left(tlvs) if tlvs.get[OnionTlv.OutgoingCltv].isEmpty => Attempt failure MissingRequiredTlv(4)
@@ -307,7 +304,8 @@ object LightningMessageCodecs { me =>
     )
 
   val finalPerHopPayloadCodec: Codec[FinalPayload] =
-    fallback(tlvPerHopPayloadCodec, legacyFinalPerHopPayloadCodec).narrow(f = {
+    fallback(tlvPerHopPayloadCodec, legacyFinalPerHopPayloadCodec).narrow(
+      f = {
         case Left(tlvs) if tlvs.get[OnionTlv.AmountToForward].isEmpty => Attempt failure MissingRequiredTlv(2)
         case Left(tlvs) if tlvs.get[OnionTlv.OutgoingCltv].isEmpty => Attempt failure MissingRequiredTlv(4)
         case Left(tlvs) => Attempt successful FinalTlvPayload(tlvs)
@@ -653,11 +651,13 @@ object TlvStream {
 // Onion
 
 sealed trait OnionTlv extends Tlv
+case class OnionRoutingPacket(version: Int, publicKey: ByteVector, payload: ByteVector, hmac: ByteVector)
 
 object OnionTlv {
   type Stream = TlvStream[OnionTlv]
-  case class OutgoingChannelId(shortChannelId: Long) extends OnionTlv
-  case class AmountToForward(amountMsat: Long) extends OnionTlv
+  case class OutgoingChannelId(shortChannelId: Long) extends OnionTlv // Id of the channel to use to forward a payment to the next node
+  case class PaymentData(secret: ByteVector, totalAmountMsat: Long) extends OnionTlv // Bolt 11 payment details for the last node
+  case class AmountToForward(amountMsat: Long) extends OnionTlv // Amount to forward to the next node
   case class OutgoingCltv(cltv: Long) extends OnionTlv
 }
 
@@ -665,6 +665,8 @@ sealed trait PerHopPayloadFormat
 sealed trait PerHopPayload { def encode: ByteVector }
 sealed trait FinalPayload extends PerHopPayload with PerHopPayloadFormat { me =>
   def encode = LightningMessageCodecs.finalPerHopPayloadCodec.encode(me).require.toByteVector
+  val paymentSecretOpt: Option[ByteVector]
+  val totalAmountMsat: Long
   val amountMsat: Long
   val cltvExpiry: Long
 }
@@ -672,22 +674,31 @@ sealed trait FinalPayload extends PerHopPayload with PerHopPayloadFormat { me =>
 sealed trait RelayPayload extends PerHopPayload with PerHopPayloadFormat { me =>
   def encode = LightningMessageCodecs.relayPerHopPayloadCodec.encode(me).require.toByteVector
   val amountToForwardMsat: Long
-  val outgoingChannelId: Long
   val outgoingCltv: Long
 }
 
 sealed trait LegacyFormat extends PerHopPayloadFormat
-case class FinalLegacyPayload(amountMsat: Long, cltvExpiry: Long) extends FinalPayload with LegacyFormat
+
 case class RelayLegacyPayload(outgoingChannelId: Long, amountToForwardMsat: Long, outgoingCltv: Long) extends RelayPayload with LegacyFormat
-case class OnionRoutingPacket(version: Int, publicKey: ByteVector, payload: ByteVector, hmac: ByteVector)
 
 case class RelayTlvPayload(records: OnionTlv.Stream) extends RelayPayload {
-  override val outgoingChannelId = records.get[OnionTlv.OutgoingChannelId].get.shortChannelId
   override val amountToForwardMsat = records.get[OnionTlv.AmountToForward].get.amountMsat
   override val outgoingCltv = records.get[OnionTlv.OutgoingCltv].get.cltv
 }
 
+case class FinalLegacyPayload(amountMsat: Long, cltvExpiry: Long) extends FinalPayload with LegacyFormat {
+  override val totalAmountMsat = amountMsat
+  override val paymentSecretOpt = None
+}
+
 case class FinalTlvPayload(records: OnionTlv.Stream) extends FinalPayload {
+  override val paymentSecretOpt = records.get[OnionTlv.PaymentData].map(_.secret)
   override val amountMsat = records.get[OnionTlv.AmountToForward].get.amountMsat
   override val cltvExpiry = records.get[OnionTlv.OutgoingCltv].get.cltv
+
+  override val totalAmountMsat = records.get[OnionTlv.PaymentData] match {
+    case Some(paymentData) if paymentData.totalAmountMsat == 0L => amountMsat
+    case Some(paymentData) => paymentData.totalAmountMsat
+    case None => amountMsat
+  }
 }

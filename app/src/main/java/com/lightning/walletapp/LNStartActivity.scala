@@ -141,11 +141,11 @@ sealed trait StartNodeView {
 case class IncomingChannelParams(nodeView: HardcodedNodeView, open: OpenChannel)
 case class HardcodedNodeView(ann: NodeAnnouncement, tip: String) extends StartNodeView {
   // App suggests a bunch of hardcoded and separately fetched nodes with a good liquidity
-  def asString(base: String) = base.format(ann.htmlAlias, tip, ann.pretty)
+  def asString(base: String) = base.format(ann.alias, tip, ann.pretty)
 }
 
 case class RemoteNodeView(acn: AnnounceChansNum) extends StartNodeView {
-  def asString(base: String) = base.format(chanAnnounce.htmlAlias, chansNumber, chanAnnounce.pretty)
+  def asString(base: String) = base.format(chanAnnounce.alias, chansNumber, chanAnnounce.pretty)
   lazy val chansNumber = app.plur1OrZero(app.getResources getStringArray R.array.ln_ops_start_node_channels, chansNum)
   val chanAnnounce \ chansNum = acn
 }
@@ -232,7 +232,7 @@ case class IncomingChannelRequest(uri: String, callback: String, k1: String) ext
 }
 
 case class HostedChannelRequest(uri: String, alias: Option[String], k1: String) extends LNUrlData with StartNodeView {
-  def asString(base: String) = base.format(ann.htmlAlias, app getString ln_ops_start_fund_hosted_channel, ann.pretty)
+  def asString(base: String) = base.format(ann.alias, app getString ln_ops_start_fund_hosted_channel, ann.pretty)
   override val backgroundColor = Denomination.yellowHighlight
 
   val secret = ByteVector fromValidHex k1

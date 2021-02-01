@@ -142,7 +142,7 @@ class LNOpsActivity extends TimerActivity with HumanTimeDisplay { me =>
 
       startedAtText setText startedAt.html
       fundingDepthText setText s"$fundingDepth / $threshold"
-      addressAndKey setText chan.data.announce.htmlString.html
+      addressAndKey setText chan.data.announce.asString.html
       totalPaymentsText setText getTotalPayments(cs.channelId).toString
       // All amounts are in MilliSatoshi, but we divide them by 1000 to erase trailing msat remainders
       stateAndConnectivity setText s"<strong>${me stateStatusColor chan}</strong><br>${me connectivityStatusColor chan}".html
@@ -221,17 +221,17 @@ class LNOpsActivity extends TimerActivity with HumanTimeDisplay { me =>
           // No reason to close an already closed channel
           case _: ClosingData => normalChanActions take 1
           case _ => normalChanActions :+ addressHint.html
-        }, chan.data.announce.htmlString.html)
+        }, chan.data.announce.asString.html)
 
         lst setOnItemClickListener onTap { pos =>
           def warnAndMaybeClose(channelClosureWarning: String) = {
-            val bld = baseTextBuilder(channelClosureWarning.html).setCustomTitle(chan.data.announce.htmlString.html)
+            val bld = baseTextBuilder(channelClosureWarning.html).setCustomTitle(chan.data.announce.asString.html)
             mkCheckForm(alert => rm(alert)(chan process ChannelManager.CMDLocalShutdown), none, bld, dialog_ok, dialog_cancel)
           }
 
           def warnAndMaybeCloseToAddress = closeBitcoinAddress map { bitcoinAddress =>
             val text = getString(ln_chan_close_confirm_address) format humanSix(bitcoinAddress.toString)
-            val bld = baseTextBuilder(text.html).setCustomTitle(chan.data.announce.htmlString.html)
+            val bld = baseTextBuilder(text.html).setCustomTitle(chan.data.announce.asString.html)
             val program = ScriptBuilder.createOutputScript(bitcoinAddress).getProgram
             val customShutdown = CMDShutdown apply Some(ByteVector view program)
             mkCheckForm(alert => rm(alert)(chan process customShutdown),
@@ -267,7 +267,7 @@ class LNOpsActivity extends TimerActivity with HumanTimeDisplay { me =>
       baseBar.setProgress(barCanSend)
 
       startedAtText setText startedAt.html
-      addressAndKey setText chan.data.announce.htmlString.html
+      addressAndKey setText chan.data.announce.asString.html
       totalPaymentsText setText getTotalPayments(hc.channelId).toString
       // All amounts are in MilliSatoshi, but we divide them by 1000 to erase trailing msat remainders
       stateAndConnectivity setText s"<strong>${me stateStatusColor chan}</strong><br>${me connectivityStatusColor chan}".html
@@ -289,7 +289,7 @@ class LNOpsActivity extends TimerActivity with HumanTimeDisplay { me =>
         R.id.overBar)
 
       view setOnClickListener onButtonTap {
-        val title = chan.data.announce.htmlString.html
+        val title = chan.data.announce.asString.html
         val lst \ alert = makeChoiceList(hostedChanActions, title)
 
         lst setOnItemClickListener onTap { pos =>

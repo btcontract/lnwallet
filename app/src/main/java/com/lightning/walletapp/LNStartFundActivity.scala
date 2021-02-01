@@ -61,7 +61,7 @@ class LNStartFundActivity extends TimerActivity { me =>
     app.kit.wallet.addWatchedScripts(app.kit fundingPubScript some)
     // Start watching a channel funding script and save a channel, order an encrypted backup upload
     val encrypted = AES.encReadable(RefundingData(some.announce, None, some.commitments).toJson.toString, LNParams.keys.cloudSecret.toArray)
-    val chanUpload = ChannelUploadAct(encrypted.toByteVector, Seq("key" -> LNParams.keys.cloudId), "data/put", some.announce.cutAlias)
+    val chanUpload = ChannelUploadAct(encrypted.toByteVector, Seq("key" -> LNParams.keys.cloudId), "data/put", some.announce.asString)
     LNParams.olympusWrap tellClouds chanUpload
     finalizeSetup(chan)
   }
@@ -69,9 +69,9 @@ class LNStartFundActivity extends TimerActivity { me =>
   def proceed(mode: Either[List[OpenChannel], ByteVector], asString: String, ann: NodeAnnouncement): Unit = {
     val walletPubKeyScript = ByteVector(ScriptBuilder.createOutputScript(app.kit.currentAddress).getProgram)
 
-    val safeAddressOrAlias = ann.addresses.headOption.map(_.toString) getOrElse ann.cutAlias
+    val safeAddressOrAlias = ann.addresses.headOption.map(_.toString) getOrElse ann.asString
     val peerOffline = new LightningException(me getString err_ln_peer_offline format safeAddressOrAlias)
-    val peerIncompatible = new LightningException(me getString err_ln_peer_incompatible format ann.cutAlias)
+    val peerIncompatible = new LightningException(me getString err_ln_peer_incompatible format ann.asString)
     val chanExistsAlready = new LightningException(me getString err_ln_chan_exists_already)
     val chainNotConnectedYet = new LightningException(me getString err_ln_chain_wait)
     lnStartFundCancel setOnClickListener onButtonTap(whenBackPressed.run)
