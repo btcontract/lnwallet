@@ -11,7 +11,7 @@ android {
         multiDexEnabled true
         targetSdkVersion 29
         minSdkVersion 21
-        versionCode 154
+        versionCode 155
 
         ndk {
             abiFilters 'x86', 'x86_64', 'armeabi-v7a', 'arm64-v8a'
