@@ -7,22 +7,8 @@ import scodec.bits.ByteVector
 
 class FeaturesSpec {
   import com.lightning.walletapp.ln.Features._
-  
+
   def allTests = {
-
-    {
-      println("'data_loss_protect' feature")
-      assert(dataLossProtect(ByteVector.fromValidHex("02"))) // optional
-      assert(!dataLossProtect(ByteVector.fromValidHex("00")))
-      assert(dataLossProtect(ByteVector.fromValidHex("81"))) // mandatory
-    }
-
-    {
-      println("'variable_length_onion' feature")
-      assert(variableLengthOnion(ByteVector.fromValidHex("0100")))
-      assert(variableLengthOnion(ByteVector.fromValidHex("0200")))
-    }
-
     {
       println("features compatibility")
       assert(isNodeSupported(Protocol.writeUInt64(1L << OPTION_DATA_LOSS_PROTECT_OPTIONAL, ByteOrder.BIG_ENDIAN)))
@@ -33,5 +19,15 @@ class FeaturesSpec {
       assert(!isNodeSupported(ByteVector.fromValidHex("0141")))
     }
 
+    {
+      assert(isNodeSupported(ByteVector.fromLong(1L << OPTION_DATA_LOSS_PROTECT_MANDATORY)))
+      assert(isNodeSupported(ByteVector.fromLong(1L << OPTION_DATA_LOSS_PROTECT_OPTIONAL)))
+      assert(isNodeSupported(ByteVector.fromLong(1L << VARIABLE_LENGTH_ONION_OPTIONAL)))
+      assert(isNodeSupported(ByteVector.fromLong(1L << VARIABLE_LENGTH_ONION_MANDATORY)))
+      assert(isNodeSupported(ByteVector.fromLong(1L << PAYMENT_SECRET_MANDATORY)))
+      assert(isNodeSupported(ByteVector.fromLong(1L << PAYMENT_SECRET_OPTIONAL)))
+      assert(isNodeSupported(ByteVector.fromLong(1L << BASIC_MULTI_PART_PAYMENT_MANDATORY)))
+      assert(isNodeSupported(ByteVector.fromLong(1L << BASIC_MULTI_PART_PAYMENT_OPTIONAL)))
+    }
   }
 }

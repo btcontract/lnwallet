@@ -9,9 +9,10 @@ import com.lightning.walletapp.lnutils.ImplicitConversions._
 
 import java.io.{BufferedWriter, File, FileWriter}
 import android.view.{Menu, MenuItem, View, ViewGroup}
+import com.lightning.walletapp.ln.Tools.{none, random, wrap}
 import org.bitcoinj.core.{Address, Block, FilteredBlock, Peer}
 import fr.acinq.bitcoin.{MilliSatoshiLong, Satoshi, SatoshiLong}
-import com.lightning.walletapp.ln.Tools.{memoize, none, random, wrap}
+
 import com.lightning.walletapp.lnutils.{ChannelTable, PaymentInfoWrap, PaymentTable}
 import com.lightning.walletapp.ln.wire.LightningMessageCodecs.hostedStateCodec
 import com.lightning.walletapp.lnutils.IconGetter.scrWidth
@@ -38,7 +39,7 @@ class LNOpsActivity extends TimerActivity with HumanTimeDisplay { me =>
   lazy val displayedChans = ChannelManager.all.filter(canDisplayData)
   lazy val host = me
 
-  val getTotalPayments = memoize { chanId: ByteVector =>
+  val getTotalPayments = { chanId: ByteVector =>
     val cursor = LNParams.db.select(PaymentTable.selectPaymentNumSql, chanId)
     RichCursor(cursor) headTry { case RichCursor(c1) => c1 getLong 0 } getOrElse 0L
   }

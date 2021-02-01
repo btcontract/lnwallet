@@ -1,15 +1,16 @@
 package com.lightning.walletapp.ln
 
+import scodec.bits.{BitVector, ByteVector}
 import fr.acinq.bitcoin.Protocol.{One, Zeroes}
 import fr.acinq.bitcoin.{Crypto, LexicographicalOrdering}
-import com.lightning.walletapp.ln.wire.UpdateAddHtlc
 import com.lightning.walletapp.ln.Tools.runAnd
+import com.lightning.walletapp.ln.wire.UpdateAddHtlc
 import fr.acinq.bitcoin.Crypto.PrivateKey
+
 import language.implicitConversions
 import crypto.RandomGenerator
-import scodec.bits.ByteVector
+
 import scala.util.Try
-import java.util
 
 
 object \ {
@@ -31,10 +32,6 @@ object Tools {
   def toDefMap[T, K, V](source: Seq[T], keyFun: T => K, valFun: T => V, default: V): Map[K, V] = {
     val sequenceOfTuples = for (mapElement <- source) yield keyFun(mapElement) -> valFun(mapElement)
     sequenceOfTuples.toMap withDefaultValue default
-  }
-
-  def memoize[I, O](f: I => O): I => O = new collection.mutable.HashMap[I, O] { self =>
-    override def apply(key: I) = getOrElseUpdate(key, f apply key)
   }
 
   def sign(data: ByteVector, pk: PrivateKey) = Try {
@@ -67,23 +64,35 @@ object Tools {
 }
 
 object Features {
-  val OPTION_DATA_LOSS_PROTECT_MANDATORY = 0
-  val OPTION_DATA_LOSS_PROTECT_OPTIONAL = 1
+  val OPTION_DATA_LOSS_PROTECT_MANDATORY = 0L
+  val OPTION_DATA_LOSS_PROTECT_OPTIONAL = 1L
 
-  val VARIABLE_LENGTH_ONION_MANDATORY = 8
-  val VARIABLE_LENGTH_ONION_OPTIONAL = 9
+  val INITIAL_ROUTING_SYNC_BIT_OPTIONAL = 3L
 
-  implicit def binData2BitSet(featuresBinaryData: ByteVector): util.BitSet = util.BitSet.valueOf(featuresBinaryData.reverse.toArray)
-  def dataLossProtect(bitset: util.BitSet) = bitset.get(OPTION_DATA_LOSS_PROTECT_OPTIONAL) || bitset.get(OPTION_DATA_LOSS_PROTECT_MANDATORY)
-  def variableLengthOnion(bitset: util.BitSet) = bitset.get(VARIABLE_LENGTH_ONION_OPTIONAL) || bitset.get(VARIABLE_LENGTH_ONION_MANDATORY)
-  def isBitSet(position: Int, bitField: Byte): Boolean = bitField.&(1 << position) == (1 << position)
+  val CHANNEL_RANGE_QUERIES_BIT_MANDATORY = 6L
+  val CHANNEL_RANGE_QUERIES_BIT_OPTIONAL = 7L
 
-  def isNodeSupported(bitset: util.BitSet) = areSupported(Set(OPTION_DATA_LOSS_PROTECT_MANDATORY, VARIABLE_LENGTH_ONION_MANDATORY), bitset)
-  def isHostedChannelSupported(bitset: util.BitSet) = areSupported(Set.empty, bitset)
+  val VARIABLE_LENGTH_ONION_MANDATORY = 8L
+  val VARIABLE_LENGTH_ONION_OPTIONAL = 9L
 
-  def areSupported(mandatoryFeatures: Set[Int], bitset: util.BitSet): Boolean = {
-    def mandatoryUnsupported(n: Int) = bitset.get(n) && !mandatoryFeatures.contains(n)
-    !(0 until bitset.length by 2 exists mandatoryUnsupported)
+  val PAYMENT_SECRET_MANDATORY = 14L
+  val PAYMENT_SECRET_OPTIONAL = 15L
+
+  val BASIC_MULTI_PART_PAYMENT_MANDATORY = 16L
+  val BASIC_MULTI_PART_PAYMENT_OPTIONAL = 17L
+
+  def hasFeature(features: ByteVector, bit: Long): Boolean = hasFeature(features.bits, bit)
+  def hasFeature(features: BitVector, bit: Long): Boolean = if (features sizeLessThanOrEqual bit) false else features.reverse.get(bit)
+  def isBitSet(requiredPosition: Int, bitField: Byte): Boolean = bitField.&(1 << requiredPosition) == (1 << requiredPosition)
+
+  def isNodeSupported(features: ByteVector) =
+    areSupported(Set(OPTION_DATA_LOSS_PROTECT_MANDATORY, CHANNEL_RANGE_QUERIES_BIT_MANDATORY,
+      VARIABLE_LENGTH_ONION_MANDATORY, PAYMENT_SECRET_MANDATORY, BASIC_MULTI_PART_PAYMENT_MANDATORY),
+      features.bits.reverse)
+
+  def areSupported(mandatoryFeatures: Set[Long], reversedFeatures: BitVector): Boolean = {
+    def mandatoryUnsupported(n: Long) = reversedFeatures.get(n) && !mandatoryFeatures.contains(n)
+    !(0L until reversedFeatures.length by 2 exists mandatoryUnsupported)
   }
 }
 

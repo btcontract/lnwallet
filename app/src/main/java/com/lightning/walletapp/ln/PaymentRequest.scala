@@ -28,6 +28,10 @@ case class PaymentHashTag(hash: ByteVector) extends Tag {
   def toInt5s = encode(Bech32 eight2five hash.toArray, 'p')
 }
 
+case class PaymentSecretTag(secret: ByteVector) extends Tag {
+  def toInt5s = encode(Bech32 eight2five secret.toArray, 's')
+}
+
 case class DescriptionTag(description: String) extends Tag {
   def toInt5s = encode(Bech32 eight2five description.getBytes, 'd')
 }
@@ -61,7 +65,7 @@ object FallbackAddressTag { me =>
 }
 
 case class RoutingInfoTag(route: PaymentRoute) extends Tag {
-  def toInt5s = encode(Bech32.eight2five(route.flatMap(pack).toArray), 'r')
+  def toInt5s = encode(Bech32 eight2five route.flatMap(pack).toArray, 'r')
   def pack(hop: Hop) = aconcat(hop.nodeId.toBin.toArray, writeUInt64Array(hop.shortChannelId, BIG_ENDIAN),
     writeUInt32Array(hop.feeBaseMsat, BIG_ENDIAN), writeUInt32Array(hop.feeProportionalMillionths, BIG_ENDIAN),
     writeUInt16Array(hop.cltvExpiryDelta, BIG_ENDIAN))
@@ -69,7 +73,7 @@ case class RoutingInfoTag(route: PaymentRoute) extends Tag {
 
 object RoutingInfoTag {
   def parse(data: Bytes) = {
-    val pubkey = ByteVector(data take 33)
+    val pubkey = ByteVector apply data.slice(0, 33)
     val shortChanId = uint64(data.slice(33, 33 + 8), BIG_ENDIAN)
     val feeBaseMsat = uint32(data.slice(33 + 8, 33 + 8 + 4), BIG_ENDIAN)
     val cltvExpiryDelta = uint16(data.slice(33 + 8 + 4 + 4, chunkLength), BIG_ENDIAN)
@@ -90,10 +94,21 @@ case class ExpiryTag(seconds: Long) extends Tag {
   lazy val ints = writeUnsignedLong(seconds)
 }
 
-case class FeaturesTag(features: Long) extends Tag {
-  def toInt5s = Bech32.map('9') +: (writeSize(ints.length) ++ ints)
-  lazy val bitmask = PaymentRequest.long2Bits(features)
-  lazy val ints = writeUnsignedLong(features)
+object FeaturesTag {
+  def generate(features: Long*) = {
+    val maskLong = features.foldLeft(0L) { case (current, feature) => (1L << feature) + current }
+    FeaturesTag(bitMask = PaymentRequest long2Bits maskLong)
+  }
+}
+
+case class FeaturesTag(bitMask: BitVector) extends Tag {
+  def toInt5s = encode(Bech32 eight2five bitMask.dropRight(n = (8 - bitMask.size % 8) % 8).toByteArray, '9')
+  val padBitMask = bitMask ++ BitVector.fill(n = (5 - bitMask.size % 5) % 5)(high = false)
+
+  import com.lightning.walletapp.ln.Features._
+  lazy val supported = areSupported(Set(PAYMENT_SECRET_MANDATORY, BASIC_MULTI_PART_PAYMENT_MANDATORY), padBitMask.reverse)
+  lazy val allowMultiPart = hasFeature(padBitMask, BASIC_MULTI_PART_PAYMENT_MANDATORY) || hasFeature(padBitMask, BASIC_MULTI_PART_PAYMENT_OPTIONAL)
+  lazy val allowPaymentSecret = hasFeature(padBitMask, PAYMENT_SECRET_MANDATORY) || hasFeature(padBitMask, PAYMENT_SECRET_OPTIONAL)
 }
 
 case class MinFinalCltvExpiryTag(expiryDelta: Long) extends Tag {
@@ -107,19 +122,19 @@ case class UnknownTag(tag: Int5, int5s: Bytes) extends Tag {
 
 case class PaymentRequest(prefix: String, amount: Option[MilliSatoshi], timestamp: Long, nodeId: PublicKey, tags: Vector[Tag], signature: ByteVector) {
   require(tags.collect { case _: DescriptionTag | _: DescriptionHashTag => true }.size == 1, "There can only be one description or description hash tag")
-  require(tags.collect { case _: PaymentHashTag => true }.size == 1, "There must be exactly one payment hash tag")
   for (MilliSatoshi(sum) <- amount) require(sum > 0L, "Amount is not valid")
 
-  lazy val msatOrMin = amount getOrElse MilliSatoshi(LNParams.minPaymentMsat)
-  lazy val adjustedMinFinalCltvExpiry = tags.collectFirst { case MinFinalCltvExpiryTag(delta) => delta }.getOrElse(0L) + 18L
-  lazy val paymentHash = tags.collectFirst { case PaymentHashTag(hash) => hash }.get
-  lazy val features = tags.collectFirst { case fts: FeaturesTag => fts.bitmask }
-  lazy val routingInfo = tags.collect { case r: RoutingInfoTag => r }
+  private val paymentHashes = tags.collect { case PaymentHashTag(hash) => hash }
+  private val paymentSecrets = tags.collect { case PaymentSecretTag(secret) => secret }
+  val features = tags.collectFirst { case fts: FeaturesTag => fts } getOrElse FeaturesTag(BitVector.empty)
+  if (features.allowMultiPart) require(features.allowPaymentSecret, "There must be a payment secret when using multi-part payment request")
+  if (features.allowPaymentSecret) require(paymentSecrets.size == 1, "There must be exactly one payment secret tag")
+  require(paymentHashes.size == 1, "There must be exactly one payment hash tag")
 
-  lazy val description = tags.collectFirst {
-    case DescriptionHashTag(hash) => hash.toHex
-    case DescriptionTag(info) => info
-  } getOrElse new String
+  lazy val msatOrMin = amount getOrElse MilliSatoshi(LNParams.minPaymentMsat)
+  lazy val routingInfo = tags.collect { case routingInfo: RoutingInfoTag => routingInfo }
+  lazy val adjustedMinFinalCltvExpiry = tags.collectFirst { case MinFinalCltvExpiryTag(delta) => delta + leeway }.getOrElse(leeway)
+  lazy val description = tags.collectFirst { case DescriptionHashTag(hash) => hash.toHex case DescriptionTag(info) => info } getOrElse new String
 
   lazy val fallbackAddress = tags.collectFirst {
     case FallbackAddressTag(17, hash) if prefix == "lnbc" => Base58Check.encode(Base58.Prefix.PubkeyAddress, hash)
@@ -129,6 +144,9 @@ case class PaymentRequest(prefix: String, amount: Option[MilliSatoshi], timestam
     case FallbackAddressTag(version, hash) if prefix == "lntb" || prefix == "lnbcrt" => Bech32.encodeWitnessAddress("tb", version, hash)
     case FallbackAddressTag(version, hash) if prefix == "lnbc" => Bech32.encodeWitnessAddress("bc", version, hash)
   }
+
+  val paymentHash = paymentHashes.head
+  val paymentSecretOpt = paymentSecrets.headOption
 
   def isFresh: Boolean = {
     val expiry = tags.collectFirst { case ex: ExpiryTag => ex.seconds }
@@ -158,15 +176,20 @@ case class PaymentRequest(prefix: String, amount: Option[MilliSatoshi], timestam
 
 object PaymentRequest {
   type AmountOption = Option[MilliSatoshi]
-  val expiryTag = ExpiryTag(seconds = 3600 * 24 + 1)
+  val expiryTag = ExpiryTag(seconds = 3600 * 24)
   val cltvExpiryTag = MinFinalCltvExpiryTag(LNParams.blocksPerDay * 2 - 3) // Minus 3 to account for trampoline senders
   val prefixes = Map(Block.RegtestGenesisBlock.hash -> "lnbcrt", Block.TestnetGenesisBlock.hash -> "lntb", Block.LivenetGenesisBlock.hash -> "lnbc")
+  val leeway = 18L // When deciding whether to fulfill an incoming payment its CLTV expiry should have at least this much blocks left before chain height
 
-  def apply(chain: ByteVector, amount: Option[MilliSatoshi], paymentHash: ByteVector,
-            privKey: PrivateKey, description: String, routes: PaymentRouteVec): PaymentRequest = {
+  def apply(chain: ByteVector, amount: Option[MilliSatoshi], paymentHash: ByteVector, privKey: PrivateKey,
+            description: String, fallbackAddress: Option[String], routes: PaymentRouteVec): PaymentRequest = {
 
-    val tags = Vector(DescriptionTag(description), cltvExpiryTag, PaymentHashTag(paymentHash), expiryTag) ++ routes.map(RoutingInfoTag.apply)
-    PaymentRequest(prefixes(chain), amount, System.currentTimeMillis / 1000L, privKey.publicKey, tags, ByteVector.empty) sign privKey
+    val timestampSecs = System.currentTimeMillis / 1000L
+    val secret = ByteVector.view(Tools.random getBytes 32)
+    val features = FeaturesTag.generate(Features.PAYMENT_SECRET_OPTIONAL, Features.BASIC_MULTI_PART_PAYMENT_OPTIONAL)
+    val baseTags = Vector(DescriptionTag(description), cltvExpiryTag, PaymentHashTag(paymentHash), PaymentSecretTag(secret), expiryTag, features)
+    val completeTags = routes.map(RoutingInfoTag.apply) ++ fallbackAddress.map(FallbackAddressTag.apply).toVector ++ baseTags
+    PaymentRequest(prefixes(chain), amount, timestampSecs, privKey.publicKey, completeTags, ByteVector.empty) sign privKey
   }
 
   def long2Bits(value: Long) = {
@@ -235,6 +258,10 @@ object PaymentRequest {
           val hash = Bech32 five2eight input.slice(3, 52 + 3)
           PaymentHashTag(ByteVector view hash)
 
+        case tagS if tagS == 16 =>
+          val hash = Bech32 five2eight input.slice(3, 52 + 3)
+          PaymentSecretTag(ByteVector view hash)
+
         case tagD if tagD == 13 =>
           val description = Bech32 five2eight input.slice(3, len + 3)
           DescriptionTag(Tools bin2readable description)
@@ -266,9 +293,8 @@ object PaymentRequest {
           MinFinalCltvExpiryTag(expiry)
 
         case tag9 if tag9 == 5 =>
-          val ints: Bytes = input.slice(3, len + 3)
-          val features = readUnsignedLong(len, ints)
-          FeaturesTag(features)
+          val mask = Bech32 five2eight input.slice(3, len + 3)
+          FeaturesTag(BitVector view mask)
 
         case _ =>
           val unknown = input.slice(3, len + 3)

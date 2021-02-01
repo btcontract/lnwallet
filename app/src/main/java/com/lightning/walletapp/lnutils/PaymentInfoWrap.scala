@@ -81,7 +81,8 @@ object PaymentInfoWrap extends PaymentInfoBag with ChannelListener { me =>
 
     val paymentHash = Crypto.sha256(preimage)
     val fakeKey = LNParams.keys.makeFakeKey(paymentHash)
-    val pr = PaymentRequest(chainHash, Some(amount), paymentHash, fakeKey, description, extraRoutes)
+
+    val pr = PaymentRequest(chainHash, Some(amount), paymentHash, fakeKey, description, None, extraRoutes)
     val rd = app.emptyRD(pr, firstMsat = amount.toLong, useCache = true)
 
     db.change(PaymentTable.newVirtualSql, rd.queryText, pr.paymentHash)
