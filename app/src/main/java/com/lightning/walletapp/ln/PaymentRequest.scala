@@ -189,7 +189,7 @@ object PaymentRequest {
 
     val timestampSecs = System.currentTimeMillis / 1000L
     val secret = ByteVector.view(Tools.random getBytes 32)
-    val features = FeaturesTag.generate(Features.PAYMENT_SECRET_OPTIONAL, Features.BASIC_MULTI_PART_PAYMENT_OPTIONAL)
+    val features = FeaturesTag.generate(Features.PAYMENT_SECRET_OPTIONAL, Features.BASIC_MULTI_PART_PAYMENT_OPTIONAL, Features.VARIABLE_LENGTH_ONION_OPTIONAL)
     val baseTags = Vector(DescriptionTag(description), cltvExpiryTag, PaymentHashTag(paymentHash), PaymentSecretTag(secret), expiryTag, features)
     val completeTags = routes.map(RoutingInfoTag.apply) ++ fallbackAddress.map(FallbackAddressTag.apply).toVector ++ baseTags
     PaymentRequest(prefixes(chain), amount, timestampSecs, privKey.publicKey, completeTags, ByteVector.empty) sign privKey
