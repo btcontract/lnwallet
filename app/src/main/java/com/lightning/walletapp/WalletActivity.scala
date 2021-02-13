@@ -310,7 +310,15 @@ class WalletActivity extends NfcReaderActivity with ScanActivity { me =>
     val initialListener = new ConnectionListener { self =>
       override def onDisconnect(nodeId: PublicKey) = if (nodeId == incoming.pubKey) ConnectionManager.listeners -= self
       override def onOperational(nodeId: PublicKey, isCompatible: Boolean) = if (nodeId == incoming.pubKey && isCompatible) {
-        queue.map(_ => incoming.requestChannel.body).map(LNUrl.guardResponse).foreach(none, onFail)
+        if (ChannelManager hasNormalChanWith incoming.ann.nodeId) {
+          queue.map(_ => incoming.cancelChannel.body)
+            .foreach(none)
+          UITask(me toast err_ln_chan_exists_already).run
+        } else {
+          queue.map(_ => incoming.requestChannel.body)
+            .map(LNUrl.guardResponse)
+            .foreach(none, onFail)
+        }
       }
 
       override def onMessage(nodeId: PublicKey, message: LightningMessage) = message match {
@@ -326,13 +334,8 @@ class WalletActivity extends NfcReaderActivity with ScanActivity { me =>
       }
     }
 
-    if (ChannelManager hasNormalChanWith incoming.ann.nodeId) {
-      // TODO: remove this limitation once random shortId is merged
-      me toast err_ln_chan_exists_already
-    } else {
-      ConnectionManager.listeners += initialListener
-      ConnectionManager.connectTo(incoming.ann, notify = true)
-    }
+    ConnectionManager.listeners += initialListener
+    ConnectionManager.connectTo(incoming.ann, notify = true)
   }
 
   def showAuthForm(lnUrl: LNUrl) = lnUrl.k1 foreach { k1 =>

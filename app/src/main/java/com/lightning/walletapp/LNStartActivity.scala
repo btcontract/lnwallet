@@ -226,6 +226,10 @@ case class IncomingChannelRequest(uri: String, callback: String, k1: String) ext
   val ann = app.mkNodeAnnouncement(pubKey, address, alias = hostAddress)
   val callbackUri = LNUrl.checkHost(callback)
 
+  def cancelChannel =
+    level2(callbackUri.buildUpon.appendQueryParameter("cancel", "1").appendQueryParameter("k1", k1)
+      .appendQueryParameter("remoteid", LNParams.keys.extendedNodeKey.publicKey.toString).build.toString)
+
   def requestChannel =
     level2(callbackUri.buildUpon.appendQueryParameter("private", "1").appendQueryParameter("k1", k1)
       .appendQueryParameter("remoteid", LNParams.keys.extendedNodeKey.publicKey.toString).build.toString)
