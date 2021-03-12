@@ -309,17 +309,22 @@ class WalletActivity extends NfcReaderActivity with ScanActivity { me =>
   def initIncoming(incoming: IncomingChannelRequest) = {
     val initialListener = new ConnectionListener { self =>
       override def onDisconnect(nodeId: PublicKey) = if (nodeId == incoming.pubKey) ConnectionManager.listeners -= self
-      override def onOperational(nodeId: PublicKey, isCompatible: Boolean) = if (nodeId == incoming.pubKey && isCompatible) {
-        if (ChannelManager hasNormalChanWith incoming.ann.nodeId) {
-          queue.map(_ => incoming.cancelChannel.body)
-            .foreach(none)
-          UITask(me toast err_ln_chan_exists_already).run
-        } else {
-          queue.map(_ => incoming.requestChannel.body)
-            .map(LNUrl.guardResponse)
-            .foreach(none, onFail)
+      override def onOperational(nodeId: PublicKey, isCompatible: Boolean) =
+        if (nodeId == incoming.pubKey) {
+          if (isCompatible) {
+            if (ChannelManager hasNormalChanWith incoming.ann.nodeId) {
+              queue.map(_ => incoming.cancelChannel.body).foreach(none)
+              UITask(me toast err_ln_chan_exists_already).run()
+              ConnectionManager.listeners -= self
+            } else {
+              queue.map(_ => incoming.requestChannel.body).map(LNUrl.guardResponse).foreach(none, onFail)
+            }
+          } else {
+            queue.map(_ => incoming.cancelChannel.body).foreach(none)
+            ConnectionManager.workers.get(nodeId).foreach(_.disconnect)
+            ConnectionManager.listeners -= self
+          }
         }
-      }
 
       override def onMessage(nodeId: PublicKey, message: LightningMessage) = message match {
         case open: OpenChannel if !open.channelFlags.isPublic => onOpenOffer(nodeId, open)
