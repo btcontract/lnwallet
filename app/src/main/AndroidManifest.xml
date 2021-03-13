@@ -22,6 +22,7 @@
         android:normalScreens="true"/>
 
     <application
+        android:requestLegacyExternalStorage="true"
         android:name="com.lightning.walletapp.WalletApp"
         android:icon="@mipmap/ic_launcher"
         android:fullBackupContent="false"
