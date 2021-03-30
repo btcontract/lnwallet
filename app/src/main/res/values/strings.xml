@@ -6,6 +6,8 @@
 
     <string name="dialog_ok">OK</string>
 
+    <string name="action_recovery_phrase_hint">Type 12 phrase words</string>
+
     <!-- orbot -->
 
     <string name="orbot_status">Checking Orbot status&#8230;</string>
