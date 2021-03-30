@@ -11,6 +11,10 @@ import org.ndeftools.Message
 import org.ndeftools.util.activity.NfcReaderActivity
 
 
+object MainActivity {
+  val mainActivityClass: Class[MainActivity] = classOf[MainActivity]
+}
+
 class MainActivity extends NfcReaderActivity with BaseActivity {
   lazy val skipOrbotCheck: NoboButton = findViewById(R.id.skipOrbotCheck).asInstanceOf[NoboButton]
   lazy val takeOrbotAction: NoboButton = findViewById(R.id.takeOrbotAction).asInstanceOf[NoboButton]

@@ -25,6 +25,22 @@
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name">
 
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="com.lightning.walletapp"
+            android:grantUriPermissions="true"
+            android:exported="false">
+
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/filepaths"/>
+
+        </provider>
+
+        <service
+            android:stopWithTask="true"
+            android:name="com.lightning.walletapp.utils.AwaitService"/>
+
         <activity
             android:name="MainActivity"
             android:theme="@style/AppThemeNoActionBarMain">

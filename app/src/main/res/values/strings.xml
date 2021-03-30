@@ -5,8 +5,17 @@
     <string name="emergency_share">Share error report</string>
 
     <string name="dialog_ok">OK</string>
+    <string name="dialog_cancel">Cancel</string>
 
     <string name="action_recovery_phrase_hint">Type 12 phrase words</string>
+
+    <!-- wait for some incoming or processing incoming MPP -->
+
+    <string name="incoming_notify_title_wait">Waiting for incoming payment</string>
+    <string name="incoming_notify_title_process">Payment is being processed</string>
+    <string name="incoming_notify_body">Keep wallet running to get %1$s</string>
+
+    <!-- /wait for some incoming or processing incoming MPP -->
 
     <!-- auth -->
 

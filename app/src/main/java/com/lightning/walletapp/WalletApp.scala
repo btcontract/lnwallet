@@ -1,12 +1,18 @@
 package com.lightning.walletapp
 
+import com.lightning.walletapp.R.string._
+
 import scala.util.{Success, Try}
-import android.content.{ClipboardManager, Context}
+import android.content.{ClipboardManager, Context, Intent, SharedPreferences}
 import immortan.utils.{BtcDenomination, Denomination}
 import immortan.crypto.Tools.Fiat2Btc
 import fr.acinq.eclair.MilliSatoshi
-import android.app.Application
+import android.app.{Application, NotificationChannel, NotificationManager}
+import android.os.Build
 import android.widget.Toast
+import immortan.crypto.Tools.runAnd
+import androidx.appcompat.app.AppCompatDelegate
+import com.lightning.walletapp.utils.{AwaitService, DelayedNotification}
 import immortan.LNParams
 
 
@@ -22,7 +28,10 @@ object WalletApp {
   val currentMsatInFiatHuman: MilliSatoshi => String = msat => msatInFiatHuman(LNParams.fiatRatesInfo.rates, fiatCode, msat)
 }
 
-class WalletApp extends Application {
+class WalletApp extends Application { me =>
+  lazy val foregroundServiceIntent = new Intent(me, AwaitService.awaitServiceClass)
+  lazy val prefs: SharedPreferences = getSharedPreferences("prefs", Context.MODE_PRIVATE)
+
   private[this] lazy val metrics = getResources.getDisplayMetrics
   lazy val scrWidth: Double = metrics.widthPixels.toDouble / metrics.densityDpi
   lazy val maxDialog: Double = metrics.densityDpi * 2.2
@@ -41,8 +50,28 @@ class WalletApp extends Application {
       else phraseOptions(3)
   }
 
-  def quickToast(code: Int): Unit = quickToast(this getString code)
-  def quickToast(msg: CharSequence): Unit = Toast.makeText(this, msg, Toast.LENGTH_SHORT).show
+  override def onCreate: Unit = runAnd(super.onCreate) {
+    // Currently night theme is the only option, should be set by default
+    AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_YES)
+
+    if (Build.VERSION.SDK_INT > Build.VERSION_CODES.N_MR1) {
+      val manager = this getSystemService classOf[NotificationManager]
+      val chan1 = new NotificationChannel(AwaitService.CHANNEL_ID, "NC1", NotificationManager.IMPORTANCE_DEFAULT)
+      val chan2 = new NotificationChannel(DelayedNotification.CHANNEL_ID, "NC2", NotificationManager.IMPORTANCE_DEFAULT)
+      manager.createNotificationChannel(chan1)
+      manager.createNotificationChannel(chan2)
+    }
+  }
+
+  def showStickyPaymentNotification(titleRes: Int, amount: MilliSatoshi): Unit = {
+    val bodyText = getString(incoming_notify_body).format(LNParams.denomination parsedWithSign amount)
+    val withTitle = foregroundServiceIntent.putExtra(AwaitService.TITLE_TO_DISPLAY, me getString titleRes)
+    val withBodyAction = withTitle.putExtra(AwaitService.BODY_TO_DISPLAY, bodyText).setAction(AwaitService.ACTION_SHOW)
+    androidx.core.content.ContextCompat.startForegroundService(me, withBodyAction)
+  }
+
+  def quickToast(code: Int): Unit = quickToast(me getString code)
+  def quickToast(msg: CharSequence): Unit = Toast.makeText(me, msg, Toast.LENGTH_SHORT).show
   def plur1OrZero(opts: Array[String], num: Long): String = if (num > 0) plur(opts, num).format(num) else opts(0)
   def clipboardManager: ClipboardManager = getSystemService(Context.CLIPBOARD_SERVICE).asInstanceOf[ClipboardManager]
   def getBufferUnsafe: String = clipboardManager.getPrimaryClip.getItemAt(0).getText.toString
