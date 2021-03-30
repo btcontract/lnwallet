@@ -24,7 +24,7 @@
     <string name="fp_not_available">Authentication support is blocked at the moment, try again later</string>
     <string name="fp_add_auth_method">Register at least one authentication method in system settings</string>
     <string name="fp_auth_error"><![CDATA[<b>Authentication error</b><br><br><b>Details</b>: %1$s<br><br><b>Code</b>: %2$s]]></string>
-    <string name="fp_title">Firebird authentication</string>
+    <string name="fp_title">Wallet authentication</string>
 
     <!-- /auth -->
 
