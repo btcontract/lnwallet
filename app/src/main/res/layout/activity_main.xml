@@ -6,7 +6,8 @@
 
     <LinearLayout
         style="@style/StandardXYMarginLinearLayout"
-        android:id="@+id/mainOrbotCheck">
+        android:id="@+id/mainOrbotCheck"
+        android:visibility="gone">
 
         <TextView
             style="@style/FillingView"
