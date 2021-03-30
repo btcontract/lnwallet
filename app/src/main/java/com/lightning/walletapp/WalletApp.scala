@@ -1,19 +1,22 @@
 package com.lightning.walletapp
 
 import com.lightning.walletapp.R.string._
-
-import scala.util.{Success, Try}
+import fr.acinq.bitcoin.{Block, ByteVector32}
 import android.content.{ClipboardManager, Context, Intent, SharedPreferences}
-import immortan.utils.{BtcDenomination, Denomination}
-import immortan.crypto.Tools.Fiat2Btc
-import fr.acinq.eclair.MilliSatoshi
 import android.app.{Application, NotificationChannel, NotificationManager}
-import android.os.Build
-import android.widget.Toast
-import immortan.crypto.Tools.runAnd
-import androidx.appcompat.app.AppCompatDelegate
 import com.lightning.walletapp.utils.{AwaitService, DelayedNotification}
+import androidx.appcompat.app.AppCompatDelegate
+import immortan.utils.Denomination.formatFiat
+import immortan.crypto.Tools.Fiat2Btc
+import immortan.utils.BtcDenomination
+import fr.acinq.eclair.MilliSatoshi
+import immortan.crypto.Tools.runAnd
+import androidx.multidex.MultiDex
+import android.widget.Toast
+import java.io.InputStream
 import immortan.LNParams
+import android.os.Build
+import scala.util.Try
 
 
 object WalletApp {
@@ -24,7 +27,7 @@ object WalletApp {
 
   def currentRate(rates: Fiat2Btc, code: String): Try[Double] = Try(rates apply code)
   def msatInFiat(rates: Fiat2Btc, code: String)(msat: MilliSatoshi): Try[Double] = currentRate(rates, code) map { ratePerOneBtc => msat.toLong * ratePerOneBtc / BtcDenomination.factor }
-  def msatInFiatHuman(rates: Fiat2Btc, code: String, msat: MilliSatoshi): String = msatInFiat(rates, code)(msat) match { case Success(amt) => s"≈ ${Denomination.formatFiat format amt} $code" case _ => s"≈ ? $code" }
+  def msatInFiatHuman(rates: Fiat2Btc, code: String, msat: MilliSatoshi): String = msatInFiat(rates, code)(msat).map(amt => s"≈ ${formatFiat format amt} $code").getOrElse(s"≈ ? $code")
   val currentMsatInFiatHuman: MilliSatoshi => String = msat => msatInFiatHuman(LNParams.fiatRatesInfo.rates, fiatCode, msat)
 
   object Vibrator {
@@ -61,6 +64,12 @@ class WalletApp extends Application { me =>
       else phraseOptions(3)
   }
 
+  override protected def attachBaseContext(base: Context): Unit = {
+    super.attachBaseContext(base)
+    MultiDex.install(me)
+    WalletApp.app = me
+  }
+
   override def onCreate: Unit = runAnd(super.onCreate) {
     // Currently night theme is the only option, should be set by default
     AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_YES)
@@ -86,4 +95,21 @@ class WalletApp extends Application { me =>
   def plur1OrZero(opts: Array[String], num: Long): String = if (num > 0) plur(opts, num).format(num) else opts(0)
   def clipboardManager: ClipboardManager = getSystemService(Context.CLIPBOARD_SERVICE).asInstanceOf[ClipboardManager]
   def getBufferUnsafe: String = clipboardManager.getPrimaryClip.getItemAt(0).getText.toString
+
+  def englishWordList: Seq[String] = {
+    val raw  = getAssets.open("bip39_english_wordlist.txt")
+    scala.io.Source.fromInputStream(raw, "UTF-8").getLines.toList
+  }
+
+  def electrumCheckpoints(chainHash: ByteVector32): InputStream = chainHash match {
+    case Block.LivenetGenesisBlock.hash => getAssets.open("checkpoints_mainnet.json")
+    case Block.TestnetGenesisBlock.hash => getAssets.open("checkpoints_testnet.json")
+    case _ => throw new RuntimeException
+  }
+
+  def electrumServers(chainHash: ByteVector32): InputStream = chainHash match {
+    case Block.LivenetGenesisBlock.hash => getAssets.open("servers_mainnet.json")
+    case Block.TestnetGenesisBlock.hash => getAssets.open("servers_testnet.json")
+    case _ => throw new RuntimeException
+  }
 }

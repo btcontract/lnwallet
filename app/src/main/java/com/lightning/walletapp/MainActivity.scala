@@ -1,14 +1,14 @@
 package com.lightning.walletapp
 
-import android.content.Intent
-import android.os.Bundle
-import android.view.View
-import android.widget.TextView
+import org.ndeftools.util.activity.NfcReaderActivity
 import com.ornach.nobobutton.NoboButton
 import immortan.crypto.Tools.none
 import immortan.utils.InputParser
+import android.widget.TextView
+import android.content.Intent
 import org.ndeftools.Message
-import org.ndeftools.util.activity.NfcReaderActivity
+import android.os.Bundle
+import android.view.View
 
 
 object MainActivity {
