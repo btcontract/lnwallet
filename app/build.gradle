@@ -69,6 +69,7 @@ dependencies {
     implementation 'commons-codec:commons-codec:1.10'
     implementation 'io.netty:netty-all:4.1.42.Final'
 
+    // Android tests
     testImplementation 'junit:junit:4.12'
     androidTestImplementation 'androidx.test.ext:junit:1.1.2'
     androidTestImplementation 'androidx.test.espresso:espresso-core:3.3.0'

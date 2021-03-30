@@ -1,3 +1,20 @@
 <resources>
+    <string name="lang">eng</string>
     <string name="app_name">BLW</string>
+    <string name="emergency_mode">Something went wrong</string>
+    <string name="emergency_share">Share error report</string>
+
+    <string name="dialog_ok">OK</string>
+
+    <!-- orbot -->
+
+    <string name="orbot_status">Checking Orbot status&#8230;</string>
+    <string name="orbot_err_not_installed"><b>Orbot is not installed so Tor network can not be used right now</b>. Further wallet progress has been halted because your settings require Tor protection.</string>
+    <string name="orbot_err_unclear"><b>It is unclear whether Orbot can provide Tor services right now</b>. Further wallet progress has been halted because your settings require Tor protection.</string>
+    <string name="orbot_err_disconnect">Orbot has disconnected, halting an app</string>
+    <string name="orbot_action_install">Close wallet and install Orbot</string>
+    <string name="orbot_action_open">Close wallet and open Orbot</string>
+    <string name="orbot_action_skip">Proceed without Tor</string>
+
+    <!-- /orbot -->
 </resources>

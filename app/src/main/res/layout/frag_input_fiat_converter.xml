@@ -1,0 +1,61 @@
+<LinearLayout style="@style/StandardLinearLayout" xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <FrameLayout style="@style/FillingView">
+
+        <com.cottacush.android.currencyedittext.CurrencyEditText
+            style="@style/XSmallMarginFillingView"
+            android:focusableInTouchMode="true"
+            android:id="@+id/fiatInputAmount"
+            android:imeOptions="actionDone"
+            android:layout_marginTop="25dp"
+            android:textStyle="bold"
+            android:textSize="24sp"/>
+
+        <TextView
+            style="@style/InputHintView"
+            android:layout_marginEnd="15sp"
+            android:id="@+id/fiatInputAmountHint"/>
+
+    </FrameLayout>
+
+    <TextView
+        style="@style/XMarginFillingView"
+        android:layout_marginBottom="25dp"
+        android:layout_width="fill_parent"
+        android:id="@+id/hintFiatDenom"/>
+
+    <FrameLayout style="@style/FillingView">
+
+        <com.cottacush.android.currencyedittext.CurrencyEditText
+            style="@style/XSmallMarginFillingView"
+            android:imeOptions="actionDone"
+            android:id="@+id/inputAmount"
+            android:textStyle="bold"
+            android:textSize="24sp"/>
+
+        <TextView
+            style="@style/InputHintView"
+            android:layout_marginEnd="15sp"
+            android:id="@+id/inputAmountHint"/>
+
+    </FrameLayout>
+
+    <TextView
+        style="@style/XMarginFillingView"
+        android:layout_marginBottom="25dp"
+        android:id="@+id/hintDenom"/>
+
+    <com.google.android.material.textfield.TextInputLayout
+        android:id="@+id/extraInputLayout"
+        style="@style/FillingView">
+
+        <EditText
+            style="@style/XYMarginFillingView"
+            android:id="@+id/extraInput"
+            android:inputType="text"
+            android:maxLines="1"/>
+
+    </com.google.android.material.textfield.TextInputLayout>
+
+    <View style="@style/GrayDivider"/>
+</LinearLayout>

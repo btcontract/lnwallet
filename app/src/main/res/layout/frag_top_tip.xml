@@ -1,0 +1,11 @@
+<LinearLayout
+    style="@style/StandardLinearLayout"
+    xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <TextView
+        style="@style/XYMarginFillingView"
+        android:textColor="@color/colorAccent"
+        android:id="@+id/titleTip"/>
+
+    <View style="@style/GrayDivider"/>
+</LinearLayout>

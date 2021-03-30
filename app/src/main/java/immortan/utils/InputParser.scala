@@ -31,6 +31,8 @@ object InputParser {
   val lightning: String = "lightning:"
   val bitcoin: String = "bitcoin:"
 
+  def recordValue(raw: String): Unit = value = parse(raw)
+
   def parse(rawInput: String): Any = rawInput take 2880 match {
     case uriLink if uriLink.startsWith(bitcoin) => BitcoinUri.fromRaw(uriLink)
     case uriLink if uriLink.startsWith(lightning) => PaymentRequestExt.fromUri(uriLink)
