@@ -1,6 +1,71 @@
-<?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="colorPrimary">#008577</color>
-    <color name="colorPrimaryDark">#00574B</color>
-    <color name="colorAccent">#D81B60</color>
+    <color name="bg">#282B30</color>
+    <color name="ln">#0099FE</color>
+    <color name="colorBlue">#8FDCFF</color>
+    <color name="colorAccent">#FAFAFA</color>
+
+    <color name="buttonBlueBorder">#576DB8</color>
+    <color name="buttonBlue">#3B5998</color>
+
+    <color name="buttonGreenRipple">#8BD670</color>
+    <color name="buttonGreenBorder">#5B8F36</color>
+    <color name="buttonGreen">#517D2B</color>
+
+    <color name="buttonRedRipple">#F0473E</color>
+    <color name="buttonRedBorder">#D1231E</color>
+    <color name="buttonRed">#AF1212</color>
+
+    <!-- nachos -->
+
+    <color name="chip_default_text_color">#DE000000</color>
+    <color name="chip_default_icon_background_color">#517FA4</color>
+    <color name="chip_material_background">#F0F0F0</color>
+
+    <!-- bottom navigation -->
+
+    <color name="colorBottomNavigationPrimary">#3F51B5</color>
+    <color name="colorBottomNavigationPrimaryDark">#303F9F</color>
+    <color name="colorBottomNavigationAccent">#FF4081</color>
+    <color name="colorBottomNavigationInactive">#747474</color>
+    <color name="colorBottomNavigationDisable">#3A000000</color>
+    <color name="colorBottomNavigationActiveColored">#FFFFFF</color>
+    <color name="colorBottomNavigationInactiveColored">#50FFFFFF</color>
+    <color name="colorBottomNavigationSelectedBackground">#17000000</color>
+    <color name="colorBottomNavigationNotification">#F63D2B</color>
+
+    <!-- rating dialog -->
+
+    <color name="grey_500">#9E9E9E</color>
+    <color name="grey_200">#EEEEEE</color>
+    <color name="grey_400">#BDBDBD</color>
+    <color name="white">#FFFFFF</color>
+    <color name="black">#000000</color>
+    <color name="accent">#ec2045</color>
+
+    <!-- floating search view -->
+
+    <color name="divider_color">#F0F0F0</color>
+    <color name="transparent">#00000000</color>
+    <color name="semi_transparent">#33000000</color>
+    <color name="suggestion_item_regular_color">#FAFAFA</color>
+    <color name="suggestion_item_pressed_color">#bbbbbb</color>
+    <color name="suggestion_list_color">#FFFFFF</color>
+    <color name="search_input_background_color">#FFFFFF</color>
+    <color name="light_gray_inactive_icon">#BEBEBE</color>
+    <color name="gray_active_icon">#787878</color>
+    <color name="dark_gray">#787878</color>
+    <color name="light_gray">#e9e9e9</color>
+    <color name="pressed_color">#E7E7E7</color>
+    <color name="background">#FFFFFF</color>
+    <color name="divider">#F0F0F0</color>
+    <color name="menu_icon_color">#787878</color>
+    <color name="left_action_icon">#787878</color>
+    <color name="clear_btn_color">#787878</color>
+    <color name="overflow_icon_color">#787878</color>
+    <color name="hint_color">#808080</color>
+
+    <!-- search dialog -->
+
+    <color name="searchDialogResultColor">@android:color/secondary_text_light</color>
+    <color name="searchDialogResultHighlightColor">#FFED2E47</color>
 </resources>
