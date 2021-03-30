@@ -1,1 +1,0 @@
-* Fixed a bug which was sometimes preventing AIR payments and hosted channel draining.

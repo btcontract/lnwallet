@@ -1,20 +1,20 @@
 buildscript {
     repositories {
-        maven { url 'https://maven.google.com' }
-        maven { url 'https://jitpack.io' }
+        google()
         jcenter()
+        maven { url 'https://jitpack.io' }
     }
     dependencies {
-        classpath 'com.android.tools.build:gradle:2.3.0'
-        classpath 'com.github.xingda920813:gradle-android-scala-plugin:android-gradle-2.3.0'
+        classpath 'com.android.tools.build:gradle:3.5.4'
+        classpath 'com.github.AllBus:gradle-android-scala-plugin:3.5.1'
     }
 }
 
 allprojects {
     repositories {
-        maven { url 'https://maven.google.com' }
-        maven { url 'https://jitpack.io' }
+        google()
         jcenter()
+        maven { url 'https://jitpack.io' }
     }
 }
 

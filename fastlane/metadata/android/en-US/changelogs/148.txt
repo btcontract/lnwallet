@@ -1,1 +1,0 @@
-* This release fixes a rare but serious bug which allowed the same payment to be sent twice sometimes.

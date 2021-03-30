@@ -1,1 +1,0 @@
-* An lnurl-pay market has been implemented. Wallet users can now arrange their own personalized marketplaces by storing static lnurl-pay links provided by merchants. These links can later be accessed within wallet and reused for subsequent payments. More info on lnurl-pay protocol can be found at https://github.com/btcontract/lnurl-rfc/blob/master/spec.md#4-lnurl-pay

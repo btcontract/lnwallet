@@ -1,29 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <item name="bgload" type="color">#282B30</item>
-    <item name="bgmain" type="color">#F5F5F5</item>
-    <item name="bgfiat" type="color">#2AA3A3</item>
-    <item name="bgbar" type="color">#000000</item>
-    <item name="btc" type="color">#E68A00</item>
-    <item name="ln" type="color">#0099FE</item>
-
-    <item name="fabtext" type="color">#FFFFFF</item>
-    <item name="fabbgnormal" type="color">#333333</item>
-    <item name="fabbgpressed" type="color">#444444</item>
-    <item name="fabbgripple" type="color">#66FFFFFF</item>
-    <item name="reddish" type="color">#E31300</item>
-
-    <color name="simpletooltip_text">#FFFFFF</color>
-    <color name="simpletooltip_background">#FFB20D</color>
-    <color name="simpletooltip_arrow">#FFB20D</color>
-
-    <color name="chip_default_text_color">#DE000000</color>
-    <color name="chip_default_icon_background_color">#517FA4</color>
-
-    <color name="transparent">#00000000</color>
-    <color name="pressed_color">#E7E7E7</color>
-    <color name="left_action_icon">#787878</color>
-    <color name="clear_btn_color">#787878</color>
-    <color name="background">#FFFFFF</color>
-    <color name="hint_color">#808080</color>
-    <color name="dark_gray">#787878</color>
+    <color name="colorPrimary">#008577</color>
+    <color name="colorPrimaryDark">#00574B</color>
+    <color name="colorAccent">#D81B60</color>
 </resources>

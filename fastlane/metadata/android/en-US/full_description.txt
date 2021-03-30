@@ -1,1 +1,0 @@
-This wallet contains a standalone Bitcoin and Lightning node in a single package. It allows to send and receive regular Bitcoin transactions as well as Lightning payments.

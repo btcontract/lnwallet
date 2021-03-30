@@ -1,2 +1,0 @@
-* Fixed a bug which could cause on-chain sync issues when restoring a wallet from backup file.
-* Self-signed certificates for clearnet LNURL are prohibited now but V2 and V3 Onion addresses are allowed. LNURL providers who don't wish to use a CA-signed certificate can use HTTP over Tor instead.
