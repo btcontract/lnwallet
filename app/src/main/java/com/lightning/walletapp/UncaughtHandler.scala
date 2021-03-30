@@ -8,6 +8,7 @@ import android.app.Activity
 
 object UncaughtHandler {
   val ERROR_REPORT = "errorReport"
+
   def toText(exc: Throwable): String = {
     val stackTraceWriter = new StringWriter
     exc printStackTrace new PrintWriter(stackTraceWriter)
