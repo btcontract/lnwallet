@@ -8,6 +8,17 @@
 
     <string name="action_recovery_phrase_hint">Type 12 phrase words</string>
 
+    <!-- auth -->
+
+    <string name="sets_use_fp">Use authentication</string>
+    <string name="fp_no_support">No authentication support on this phone</string>
+    <string name="fp_not_available">Authentication support is blocked at the moment, try again later</string>
+    <string name="fp_add_auth_method">Register at least one authentication method in system settings</string>
+    <string name="fp_auth_error"><![CDATA[<b>Authentication error</b><br><br><b>Details</b>: %1$s<br><br><b>Code</b>: %2$s]]></string>
+    <string name="fp_title">Firebird authentication</string>
+
+    <!-- /auth -->
+
     <!-- orbot -->
 
     <string name="orbot_status">Checking Orbot status&#8230;</string>
