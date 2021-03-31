@@ -60,10 +60,11 @@ class IncomingPaymentReceiver(val fullTag: FullPaymentTag, cm: ChannelMaster) ex
       val preimageTry: PreimageTry = cm.getPreimageMemo.get(fullTag.paymentHash)
 
       cm.getPaymentInfoMemo.get(fullTag.paymentHash).toOption match {
-        case None => if (preimageTry.isSuccess) becomeRevealed(preimageTry.get, adds) else becomeAborted(IncomingAborted(None), adds)
+        case None if preimageTry.isSuccess => becomeRevealed(preimageTry.get, adds) // We did not ask for this, but have a preimage: fulfill anyway
         case Some(alreadyRevealed) if alreadyRevealed.isIncoming && PaymentStatus.SUCCEEDED == alreadyRevealed.status => becomeRevealed(alreadyRevealed.preimage, adds)
         case _ if adds.exists(_.add.cltvExpiry.toLong < LNParams.blockCount.get + LNParams.cltvRejectThreshold) => becomeAborted(IncomingAborted(None), adds)
         case Some(covered) if covered.isIncoming && covered.pr.amount.isDefined && askCovered(adds, covered) => becomeRevealed(covered.preimage, adds)
+        case None => becomeAborted(IncomingAborted(None), adds) // We did not ask for this and there is no preimage: nothing to do but fail
         case _ => // Do nothing, wait for more parts or a timeout
       }
 
@@ -76,7 +77,7 @@ class IncomingPaymentReceiver(val fullTag: FullPaymentTag, cm: ChannelMaster) ex
       cm.stateUpdated(Nil)
 
     // We need this extra RECEIVING -> FINALIZING step instead of failing right away
-    // in case if we ever decide to use an amount-less fast crowd-fund invoices
+    // in case if we ever decide to use an amount-less fast crowdfund invoices
 
     case (inFlight: InFlightPayments, null, FINALIZING) =>
       val adds = inFlight.in(fullTag).asInstanceOf[ReasonableLocals]
@@ -86,7 +87,8 @@ class IncomingPaymentReceiver(val fullTag: FullPaymentTag, cm: ChannelMaster) ex
         case Some(alreadyRevealed) if alreadyRevealed.isIncoming && PaymentStatus.SUCCEEDED == alreadyRevealed.status => becomeRevealed(alreadyRevealed.preimage, adds)
         case Some(coveredAll) if coveredAll.isIncoming && coveredAll.pr.amount.isDefined && askCovered(adds, coveredAll) => becomeRevealed(coveredAll.preimage, adds)
         case Some(collectedSome) if collectedSome.isIncoming && collectedSome.pr.amount.isEmpty && gotSome(adds) => becomeRevealed(collectedSome.preimage, adds)
-        case _ => if (preimageTry.isSuccess) becomeRevealed(preimageTry.get, adds) else becomeAborted(IncomingAborted(PaymentTimeout.toSome), adds)
+        case _ if preimageTry.isSuccess => becomeRevealed(preimageTry.get, adds) // Conditions are not met but we have a preimage: fulfill anyway
+        case _ => becomeAborted(IncomingAborted(PaymentTimeout.toSome), adds)// Conditions are not met: nothing to do but fail
       }
 
     case (inFlight: InFlightPayments, revealed: IncomingRevealed, FINALIZING) =>
@@ -170,7 +172,7 @@ case class TrampolineAborted(failure: FailureMessage) extends IncomingProcessorD
 
 class TrampolinePaymentRelayer(val fullTag: FullPaymentTag, cm: ChannelMaster) extends IncomingPaymentProcessor with OutgoingPaymentEvents { self =>
   // Important: we may have outgoing leftovers on restart, so we always need to create a sender FSM right away, which will be firing events once leftovers get finalized
-  override def preimageRevealed(data: OutgoingPaymentSenderData, fulfill: RemoteFulfill): Unit = self doProcess TrampolineRevealed(fulfill.preimage, data.toSome)
+  override def preimageObtained(data: OutgoingPaymentSenderData, fulfill: RemoteFulfill): Unit = self doProcess TrampolineRevealed(fulfill.preimage, data.toSome)
   override def wholePaymentFailed(data: OutgoingPaymentSenderData): Unit = self doProcess data
 
   import immortan.fsm.TrampolinePaymentRelayer._

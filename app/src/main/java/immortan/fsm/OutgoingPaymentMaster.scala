@@ -264,7 +264,7 @@ case class OutgoingPaymentSenderData(cmd: SendMultiPart, parts: Map[ByteVector, 
 trait OutgoingPaymentEvents {
   // With local failures this will be the only way to know
   def wholePaymentFailed(data: OutgoingPaymentSenderData): Unit = none
-  def preimageRevealed(data: OutgoingPaymentSenderData, fulfill: RemoteFulfill): Unit = none
+  def preimageObtained(data: OutgoingPaymentSenderData, fulfill: RemoteFulfill): Unit = none
 }
 
 class OutgoingPaymentSender(val fullTag: FullPaymentTag, val listener: OutgoingPaymentEvents, opm: OutgoingPaymentMaster) extends StateMachine[OutgoingPaymentSenderData] { me =>
@@ -287,7 +287,7 @@ class OutgoingPaymentSender(val fullTag: FullPaymentTag, val listener: OutgoingP
     case (fulfill: RemoteFulfill, INIT | PENDING | ABORTED) if fulfill.ourAdd.paymentHash == fullTag.paymentHash =>
       val data1 = data.withoutPartId(fulfill.ourAdd.partId)
       // Provide original data with all used routes intact
-      listener.preimageRevealed(data, fulfill)
+      listener.preimageObtained(data, fulfill)
       become(data1, SUCCEEDED)
 
     case (fulfill: RemoteFulfill, SUCCEEDED) if fulfill.ourAdd.paymentHash == fullTag.paymentHash =>

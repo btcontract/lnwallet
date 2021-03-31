@@ -123,8 +123,8 @@ object CommsTower {
       if (!thread.isCompleted) {
         val areNetworksOK = remoteInit.networks.intersect(LNParams.ourInit.networks).nonEmpty
         val areFeaturesOK = Features.areCompatible(LNParams.ourInit.features, remoteInit.features)
-        if (areNetworksOK && areFeaturesOK) for (lst <- listeners1) lst.onOperational(me, remoteInit) // They have not disconnected yet
-        else disconnect // Their features are not supported but they have not disconnected yet, so we disconnect right away
+        if (areNetworksOK && areFeaturesOK) for (lst <- listeners1) lst.onOperational(me, remoteInit)
+        else disconnect
       }
     }
 

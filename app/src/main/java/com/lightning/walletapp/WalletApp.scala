@@ -4,17 +4,19 @@ import com.lightning.walletapp.R.string._
 import android.content.{ClipboardManager, Context, Intent, SharedPreferences}
 import android.app.{Application, NotificationChannel, NotificationManager}
 import com.lightning.walletapp.utils.{AwaitService, DelayedNotification}
-import fr.acinq.bitcoin.{Block, ByteVector32}
+import immortan.crypto.Tools.{Bytes, Fiat2Btc, runAnd}
+import fr.acinq.bitcoin.{Block, ByteVector32, Crypto}
 import immortan.{LNParams, WalletExt}
 
+import fr.acinq.eclair.blockchain.electrum.ElectrumWallet.WalletReady
 import androidx.appcompat.app.AppCompatDelegate
 import immortan.utils.Denomination.formatFiat
-import immortan.crypto.Tools.Fiat2Btc
 import immortan.utils.BtcDenomination
+import com.blockstream.libwally.Wally
 import fr.acinq.eclair.MilliSatoshi
-import immortan.crypto.Tools.runAnd
 import androidx.multidex.MultiDex
 import scala.concurrent.Future
+import scodec.bits.ByteVector
 import android.widget.Toast
 import java.io.InputStream
 import android.os.Build
@@ -24,7 +26,8 @@ import scala.util.Try
 object WalletApp {
   var app: WalletApp = _
   var fiatCode: String = _
-  var wallet: WalletExt = _
+  var chainWallet: WalletExt = _
+  var lastWalletReady: WalletReady = _
 
   // Should be automatically updated on receiving to current address, cached for performance
   var currentChainReceiveAddress: Future[String] = Future.failed(new RuntimeException)
@@ -35,6 +38,17 @@ object WalletApp {
   def msatInFiat(rates: Fiat2Btc, code: String)(msat: MilliSatoshi): Try[Double] = currentRate(rates, code).map { ratePerOneBtc => msat.toLong * ratePerOneBtc / BtcDenomination.factor }
   def msatInFiatHuman(rates: Fiat2Btc, code: String, msat: MilliSatoshi): String = msatInFiat(rates, code)(msat).map(amt => s"≈ ${formatFiat format amt} $code").getOrElse(s"≈ ? $code")
   val currentMsatInFiatHuman: MilliSatoshi => String = msat => msatInFiatHuman(LNParams.fiatRatesInfo.rates, fiatCode, msat)
+
+  def scryptDerive(email: String, pass: String): Bytes = {
+    // An intentionally expensive key-stretching method
+    // N = 2^19, r = 8, p = 2
+
+    val derived = new Array[Byte](64)
+    val emailBytes = ByteVector.view(email.getBytes)
+    val salt = Crypto.hash256(emailBytes).take(16).toArray
+    Wally.scrypt(pass.trim.getBytes, salt, Math.pow(2, 19).toLong, 8, 2, derived)
+    derived
+  }
 
   object Vibrator {
     private var lastVibrated = 0L
@@ -89,7 +103,7 @@ class WalletApp extends Application { me =>
     }
   }
 
-  def showStickyPaymentNotification(titleRes: Int, amount: MilliSatoshi): Unit = {
+  def showStickyNotification(titleRes: Int, amount: MilliSatoshi): Unit = {
     val bodyText = getString(incoming_notify_body).format(LNParams.denomination parsedWithSign amount)
     val withTitle = foregroundServiceIntent.putExtra(AwaitService.TITLE_TO_DISPLAY, me getString titleRes)
     val withBodyAction = withTitle.putExtra(AwaitService.BODY_TO_DISPLAY, bodyText).setAction(AwaitService.ACTION_SHOW)

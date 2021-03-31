@@ -78,29 +78,6 @@ class ChannelMaster(val payBag: PaymentBag, val chanBag: ChannelBag, val dataBag
   val initResolveMemo: LoadingCache[UpdateAddHtlcExt, IncomingResolution] = memoize(initResolve)
   val getPreimageMemo: LoadingCache[ByteVector32, PreimageTry] = memoize(payBag.getPreimage)
 
-  val sockChannelBridge: ConnectionListener = new ConnectionListener {
-    override def onOperational(worker: CommsTower.Worker, theirInit: Init): Unit = {
-      fromNode(worker.info.nodeId).foreach(_.chan process CMD_SOCKET_ONLINE)
-    }
-
-    override def onMessage(worker: CommsTower.Worker, msg: LightningMessage): Unit = msg match {
-      case nodeError: Error if nodeError.channelId == ByteVector32.Zeroes => fromNode(worker.info.nodeId).foreach(_.chan process nodeError)
-      case channelUpdate: ChannelUpdate => fromNode(worker.info.nodeId).foreach(_.chan process channelUpdate)
-      case message: HasChannelId => sendTo(message, message.channelId)
-      case _ => // Do nothing
-    }
-
-    override def onHostedMessage(worker: CommsTower.Worker, msg: HostedChannelMessage): Unit = msg match {
-      case branding: HostedChannelBranding => dataBag.putBranding(worker.info.nodeId, branding)
-      case _ => hostedFromNode(worker.info.nodeId).foreach(_ process msg)
-    }
-
-    override def onDisconnect(worker: CommsTower.Worker): Unit = {
-      fromNode(worker.info.nodeId).foreach(_.chan process CMD_SOCKET_OFFLINE)
-      delayedReconnect(worker)
-    }
-  }
-
   // Keep track of chain height
   // Keep track of last disconnect stamp
   // Notify channels about current chain height
@@ -122,6 +99,28 @@ class ChannelMaster(val payBag: PaymentBag, val chanBag: ChannelBag, val dataBag
     }
   }
 
+  val socketChannelBridge: ConnectionListener = new ConnectionListener {
+    override def onOperational(worker: CommsTower.Worker, theirInit: Init): Unit =
+      fromNode(worker.info.nodeId).foreach(_.chan process CMD_SOCKET_ONLINE)
+
+    override def onMessage(worker: CommsTower.Worker, msg: LightningMessage): Unit = msg match {
+      case nodeError: Error if nodeError.channelId == ByteVector32.Zeroes => fromNode(worker.info.nodeId).foreach(_.chan process nodeError)
+      case channelUpdate: ChannelUpdate => fromNode(worker.info.nodeId).foreach(_.chan process channelUpdate)
+      case message: HasChannelId => sendTo(message, message.channelId)
+      case _ => // Do nothing
+    }
+
+    override def onHostedMessage(worker: CommsTower.Worker, msg: HostedChannelMessage): Unit = msg match {
+      case branding: HostedChannelBranding => dataBag.putBranding(worker.info.nodeId, branding)
+      case _ => hostedFromNode(worker.info.nodeId).foreach(_ process msg)
+    }
+
+    override def onDisconnect(worker: CommsTower.Worker): Unit = {
+      fromNode(worker.info.nodeId).foreach(_.chan process CMD_SOCKET_OFFLINE)
+      delayedReconnect(worker)
+    }
+  }
+
   val opm: OutgoingPaymentMaster = new OutgoingPaymentMaster(me)
   var inProcessors = Map.empty[FullPaymentTag, IncomingPaymentProcessor]
   var all = Map.empty[ByteVector32, Channel]
@@ -129,9 +128,10 @@ class ChannelMaster(val payBag: PaymentBag, val chanBag: ChannelBag, val dataBag
 
   // CHANNEL MANAGEMENT
 
-  def delayedReconnect(worker: CommsTower.Worker): Unit =
+  def delayedReconnect(worker: CommsTower.Worker): Unit = {
     // Reconnect by default, but may be overridden if needed
     Rx.ioQueue.delay(5.seconds).foreach(_ => initConnect)
+  }
 
   def implantChannel(cs: Commitments, freshChannel: Channel): Unit = {
     all += Tuple2(cs.channelId, freshChannel) // Put this channel to vector of established channels
@@ -141,7 +141,7 @@ class ChannelMaster(val payBag: PaymentBag, val chanBag: ChannelBag, val dataBag
 
   def initConnect: Unit = {
     val eligibleForConnect = all.values.filter(Channel.isOperationalOrWaiting).flatMap(Channel.chanAndCommitsOpt)
-    for (cnc <- eligibleForConnect) CommsTower.listenNative(Set(sockChannelBridge), cnc.commits.remoteInfo)
+    for (cnc <- eligibleForConnect) CommsTower.listenNative(Set(socketChannelBridge), cnc.commits.remoteInfo)
   }
 
   def allIncomingResolutions: Iterable[IncomingResolution] = all.values.flatMap(Channel.chanAndCommitsOpt).flatMap(_.commits.crossSignedIncoming).map(initResolveMemo.get)
@@ -154,7 +154,7 @@ class ChannelMaster(val payBag: PaymentBag, val chanBag: ChannelBag, val dataBag
   // RECEIVE/SEND UTILITIES
 
   // Example: (5, 30, 50, 60, 100) -> (50, 60, 100), receivable will be 50 (the idea is for any remaining channel to be able to get a smallest remaining channel receivable)
-  def maxSortedReceivables(sorted: Seq[ChanAndCommits] = Nil): Seq[ChanAndCommits] = sorted.dropWhile(_.commits.availableForReceive * Math.max(sorted.size - 2, 1) <= sorted.last.commits.availableForReceive).takeRight(4)
+  def maxSortedReceivables(sorted: Seq[ChanAndCommits] = Nil): Seq[ChanAndCommits] = sorted.dropWhile(_.commits.availableForReceive * Math.max(sorted.size - 2, 1) <= sorted.last.commits.availableForReceive)
   def sortedReceivables: Seq[ChanAndCommits] = all.values.filter(Channel.isOperational).flatMap(Channel.chanAndCommitsOpt).filter(_.commits.updateOpt.isDefined).toList.sortBy(_.commits.availableForReceive)
 
   def maxSendable: MilliSatoshi = {
@@ -217,8 +217,9 @@ class ChannelMaster(val payBag: PaymentBag, val chanBag: ChannelBag, val dataBag
       opm process RemoveSenderFSM(data.cmd.fullTag)
     }
 
-    override def preimageRevealed(data: OutgoingPaymentSenderData, fulfill: RemoteFulfill): Unit = {
-      // We have just seen a first preimage for locally initiated outgoing payment
+    override def preimageObtained(data: OutgoingPaymentSenderData, fulfill: RemoteFulfill): Unit = {
+      // We have just seen a FIRST preimage for locally initiated outgoing payment, fulfilling of the rest of parts is not reported
+      // Note that fully SUCCEEDED outgoing FSM for locally initiated payments won't get removed from OutgoingPaymentMaster map
 
       chanBag.db txWrap {
         // First, unconditionally persist a preimage before doing anything else

@@ -1,5 +1,6 @@
 package com.lightning.walletapp
 
+import scodec.bits._
 import fr.acinq.eclair._
 import immortan.{LightningNodeKeys, MnemonicExtStorageFormat}
 import fr.acinq.bitcoin.Crypto.{PrivateKey, PublicKey, curve, one}
@@ -44,6 +45,13 @@ class NativeSpec {
   def useAppContext: Unit = {
     assertTrue(Secp256k1Context.isEnabled)
     assertTrue(Wally.isEnabled)
+  }
+
+  @Test(timeout = 20000)
+  def nativeScryptIsFast: Unit = {
+    val reference = hex"45cb9fc1e44e1be012e2d93c5ffca174855a6bb9fa06fa511470d71bf52447bc30a6082faff0dab895f5bd7c5211e3dd98831489a78eb0d60fe75701df37a8cf"
+    val result = WalletApp.scryptDerive("hello@email.com", "password123")
+    assertTrue(ByteVector.view(result) == reference)
   }
 
   @Test

@@ -73,7 +73,7 @@ object Graph {
 
     val latestBlockExpectedStampMsecs = System.currentTimeMillis
     val targetWeight = RichWeight(List(amount), length = 0, CltvExpiryDelta(0), weight = 0)
-    val shortestPath = dijkstraShortestPath(graph, sourceNode, sourceNode, targetNode, ignoredEdges, ignoredVertices, targetWeight, boundaries, latestBlockExpectedStampMsecs)
+    val shortestPath = dijkstraShortestPath(graph, sourceNode, targetNode, ignoredEdges, ignoredVertices, targetWeight, boundaries, latestBlockExpectedStampMsecs)
 
     if (shortestPath.nonEmpty) {
       val weight = shortestPath.foldRight(targetWeight) { case (edge, prev) =>
@@ -91,7 +91,6 @@ object Graph {
    * graph @param g is optimized for querying the incoming edges given a vertex.
    *
    * @param g                             the graph on which will be performed the search
-   * @param sender                        node sending the payment (may be different from sourceNode when calculating partial paths)
    * @param sourceNode                    the starting node of the path we're looking for
    * @param targetNode                    the destination node of the path
    * @param ignoredEdges                  channels that should be avoided
@@ -99,7 +98,7 @@ object Graph {
    * @param initialWeight                 weight that will be applied to the target node
    * @param boundaries                    a predicate function that can be used to impose limits on the outcome of the search
    */
-  private def dijkstraShortestPath(g: DirectedGraph, sender: PublicKey, sourceNode: PublicKey, targetNode: PublicKey,
+  private def dijkstraShortestPath(g: DirectedGraph, sourceNode: PublicKey, targetNode: PublicKey,
                                    ignoredEdges: Set[ChannelDesc], ignoredVertices: Set[PublicKey], initialWeight: RichWeight,
                                    boundaries: RichWeight => Boolean, latestBlockExpectedStampMsecs: Long): Seq[GraphEdge] = {
 
@@ -139,7 +138,7 @@ object Graph {
 
           val currentCost = currentWeight.costs.head
 
-          val neighborWeight = addEdgeWeight(sender, edge, currentWeight, latestBlockExpectedStampMsecs)
+          val neighborWeight = addEdgeWeight(sourceNode, edge, currentWeight, latestBlockExpectedStampMsecs)
 
           val canRelayAmount = currentCost <= edge.updExt.capacity && currentCost >= edge.updExt.update.htlcMinimumMsat
 
@@ -219,20 +218,14 @@ object Graph {
   }
 
   /**
-   * Calculate the minimum amount that the start node needs to receive to be able to forward @amountWithFees to the end
-   * node. To avoid infinite loops caused by zero-fee edges, we use a lower bound fee of 1 msat.
+   * Calculate the minimum amount that the start node needs to receive to be able to forward @amountWithFees to the end node.
    *
    * @param edge            the edge we want to cross
    * @param amountToForward the value that this edge will have to carry along
    * @return the new amount updated with the necessary fees for this edge
    */
   private def addEdgeFees(edge: GraphEdge, amountToForward: MilliSatoshi): MilliSatoshi = {
-    if (edgeHasZeroFee(edge)) amountToForward + nodeFee(baseFee = 1.msat, proportionalRatio = 0, amountToForward)
-    else amountToForward + nodeFee(edge.updExt.update.feeBaseMsat, edge.updExt.update.feeProportionalMillionths, amountToForward)
-  }
-
-  private def edgeHasZeroFee(edge: GraphEdge): Boolean = {
-    edge.updExt.update.feeBaseMsat.toLong == 0 && edge.updExt.update.feeProportionalMillionths == 0
+    amountToForward + nodeFee(edge.updExt.update.feeBaseMsat, edge.updExt.update.feeProportionalMillionths, amountToForward)
   }
 
   object RoutingHeuristics {
