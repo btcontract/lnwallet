@@ -9,8 +9,8 @@ import scala.concurrent.duration._
 import fr.acinq.eclair.blockchain.electrum._
 import fr.acinq.bitcoin.DeterministicWallet._
 import scodec.bits.{ByteVector, HexStringSyntax}
-import immortan.sqlite.{DBInterface, RichCursor}
 import fr.acinq.bitcoin.Crypto.{PrivateKey, PublicKey}
+import immortan.sqlite.{DBInterface, PreparedQuery, RichCursor}
 import fr.acinq.eclair.router.Router.{PublicChannel, RouterConf}
 import fr.acinq.eclair.channel.{LocalParams, PersistentChannelData}
 import akka.actor.{ActorRef, ActorSystem, Props, SupervisorStrategy}
@@ -186,13 +186,13 @@ case class RemoteNodeInfo(nodeId: PublicKey, address: NodeAddress, alias: String
   def commitmentPoint(channelKeyPath: DeterministicWallet.KeyPath, index: Long): PublicKey = Generators.perCommitPoint(shaSeed(channelKeyPath), index)
 
   def sign(tx: Transactions.TransactionWithInputInfo, publicKey: ExtendedPublicKey, txOwner: Transactions.TxOwner, commitmentFormat: Transactions.CommitmentFormat): ByteVector64 =
-    Transactions.sign(tx, channelPrivateKeysMemo(publicKey.path).privateKey, txOwner, commitmentFormat)
+    Transactions.sign(tx, channelPrivateKeysMemo.get(publicKey.path).privateKey, txOwner, commitmentFormat)
 
   def sign(tx: Transactions.TransactionWithInputInfo, publicKey: ExtendedPublicKey, remotePoint: PublicKey, txOwner: Transactions.TxOwner, commitmentFormat: Transactions.CommitmentFormat): ByteVector64 =
-    Transactions.sign(tx, Generators.derivePrivKey(channelPrivateKeysMemo(publicKey.path).privateKey, remotePoint), txOwner, commitmentFormat)
+    Transactions.sign(tx, Generators.derivePrivKey(channelPrivateKeysMemo.get(publicKey.path).privateKey, remotePoint), txOwner, commitmentFormat)
 
   def sign(tx: Transactions.TransactionWithInputInfo, publicKey: ExtendedPublicKey, remoteSecret: PrivateKey, txOwner: Transactions.TxOwner, commitmentFormat: Transactions.CommitmentFormat): ByteVector64 =
-    Transactions.sign(tx, Generators.revocationPrivKey(channelPrivateKeysMemo(publicKey.path).privateKey, remoteSecret), txOwner, commitmentFormat)
+    Transactions.sign(tx, Generators.revocationPrivKey(channelPrivateKeysMemo.get(publicKey.path).privateKey, remoteSecret), txOwner, commitmentFormat)
 }
 
 case class WalletExt(wallet: ElectrumEclairWallet, eventsCatcher: ActorRef, clientPool: ActorRef, watcher: ActorRef)
@@ -204,22 +204,22 @@ case class SwapInStateExt(state: SwapInState, nodeId: PublicKey)
 // Interfaces
 
 trait NetworkBag {
-  def addChannelAnnouncement(ca: ChannelAnnouncement): Unit
-  def listChannelAnnouncements: Iterable[ChannelAnnouncement]
+  def addChannelAnnouncement(ca: ChannelAnnouncement, newSqlPQ: PreparedQuery): Unit
+  def addChannelUpdateByPosition(cu: ChannelUpdate, newSqlPQ: PreparedQuery, updSqlPQ: PreparedQuery): Unit
+  def addExcludedChannel(shortId: ShortChannelId, untilStamp: Long, newSqlPQ: PreparedQuery): Unit // Disregard position
+  def removeChannelUpdate(shortId: ShortChannelId, killSqlPQ: PreparedQuery): Unit
 
   def addChannelUpdateByPosition(cu: ChannelUpdate): Unit
-  def listChannelUpdates: Iterable[ChannelUpdateExt]
+  def removeChannelUpdate(shortId: ShortChannelId): Unit
 
-  // We disregard position and always exclude channel as a whole
-  def addExcludedChannel(shortId: ShortChannelId, untilStamp: Long): Unit
+  def listChannelAnnouncements: Iterable[ChannelAnnouncement]
+  def listChannelUpdates: Iterable[ChannelUpdateExt]
   def listChannelsWithOneUpdate: ShortChanIdSet
   def listExcludedChannels: Set[Long]
 
   def incrementChannelScore(cu: ChannelUpdate): Unit
-  def removeChannelUpdate(shortId: ShortChannelId): Unit
-  def removeGhostChannels(ghostIds: ShortChanIdSet, oneSideIds: ShortChanIdSet): Unit
   def getRoutingData: Map[ShortChannelId, PublicChannel]
-
+  def removeGhostChannels(ghostIds: ShortChanIdSet, oneSideIds: ShortChanIdSet): Unit
   def processCompleteHostedData(pure: CompleteHostedRoutingData): Unit
   def processPureData(data: PureRoutingData): Unit
 }

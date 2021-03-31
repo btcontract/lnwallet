@@ -12,10 +12,10 @@ import fr.acinq.bitcoin.ByteVector64
 import scodec.bits.ByteVector
 
 
-class SQLiteNetwork(val db: DBInterface, updateTable: ChannelUpdateTable, announceTable: ChannelAnnouncementTable, excludedTable: ExcludedChannelTable) extends NetworkBag {
-  def addChannelAnnouncement(ca: ChannelAnnouncement): Unit = db.change(announceTable.newSql, Array.emptyByteArray, ca.shortChannelId.toJavaLong, ca.nodeId1.value.toArray, ca.nodeId2.value.toArray)
+class SQLiteNetwork(val db: DBInterface, val updateTable: ChannelUpdateTable, val announceTable: ChannelAnnouncementTable, val excludedTable: ExcludedChannelTable) extends NetworkBag {
+  def addChannelAnnouncement(ca: ChannelAnnouncement, newSqlPQ: PreparedQuery): Unit = db.change(newSqlPQ, Array.emptyByteArray, ca.shortChannelId.toJavaLong, ca.nodeId1.value.toArray, ca.nodeId2.value.toArray)
 
-  def addExcludedChannel(shortId: ShortChannelId, untilStamp: Long): Unit = db.change(excludedTable.newSql, shortId.toJavaLong, System.currentTimeMillis + untilStamp: JLong)
+  def addExcludedChannel(shortId: ShortChannelId, untilStamp: Long, newSqlPQ: PreparedQuery): Unit = db.change(newSqlPQ, shortId.toJavaLong, System.currentTimeMillis + untilStamp: JLong)
 
   def listExcludedChannels: Set[Long] = db.select(excludedTable.selectSql, System.currentTimeMillis.toString).set(_ long excludedTable.shortChannelId)
 
@@ -23,15 +23,9 @@ class SQLiteNetwork(val db: DBInterface, updateTable: ChannelUpdateTable, announ
 
   def incrementChannelScore(cu: ChannelUpdate): Unit = db.change(updateTable.updScoreSql, cu.shortChannelId.toJavaLong)
 
-  def removeChannelUpdate(shortId: ShortChannelId): Unit = db.change(updateTable.killSql, shortId.toJavaLong)
+  def removeChannelUpdate(shortId: ShortChannelId, killSqlPQ: PreparedQuery): Unit = db.change(killSqlPQ, shortId.toJavaLong)
 
-  def listChannelAnnouncements: Iterable[ChannelAnnouncement] = db.select(announceTable.selectAllSql).iterable { rc =>
-    ChannelAnnouncement(nodeSignature1 = ByteVector64.Zeroes, nodeSignature2 = ByteVector64.Zeroes, bitcoinSignature1 = ByteVector64.Zeroes, bitcoinSignature2 = ByteVector64.Zeroes,
-      features = Features.empty, chainHash = LNParams.chainHash, shortChannelId = ShortChannelId(rc long announceTable.shortChannelId), nodeId1 = PublicKey(rc byteVec announceTable.nodeId1),
-      nodeId2 = PublicKey(rc byteVec announceTable.nodeId2), bitcoinKey1 = invalidPubKey, bitcoinKey2 = invalidPubKey)
-  }
-
-  def addChannelUpdateByPosition(cu: ChannelUpdate): Unit = {
+  def addChannelUpdateByPosition(cu: ChannelUpdate, newSqlPQ: PreparedQuery, updSqlPQ: PreparedQuery): Unit = {
     val feeProportionalMillionths: JLong = cu.feeProportionalMillionths
     val htlcMinimumMsat: JLong = cu.htlcMinimumMsat.toLong
     val htlcMaxMsat: JLong = cu.htlcMaximumMsat.get.toLong
@@ -43,11 +37,31 @@ class SQLiteNetwork(val db: DBInterface, updateTable: ChannelUpdateTable, announ
 
     val crc32: JLong = Sync.getChecksum(cu)
 
-    db.change(updateTable.newSql, cu.shortChannelId.toJavaLong, timestamp, messageFlags, channelFlags, cltvExpiryDelta,
+    db.change(newSqlPQ, cu.shortChannelId.toJavaLong, timestamp, messageFlags, channelFlags, cltvExpiryDelta,
       htlcMinimumMsat, feeBaseMsat, feeProportionalMillionths, htlcMaxMsat, cu.position, 1L: JLong, crc32)
 
-    db.change(updateTable.updSQL, timestamp, messageFlags, channelFlags, cltvExpiryDelta, htlcMinimumMsat,
+    db.change(updSqlPQ, timestamp, messageFlags, channelFlags, cltvExpiryDelta, htlcMinimumMsat,
       feeBaseMsat, feeProportionalMillionths, htlcMaxMsat, crc32, cu.shortChannelId.toJavaLong, cu.position)
+  }
+
+  def removeChannelUpdate(shortId: ShortChannelId): Unit = {
+    val removeChannelUpdateNewSqlPQ = db.makePreparedQuery(updateTable.killSql)
+    removeChannelUpdate(shortId, removeChannelUpdateNewSqlPQ)
+    removeChannelUpdateNewSqlPQ.close
+  }
+
+  def addChannelUpdateByPosition(cu: ChannelUpdate): Unit = {
+    val addChannelUpdateByPositionNewSqlPQ = db.makePreparedQuery(updateTable.newSql)
+    val addChannelUpdateByPositionUpdSqlPQ = db.makePreparedQuery(updateTable.updSQL)
+    addChannelUpdateByPosition(cu, addChannelUpdateByPositionNewSqlPQ, addChannelUpdateByPositionUpdSqlPQ)
+    addChannelUpdateByPositionNewSqlPQ.close
+    addChannelUpdateByPositionUpdSqlPQ.close
+  }
+
+  def listChannelAnnouncements: Iterable[ChannelAnnouncement] = db.select(announceTable.selectAllSql).iterable { rc =>
+    ChannelAnnouncement(nodeSignature1 = ByteVector64.Zeroes, nodeSignature2 = ByteVector64.Zeroes, bitcoinSignature1 = ByteVector64.Zeroes,
+      bitcoinSignature2 = ByteVector64.Zeroes, features = Features.empty, chainHash = LNParams.chainHash, shortChannelId = ShortChannelId(rc long announceTable.shortChannelId),
+      nodeId1 = PublicKey(rc byteVec announceTable.nodeId1), nodeId2 = PublicKey(rc byteVec announceTable.nodeId2), bitcoinKey1 = invalidPubKey, bitcoinKey2 = invalidPubKey)
   }
 
   def listChannelUpdates: Iterable[ChannelUpdateExt] =
@@ -84,8 +98,14 @@ class SQLiteNetwork(val db: DBInterface, updateTable: ChannelUpdateTable, announ
   }
 
   def removeGhostChannels(ghostIds: ShortChanIdSet, oneSideIds: ShortChanIdSet): Unit = db txWrap {
-    for (shortId <- oneSideIds) addExcludedChannel(shortId, 1000L * 3600 * 24 * 14) // Exclude for two weeks, maybe second update will show up by then
-    for (shortId <- ghostIds ++ oneSideIds) removeChannelUpdate(shortId) // Make sure we only have known channels with both updates
+    val addExcludedChannelNewSqlPQ = db.makePreparedQuery(excludedTable.newSql)
+    val removeChannelUpdateNewSqlPQ = db.makePreparedQuery(updateTable.killSql)
+
+    for (shortId <- oneSideIds) addExcludedChannel(shortId, 1000L * 3600 * 24 * 14, addExcludedChannelNewSqlPQ) // Exclude for two weeks, maybe second update will show up later
+    for (shortId <- ghostIds ++ oneSideIds) removeChannelUpdate(shortId, removeChannelUpdateNewSqlPQ) // Make sure we only have known channels with both updates
+
+    addExcludedChannelNewSqlPQ.close
+    removeChannelUpdateNewSqlPQ.close
 
     db.change(excludedTable.killPresentInChans) // Remove from excluded if present in channels (minority says it's bad, majority says it's good)
     db.change(announceTable.killNotPresentInChans) // Remove from announces if not present in channels (announce for excluded channel)
@@ -93,25 +113,39 @@ class SQLiteNetwork(val db: DBInterface, updateTable: ChannelUpdateTable, announ
   }
 
   def processPureData(pure: PureRoutingData): Unit = db txWrap {
-    for (announce <- pure.announces) addChannelAnnouncement(announce)
-    for (update <- pure.updates) addChannelUpdateByPosition(update)
+    val addChannelAnnouncementNewSqlPQ = db.makePreparedQuery(announceTable.newSql)
+    val addChannelUpdateByPositionNewSqlPQ = db.makePreparedQuery(updateTable.newSql)
+    val addChannelUpdateByPositionUpdSqlPQ = db.makePreparedQuery(updateTable.updSQL)
+    val addExcludedChannelNewSqlPQ = db.makePreparedQuery(excludedTable.newSql)
 
-    for (core <- pure.excluded) {
-      // If max is empty then peer uses an old software and may update it soon, otherwise capacity is unlikely to increase
-      val untilStamp = if (core.htlcMaximumMsat.isEmpty) 1000L * 3600 * 24 * 30 else 1000L * 3600 * 24 * 300
-      addExcludedChannel(core.shortChannelId, untilStamp)
-    }
+    for (announce <- pure.announces) addChannelAnnouncement(announce, addChannelAnnouncementNewSqlPQ)
+    for (update <- pure.updates) addChannelUpdateByPosition(update, addChannelUpdateByPositionNewSqlPQ, addChannelUpdateByPositionUpdSqlPQ)
+    for (core <- pure.excluded) addExcludedChannel(core.shortChannelId, 1000L * 3600 * 24 * 300, addExcludedChannelNewSqlPQ)
+
+    addChannelAnnouncementNewSqlPQ.close
+    addChannelUpdateByPositionNewSqlPQ.close
+    addChannelUpdateByPositionUpdSqlPQ.close
+    addExcludedChannelNewSqlPQ.close
   }
 
   def processCompleteHostedData(pure: CompleteHostedRoutingData): Unit = db txWrap {
-    // Unlike normal channels here we allow one-sided update channels to be used for now
+    // Unlike normal channels here we allow one-sided-update channels to be used for now
     // First, clear out everything in hosted channel databases
     db.change(announceTable.killAllSql)
     db.change(updateTable.killAllSql)
 
+    val addChannelAnnouncementNewSqlPQ = db.makePreparedQuery(announceTable.newSql)
+    val addChannelUpdateByPositionNewSqlPQ = db.makePreparedQuery(updateTable.newSql)
+    val addChannelUpdateByPositionUpdSqlPQ = db.makePreparedQuery(updateTable.updSQL)
+
     // Then insert new data
-    for (announce <- pure.announces) addChannelAnnouncement(announce)
-    for (update <- pure.updates) addChannelUpdateByPosition(update)
+    for (announce <- pure.announces) addChannelAnnouncement(announce, addChannelAnnouncementNewSqlPQ)
+    for (update <- pure.updates) addChannelUpdateByPosition(update, addChannelUpdateByPositionNewSqlPQ, addChannelUpdateByPositionUpdSqlPQ)
+
+    addChannelAnnouncementNewSqlPQ.close
+    addChannelUpdateByPositionNewSqlPQ.close
+    addChannelUpdateByPositionUpdSqlPQ.close
+
     // And finally remove announces without any updates
     db.change(announceTable.killNotPresentInChans)
   }

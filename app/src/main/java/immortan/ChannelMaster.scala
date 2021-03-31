@@ -141,7 +141,7 @@ class ChannelMaster(val payBag: PaymentBag, val chanBag: ChannelBag, val dataBag
   def checkIfSendable(tag: FullPaymentTag, amount: MilliSatoshi): Int = opm.data.payments.get(tag) match {
     case Some(outgoingFSM) if PENDING == outgoingFSM.state || INIT == outgoingFSM.state => PaymentInfo.NOT_SENDABLE_IN_FLIGHT // This payment is pending in FSM
     case Some(outgoingFSM) if SUCCEEDED == outgoingFSM.state => PaymentInfo.NOT_SENDABLE_SUCCESS // This payment has just been fulfilled at runtime
-    case _ if getPreimageMemo(tag.paymentHash).isSuccess => PaymentInfo.NOT_SENDABLE_SUCCESS // Preimage is revealed
+    case _ if getPreimageMemo.get(tag.paymentHash).isSuccess => PaymentInfo.NOT_SENDABLE_SUCCESS // Preimage is revealed
     case _ if amount > maxSendable => PaymentInfo.NOT_SENDABLE_LOW_FUNDS // Not enough funds in a wallet
     case _ => PaymentInfo.SENDABLE // Has never been sent or ABORTED by now
   }
@@ -175,7 +175,7 @@ class ChannelMaster(val payBag: PaymentBag, val chanBag: ChannelBag, val dataBag
   override def fulfillReceived(fulfill: RemoteFulfill): Unit = opm process fulfill
 
   // Mainly to prolong timeouts
-  override def addReceived(add: UpdateAddHtlcExt): Unit = initResolveMemo(add) match {
+  override def addReceived(add: UpdateAddHtlcExt): Unit = initResolveMemo.get(add) match {
     case resolve: ReasonableTrampoline => inProcessors.values.find(_.fullTag == resolve.fullTag).foreach(_ doProcess resolve)
     case resolve: ReasonableLocal => inProcessors.values.find(_.fullTag == resolve.fullTag).foreach(_ doProcess resolve)
     case _ => // Do nothing
