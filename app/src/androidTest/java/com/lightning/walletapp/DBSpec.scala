@@ -22,8 +22,6 @@ object DBSpec {
     (normal, hosted)
   }
 
-  def randInt: Int = secureRandom.nextInt(2000000000)
-
   def getRandomMiscInterface: DBInterfaceSQLiteAndroidMisc =
     new DBInterfaceSQLiteAndroidMisc(WalletApp.app, randomDBName)
 }
@@ -33,9 +31,10 @@ class DBSpec {
 
   @Test
   def insertAndReadHeaders: Unit = {
-    val h1 = BlockHeader(version = 1, hashPreviousBlock = randomBytes32, hashMerkleRoot = randomBytes32, time = DBSpec.randInt, bits = DBSpec.randInt, nonce = DBSpec.randInt)
-    val h2 = BlockHeader(version = 1, hashPreviousBlock = randomBytes32, hashMerkleRoot = randomBytes32, time = DBSpec.randInt, bits = DBSpec.randInt, nonce = DBSpec.randInt)
-    val h3 = BlockHeader(version = 1, hashPreviousBlock = randomBytes32, hashMerkleRoot = randomBytes32, time = DBSpec.randInt, bits = DBSpec.randInt, nonce = DBSpec.randInt)
+    def randInt: Int = secureRandom.nextInt(2000000000)
+    val h1 = BlockHeader(version = 1, hashPreviousBlock = randomBytes32, hashMerkleRoot = randomBytes32, time = randInt, bits = randInt, nonce = randInt)
+    val h2 = BlockHeader(version = 1, hashPreviousBlock = randomBytes32, hashMerkleRoot = randomBytes32, time = randInt, bits = randInt, nonce = randInt)
+    val h3 = BlockHeader(version = 1, hashPreviousBlock = randomBytes32, hashMerkleRoot = randomBytes32, time = randInt, bits = randInt, nonce = randInt)
     val sqLiteData = new SQLiteData(DBSpec.getRandomMiscInterface)
 
     sqLiteData.addHeaders(startHeight = 10, h1 :: h2 :: h3 :: Nil)

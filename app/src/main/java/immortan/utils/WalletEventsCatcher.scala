@@ -37,8 +37,6 @@ class WalletEventsCatcher extends Actor {
 
     case event: NewWalletReceiveAddress => for (lst <- listeners) lst.onNewWalletReceiveAddress(event)
 
-    case event: ElectrumReady => for (lst <- listeners) lst.onElectrumReady(event)
-
     case ElectrumDisconnected => for (lst <- listeners) lst.onElectrumDisconnected
   }
 }
@@ -49,6 +47,5 @@ class WalletEventsListener {
   def onTransactionReceived(event: TransactionReceived): Unit = none
   def onTransactionConfidenceChanged(event: TransactionConfidenceChanged): Unit = none
   def onNewWalletReceiveAddress(event: NewWalletReceiveAddress): Unit = none
-  def onElectrumReady(event: ElectrumReady): Unit = none
   def onElectrumDisconnected: Unit = none
 }

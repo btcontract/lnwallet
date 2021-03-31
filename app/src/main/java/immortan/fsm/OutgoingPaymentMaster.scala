@@ -355,15 +355,16 @@ class OutgoingPaymentSender(val fullTag: FullPaymentTag, val listener: OutgoingP
         }
       }
 
-    // TODO: this is only viable for base and trampoline-to-legacy MPP
-    // TODO: when we send TMPP remote errors from targetNodeId have different meaning (since targetNodeId is not payee)
-    // TODO: when we send TMPP remote errors may NOT have a corresponding hop in our route (originated beyond trampoline node)
-
     case (reject: RemoteUpdateFail, PENDING) =>
+      // TODO: this is only viable for base and trampoline-to-legacy MPP
+      // TODO: when we send TMPP remote errors from targetNodeId have different meaning (since targetNodeId is not payee)
+      // TODO: when we send TMPP remote errors may NOT have a corresponding hop in our route (originated beyond trampoline node)
       data.parts.values.collectFirst { case wait: WaitForRouteOrInFlight if wait.flight.isDefined && wait.partId == reject.ourAdd.partId =>
-        Sphinx.FailurePacket.decrypt(reject.fail.reason, wait.flight.get.cmd.packetAndSecrets.sharedSecrets) map {
+        val InFlightInfo(cmd, route) = wait.flight.get
+
+        Sphinx.FailurePacket.decrypt(reject.fail.reason, cmd.packetAndSecrets.sharedSecrets) map {
           case pkt if pkt.originNode == data.cmd.targetNodeId || PaymentTimeout == pkt.failureMessage =>
-            val data1 = data.withoutPartId(wait.partId).withRemoteFailure(wait.flight.get.route, pkt)
+            val data1 = data.withoutPartId(wait.partId).withRemoteFailure(route, pkt)
             me abortAndNotify data1
 
           case pkt @ Sphinx.DecryptedFailurePacket(originNodeId, failure: Update) =>
@@ -373,7 +374,7 @@ class OutgoingPaymentSender(val fullTag: FullPaymentTag, val listener: OutgoingP
 
             if (isSignatureFine) {
               opm.cm.pf process failure.update
-              wait.flight.get.route.getEdgeForNode(originNodeId) match {
+              route.getEdgeForNode(originNodeId) match {
                 case Some(edge) if edge.updExt.update.shortChannelId != failure.update.shortChannelId =>
                   // This is fine: remote node has used a different channel than the one we have initially requested
                   // But remote node may send such errors infinitely so increment this specific type of failure
@@ -397,27 +398,27 @@ class OutgoingPaymentSender(val fullTag: FullPaymentTag, val listener: OutgoingP
             }
 
             // Record a remote error and keep trying the rest of routes
-            resolveRemoteFail(data.withRemoteFailure(wait.flight.get.route, pkt), wait)
+            resolveRemoteFail(data.withRemoteFailure(route, pkt), wait)
 
           case pkt @ Sphinx.DecryptedFailurePacket(nodeId, _: Node) =>
             // Node may become fine on next payment, but ban it for current attempts
             opm doProcess NodeFailed(nodeId, data.cmd.routerConf.maxStrangeNodeFailures)
-            resolveRemoteFail(data.withRemoteFailure(wait.flight.get.route, pkt), wait)
+            resolveRemoteFail(data.withRemoteFailure(route, pkt), wait)
 
           case pkt @ Sphinx.DecryptedFailurePacket(nodeId, _) =>
-            // TODO: absent if error happened beyond trampoline node in TMPP
-            wait.flight.get.route.getEdgeForNode(nodeId).map(_.toDescAndCapacity) match {
+            // TODO: absent if error happened beyond trampoline in TMPP
+            route.getEdgeForNode(nodeId).map(_.toDescAndCapacity) match {
               case Some(dnc) => opm doProcess ChannelFailed(dnc, data.cmd.routerConf.maxChannelFailures * 2)
               case None => opm doProcess NodeFailed(nodeId, data.cmd.routerConf.maxStrangeNodeFailures)
             }
 
             // Record a remote error and keep trying the rest of routes
-            resolveRemoteFail(data.withRemoteFailure(wait.flight.get.route, pkt), wait)
+            resolveRemoteFail(data.withRemoteFailure(route, pkt), wait)
 
         } getOrElse {
-          val failure = UnreadableRemoteFailure(wait.flight.get.route)
-          // Select nodes between our peer and final payee, they are least likely to send garbage
-          val nodesInBetween = wait.flight.get.route.hops.map(_.nextNodeId).drop(1).dropRight(1)
+          val failure = UnreadableRemoteFailure(route)
+          // Select nodes between our peer and payee, they are least likely to send garbage
+          val nodesInBetween = route.hops.map(_.nextNodeId).drop(1).dropRight(1)
 
           if (nodesInBetween.isEmpty) {
             // Garbage is sent by our peer or final payee, fail a payment

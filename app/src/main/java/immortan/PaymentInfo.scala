@@ -13,10 +13,11 @@ import immortan.utils.LNUrl
 
 
 object PaymentInfo {
-  final val NOT_SENDABLE_LOW_FUNDS = 1
-  final val NOT_SENDABLE_IN_FLIGHT = 2
-  final val NOT_SENDABLE_SUCCESS = 3
   final val SENDABLE = 0
+  final val NOT_SENDABLE_CHAIN_DISCONNECT = 1
+  final val NOT_SENDABLE_LOW_FUNDS = 2
+  final val NOT_SENDABLE_IN_FLIGHT = 3
+  final val NOT_SENDABLE_SUCCESS = 4
 }
 
 object PaymentStatus {

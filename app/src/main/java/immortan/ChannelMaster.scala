@@ -9,14 +9,18 @@ import immortan.PaymentStatus._
 import immortan.ChannelMaster._
 import fr.acinq.eclair.channel._
 import scala.concurrent.duration._
+
 import fr.acinq.eclair.transactions.{RemoteFulfill, RemoteReject}
 import immortan.ChannelListener.{Malfunction, Transition}
 import fr.acinq.bitcoin.Crypto.{PrivateKey, PublicKey}
 import immortan.crypto.{CanBeRepliedTo, StateMachine}
+import immortan.utils.{Rx, WalletEventsListener}
+
+import fr.acinq.eclair.blockchain.electrum.ElectrumWallet.WalletReady
+import fr.acinq.eclair.blockchain.CurrentBlockCount
 import fr.acinq.eclair.payment.IncomingPacket
 import com.google.common.cache.LoadingCache
 import fr.acinq.bitcoin.ByteVector32
-import immortan.utils.Rx
 import scala.util.Try
 
 
@@ -42,6 +46,7 @@ object ChannelMaster {
   final val NO_PREIMAGE = ByteVector32.One
 
   def initResolve(ext: UpdateAddHtlcExt): IncomingResolution = IncomingPacket.decrypt(ext.theirAdd, ext.remoteInfo.nodeSpecificPrivKey) match {
+    case _ if LNParams.chainDisconnectedForTooLong => CMD_FAIL_HTLC(Right(TemporaryNodeFailure), ext.remoteInfo.nodeSpecificPrivKey, ext.theirAdd)
     case Left(_: BadOnion) => fallbackResolve(secret = LNParams.format.keys.fakeInvoiceKey(ext.theirAdd.paymentHash), ext.theirAdd)
     case Left(onionFailure) => CMD_FAIL_HTLC(Right(onionFailure), ext.remoteInfo.nodeSpecificPrivKey, ext.theirAdd)
     case Right(packet: IncomingPacket) => defineResolution(ext.remoteInfo.nodeSpecificPrivKey, packet)
@@ -54,7 +59,7 @@ object ChannelMaster {
   }
 
   // Make sure incoming payment secret is always present
-  def defineResolution(secret: PrivateKey, pkt: IncomingPacket): IncomingResolution = pkt match {
+  private def defineResolution(secret: PrivateKey, pkt: IncomingPacket): IncomingResolution = pkt match {
     case packet: IncomingPacket.FinalPacket if packet.payload.paymentSecret.exists(_ != NO_SECRET) => ReasonableLocal(packet, secret)
     case packet: IncomingPacket.NodeRelayPacket if packet.outerPayload.paymentSecret.exists(_ != NO_SECRET) => ReasonableTrampoline(packet, secret)
     case packet: IncomingPacket.ChannelRelayPacket => CMD_FAIL_HTLC(Right(LNParams incorrectDetails packet.add.amountMsat), secret, packet.add)
@@ -74,8 +79,9 @@ class ChannelMaster(val payBag: PaymentBag, val chanBag: ChannelBag, val dataBag
   val getPreimageMemo: LoadingCache[ByteVector32, PreimageTry] = memoize(payBag.getPreimage)
 
   val sockChannelBridge: ConnectionListener = new ConnectionListener {
-    override def onOperational(worker: CommsTower.Worker, theirInit: Init): Unit =
+    override def onOperational(worker: CommsTower.Worker, theirInit: Init): Unit = {
       fromNode(worker.info.nodeId).foreach(_.chan process CMD_SOCKET_ONLINE)
+    }
 
     override def onMessage(worker: CommsTower.Worker, msg: LightningMessage): Unit = msg match {
       case nodeError: Error if nodeError.channelId == ByteVector32.Zeroes => fromNode(worker.info.nodeId).foreach(_.chan process nodeError)
@@ -91,11 +97,31 @@ class ChannelMaster(val payBag: PaymentBag, val chanBag: ChannelBag, val dataBag
 
     override def onDisconnect(worker: CommsTower.Worker): Unit = {
       fromNode(worker.info.nodeId).foreach(_.chan process CMD_SOCKET_OFFLINE)
-      relayedReconnect(worker)
+      delayedReconnect(worker)
     }
   }
 
-  val connectionListeners = Set(sockChannelBridge)
+  // Keep track of chain height
+  // Keep track of last disconnect stamp
+  // Notify channels about current chain height
+  // Connect sockets once chain height becomes known
+  val chainChannelBridge: WalletEventsListener = new WalletEventsListener {
+    override def onCurrentBlockCount(event: CurrentBlockCount): Unit = {
+      LNParams.blockCount.set(event.blockCount)
+      all.values.foreach(_ process event)
+    }
+
+    override def onWalletReady(event: WalletReady): Unit = {
+      LNParams.blockCount.set(event.height)
+      LNParams.lastDisconnect = None
+      initConnect
+    }
+
+    override def onElectrumDisconnected: Unit = {
+      LNParams.lastDisconnect = System.currentTimeMillis.toSome
+    }
+  }
+
   val opm: OutgoingPaymentMaster = new OutgoingPaymentMaster(me)
   var inProcessors = Map.empty[FullPaymentTag, IncomingPaymentProcessor]
   var all = Map.empty[ByteVector32, Channel]
@@ -103,7 +129,7 @@ class ChannelMaster(val payBag: PaymentBag, val chanBag: ChannelBag, val dataBag
 
   // CHANNEL MANAGEMENT
 
-  def relayedReconnect(worker: CommsTower.Worker): Unit =
+  def delayedReconnect(worker: CommsTower.Worker): Unit =
     // Reconnect by default, but may be overridden if needed
     Rx.ioQueue.delay(5.seconds).foreach(_ => initConnect)
 
@@ -115,7 +141,7 @@ class ChannelMaster(val payBag: PaymentBag, val chanBag: ChannelBag, val dataBag
 
   def initConnect: Unit = {
     val eligibleForConnect = all.values.filter(Channel.isOperationalOrWaiting).flatMap(Channel.chanAndCommitsOpt)
-    for (cnc <- eligibleForConnect) CommsTower.listenNative(connectionListeners, cnc.commits.remoteInfo)
+    for (cnc <- eligibleForConnect) CommsTower.listenNative(Set(sockChannelBridge), cnc.commits.remoteInfo)
   }
 
   def allIncomingResolutions: Iterable[IncomingResolution] = all.values.flatMap(Channel.chanAndCommitsOpt).flatMap(_.commits.crossSignedIncoming).map(initResolveMemo.get)
@@ -141,7 +167,8 @@ class ChannelMaster(val payBag: PaymentBag, val chanBag: ChannelBag, val dataBag
   def checkIfSendable(tag: FullPaymentTag, amount: MilliSatoshi): Int = opm.data.payments.get(tag) match {
     case Some(outgoingFSM) if PENDING == outgoingFSM.state || INIT == outgoingFSM.state => PaymentInfo.NOT_SENDABLE_IN_FLIGHT // This payment is pending in FSM
     case Some(outgoingFSM) if SUCCEEDED == outgoingFSM.state => PaymentInfo.NOT_SENDABLE_SUCCESS // This payment has just been fulfilled at runtime
-    case _ if getPreimageMemo.get(tag.paymentHash).isSuccess => PaymentInfo.NOT_SENDABLE_SUCCESS // Preimage is revealed
+    case _ if getPreimageMemo.get(tag.paymentHash).isSuccess => PaymentInfo.NOT_SENDABLE_SUCCESS // Preimage has already been revealed
+    case _ if LNParams.chainDisconnectedForTooLong => PaymentInfo.NOT_SENDABLE_CHAIN_DISCONNECT // Chain wallet is lagging
     case _ if amount > maxSendable => PaymentInfo.NOT_SENDABLE_LOW_FUNDS // Not enough funds in a wallet
     case _ => PaymentInfo.SENDABLE // Has never been sent or ABORTED by now
   }

@@ -84,7 +84,7 @@ sealed trait ReasonableResolution extends IncomingResolution {
   def fulfillCommand(preimage: ByteVector32): FinalResolution = CMD_FULFILL_HTLC(preimage, add)
 
   val fullTag: FullPaymentTag // Payment type and grouping data (paymentHash x paymentSecret x type)
-  val secret: PrivateKey // Node secret used by peer (might be peer-specific or invoice-specific nodeId)
+  val secret: PrivateKey // Node secret whose pubKey is seen by peer (might be peer-specific or invoice-specific nodeId)
   val add: UpdateAddHtlc
 }
 

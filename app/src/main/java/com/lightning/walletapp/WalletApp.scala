@@ -1,10 +1,12 @@
 package com.lightning.walletapp
 
 import com.lightning.walletapp.R.string._
-import fr.acinq.bitcoin.{Block, ByteVector32}
 import android.content.{ClipboardManager, Context, Intent, SharedPreferences}
 import android.app.{Application, NotificationChannel, NotificationManager}
 import com.lightning.walletapp.utils.{AwaitService, DelayedNotification}
+import fr.acinq.bitcoin.{Block, ByteVector32}
+import immortan.{LNParams, WalletExt}
+
 import androidx.appcompat.app.AppCompatDelegate
 import immortan.utils.Denomination.formatFiat
 import immortan.crypto.Tools.Fiat2Btc
@@ -12,9 +14,9 @@ import immortan.utils.BtcDenomination
 import fr.acinq.eclair.MilliSatoshi
 import immortan.crypto.Tools.runAnd
 import androidx.multidex.MultiDex
+import scala.concurrent.Future
 import android.widget.Toast
 import java.io.InputStream
-import immortan.LNParams
 import android.os.Build
 import scala.util.Try
 
@@ -22,11 +24,15 @@ import scala.util.Try
 object WalletApp {
   var app: WalletApp = _
   var fiatCode: String = _
+  var wallet: WalletExt = _
+
+  // Should be automatically updated on receiving to current address, cached for performance
+  var currentChainReceiveAddress: Future[String] = Future.failed(new RuntimeException)
 
   // Fiat conversion
 
   def currentRate(rates: Fiat2Btc, code: String): Try[Double] = Try(rates apply code)
-  def msatInFiat(rates: Fiat2Btc, code: String)(msat: MilliSatoshi): Try[Double] = currentRate(rates, code) map { ratePerOneBtc => msat.toLong * ratePerOneBtc / BtcDenomination.factor }
+  def msatInFiat(rates: Fiat2Btc, code: String)(msat: MilliSatoshi): Try[Double] = currentRate(rates, code).map { ratePerOneBtc => msat.toLong * ratePerOneBtc / BtcDenomination.factor }
   def msatInFiatHuman(rates: Fiat2Btc, code: String, msat: MilliSatoshi): String = msatInFiat(rates, code)(msat).map(amt => s"≈ ${formatFiat format amt} $code").getOrElse(s"≈ ? $code")
   val currentMsatInFiatHuman: MilliSatoshi => String = msat => msatInFiatHuman(LNParams.fiatRatesInfo.rates, fiatCode, msat)
 

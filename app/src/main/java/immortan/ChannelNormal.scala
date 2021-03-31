@@ -12,6 +12,7 @@ import fr.acinq.eclair.transactions._
 import scala.util.{Success, Try}
 import akka.actor.{ActorRef, Props}
 import fr.acinq.bitcoin.{ByteVector32, Script, ScriptFlags, Transaction}
+import fr.acinq.eclair.blockchain.electrum.ElectrumWallet.TransactionReceived
 import fr.acinq.eclair.transactions.Transactions.TxOwner
 import fr.acinq.eclair.payment.OutgoingPacket
 import fr.acinq.eclair.router.Announcements
@@ -417,6 +418,9 @@ abstract class ChannelNormal(bag: ChannelBag) extends Channel with Handlers { me
       case (wait: DATA_WAIT_FOR_FUNDING_LOCKED, _: ChannelReestablish, SLEEPING) =>
         SEND(wait.lastSent)
         BECOME(wait, OPEN)
+
+
+      case (_: HasNormalCommitments, _: CurrentBlockCount, OPEN | SLEEPING | CLOSING) => ???
 
 
       case (data1: DATA_NORMAL, reestablish: ChannelReestablish, SLEEPING) => handleNormalSync(data1, reestablish)

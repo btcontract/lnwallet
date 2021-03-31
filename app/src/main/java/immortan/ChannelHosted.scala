@@ -7,6 +7,7 @@ import fr.acinq.eclair.wire._
 import immortan.crypto.Tools._
 import fr.acinq.eclair.channel._
 import fr.acinq.eclair.transactions._
+import fr.acinq.eclair.blockchain.CurrentBlockCount
 import fr.acinq.eclair.blockchain.fee.FeeratePerKw
 import fr.acinq.eclair.payment.OutgoingPacket
 import fr.acinq.bitcoin.ByteVector64
@@ -214,6 +215,9 @@ abstract class ChannelHosted extends Channel { me =>
 
       case (hc: HostedCommits, remoteError: Error, WAIT_FOR_ACCEPT | OPEN | SLEEPING) if hc.remoteError.isEmpty =>
         BECOME(me STORE hc.copy(remoteError = remoteError.toSome), SUSPENDED)
+
+
+      case (_: HasNormalCommitments, _: CurrentBlockCount, OPEN | SLEEPING | SUSPENDED) => ???
 
 
       case (hc: HostedCommits, CMD_HOSTED_STATE_OVERRIDE(remoteSO), SUSPENDED) =>

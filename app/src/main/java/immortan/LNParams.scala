@@ -90,7 +90,11 @@ object LNParams {
       mppMinPartAmount = MilliSatoshi(10000000L), maxRemoteAttempts = 12,
       maxChannelFailures = 6, maxStrangeNodeFailures = 12)
 
+  // Last known chain tip
   val blockCount: AtomicLong = new AtomicLong(0L)
+  // Chain wallet has lost connection this long time ago
+  // this can only happen after wallet has initally connected
+  var lastDisconnect: Option[Long] = None
 
   implicit val timeout: Timeout = Timeout(30.seconds)
   implicit val system: ActorSystem = ActorSystem("immortan-actor-system")
@@ -105,9 +109,11 @@ object LNParams {
     WalletExt(eclairWallet, catcher, clientPool, watcher)
   }
 
-  def incorrectDetails(amount: MilliSatoshi): FailureMessage = IncorrectOrUnknownPaymentDetails(amount, blockCount.get)
-
   def currentBlockDay: Long = blockCount.get / blocksPerDay
+
+  def chainDisconnectedForTooLong: Boolean = lastDisconnect.exists(_ < System.currentTimeMillis - 60 * 60 * 1000L * 2)
+
+  def incorrectDetails(amount: MilliSatoshi): FailureMessage = IncorrectOrUnknownPaymentDetails(amount, blockCount.get)
 }
 
 class SyncParams {
