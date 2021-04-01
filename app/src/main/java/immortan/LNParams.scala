@@ -5,7 +5,6 @@ import fr.acinq.bitcoin._
 import fr.acinq.eclair.wire._
 import immortan.crypto.Tools._
 import fr.acinq.eclair.Features._
-
 import scala.concurrent.duration._
 import fr.acinq.eclair.blockchain.electrum._
 import fr.acinq.bitcoin.DeterministicWallet._
@@ -14,24 +13,20 @@ import fr.acinq.bitcoin.Crypto.{PrivateKey, PublicKey}
 import immortan.sqlite.{DBInterface, PreparedQuery, RichCursor}
 import fr.acinq.eclair.router.Router.{PublicChannel, RouterConf}
 import fr.acinq.eclair.channel.{LocalParams, PersistentChannelData}
-import akka.actor.{ActorRef, ActorSystem, PoisonPill, Props, SupervisorStrategy}
 import fr.acinq.eclair.transactions.{DirectedHtlc, RemoteFulfill, Transactions}
-import immortan.utils.{Denomination, FeeRatesInfo, FiatRatesInfo, PaymentRequestExt, SatDenomination, WalletEventsCatcher}
+import akka.actor.{ActorRef, ActorSystem, PoisonPill, Props, SupervisorStrategy}
+import immortan.utils.{Denomination, FeeRatesInfo, FiatRatesInfo, PaymentRequestExt, WalletEventsCatcher}
 import fr.acinq.eclair.blockchain.electrum.ElectrumClientPool.ElectrumServerAddress
 import fr.acinq.eclair.blockchain.electrum.db.WalletDb
-
 import scala.concurrent.ExecutionContextExecutor
 import fr.acinq.eclair.router.ChannelUpdateExt
 import java.util.concurrent.atomic.AtomicLong
-
 import immortan.SyncMaster.ShortChanIdSet
 import fr.acinq.eclair.crypto.Generators
 import immortan.crypto.Noise.KeyPair
 import java.io.ByteArrayInputStream
 import java.nio.ByteOrder
-
 import akka.util.Timeout
-
 import scala.util.Try
 
 
@@ -91,7 +86,7 @@ object LNParams {
   var routerConf: RouterConf = _
   var cm: ChannelMaster = _
 
-  // Last known chain tip
+  // Last known chain tip (zero is unknown)
   val blockCount: AtomicLong = new AtomicLong(0L)
   // Chain wallet has lost connection this long time ago
   // this can only happen after wallet has initally connected
