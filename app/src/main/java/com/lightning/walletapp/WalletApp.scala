@@ -28,15 +28,27 @@ object WalletApp { me =>
   var extDataBag: SQLiteDataExtended = _
   var lastWalletReady: WalletReady = _
   var usedAddons: UsedAddons = _
-  var chainWallet: WalletExt = _
-  var fiatCode: String = _
   var app: WalletApp = _
 
   // Should be automatically updated on receiving to current address, cached for performance
   var currentChainReceiveAddress: Future[String] = Future.failed(new RuntimeException)
 
+  final val USE_AUTH = "useAuth"
+  final val FIAT_CODE = "fiatCode"
+  final val ENSURE_TOR = "ensureTor"
+  final val FEE_RATES_DATA = "feeRatesData"
+  final val FIAT_RATES_DATA = "fiatRatesData"
+  final val ROUTING_DESIRED = "routingDesired"
+
+  def useAuth: Boolean = app.prefs.getBoolean(USE_AUTH, false)
+  def fiatCode: String = app.prefs.getString(FIAT_CODE, "usd")
+  def ensureTor: Boolean = app.prefs.getBoolean(ENSURE_TOR, false)
+  def feeRatesData: String = app.prefs.getString(FEE_RATES_DATA, new String)
+  def fiatRatesData: String = app.prefs.getString(FIAT_RATES_DATA, new String)
+  def routingDesired: Boolean = app.prefs.getBoolean(ROUTING_DESIRED, false)
+
   def syncAddonUpdate(fun: UsedAddons => UsedAddons): Unit = me synchronized {
-    // Prevent update races whenever multiple addons try to update data concurrently
+    // Prevent races whenever multiple addons try to update data concurrently
     val usedAddons1: UsedAddons = fun(usedAddons)
     extDataBag.putAddons(usedAddons1)
     usedAddons = usedAddons1
@@ -45,7 +57,7 @@ object WalletApp { me =>
   // Fiat conversion
 
   def currentRate(rates: Fiat2Btc, code: String): Try[Double] = Try(rates apply code)
-  def msatInFiat(rates: Fiat2Btc, code: String)(msat: MilliSatoshi): Try[Double] = currentRate(rates, code).map { ratePerOneBtc => msat.toLong * ratePerOneBtc / BtcDenomination.factor }
+  def msatInFiat(rates: Fiat2Btc, code: String)(msat: MilliSatoshi): Try[Double] = currentRate(rates, code).map(ratePerOneBtc => msat.toLong * ratePerOneBtc / BtcDenomination.factor)
   def msatInFiatHuman(rates: Fiat2Btc, code: String, msat: MilliSatoshi): String = msatInFiat(rates, code)(msat).map(amt => s"≈ ${formatFiat format amt} $code").getOrElse(s"≈ ? $code")
   val currentMsatInFiatHuman: MilliSatoshi => String = msat => msatInFiatHuman(LNParams.fiatRatesInfo.rates, fiatCode, msat)
 
@@ -94,7 +106,7 @@ class WalletApp extends Application { me =>
       else phraseOptions(3)
   }
 
-  override protected def attachBaseContext(base: Context): Unit = {
+  override def attachBaseContext(base: Context): Unit = {
     super.attachBaseContext(base)
     MultiDex.install(me)
     WalletApp.app = me

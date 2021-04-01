@@ -92,6 +92,7 @@ object LNParams {
 
   // Last known chain tip
   val blockCount: AtomicLong = new AtomicLong(0L)
+
   // Chain wallet has lost connection this long time ago
   // this can only happen after wallet has initally connected
   var lastDisconnect: Option[Long] = None
@@ -155,14 +156,14 @@ case class RemoteNodeInfo(nodeId: PublicKey, address: NodeAddress, alias: String
 
   private val channelPublicKeysMemo = memoize(channelPrivateKeysMemo.get _ andThen publicKey)
 
-  private def internalKeyPath(channelKeyPath: DeterministicWallet.KeyPath, index: Long): Seq[Long] = channelKeyPath.path :+ hardened(index)
+  private def internalKeyPath(channelKeyPath: KeyPath, index: Long): Seq[Long] = channelKeyPath.path :+ hardened(index)
 
-  private def shaSeed(channelKeyPath: DeterministicWallet.KeyPath): ByteVector32 = {
+  private def shaSeed(channelKeyPath: KeyPath): ByteVector32 = {
     val extendedKey = channelPrivateKeysMemo getUnchecked internalKeyPath(channelKeyPath, 5L)
     Crypto.sha256(extendedKey.privateKey.value :+ 1.toByte)
   }
 
-  def keyPath(localParams: LocalParams): DeterministicWallet.KeyPath = {
+  def keyPath(localParams: LocalParams): KeyPath = {
     val fundPubKey = fundingPublicKey(localParams.fundingKeyPath).publicKey
     val bis = new ByteArrayInputStream(Crypto.sha256(fundPubKey.value).toArray)
     def nextHop: Long = Protocol.uint32(input = bis, order = ByteOrder.BIG_ENDIAN)
@@ -177,19 +178,19 @@ case class RemoteNodeInfo(nodeId: PublicKey, address: NodeAddress, alias: String
     DeterministicWallet.KeyPath(path)
   }
 
-  def fundingPublicKey(channelKeyPath: DeterministicWallet.KeyPath): ExtendedPublicKey = channelPublicKeysMemo getUnchecked internalKeyPath(channelKeyPath, 0L)
+  def fundingPublicKey(channelKeyPath: KeyPath): ExtendedPublicKey = channelPublicKeysMemo getUnchecked internalKeyPath(channelKeyPath, 0L)
 
-  def revocationPoint(channelKeyPath: DeterministicWallet.KeyPath): ExtendedPublicKey = channelPublicKeysMemo getUnchecked internalKeyPath(channelKeyPath, 1L)
+  def revocationPoint(channelKeyPath: KeyPath): ExtendedPublicKey = channelPublicKeysMemo getUnchecked internalKeyPath(channelKeyPath, 1L)
 
-  def paymentPoint(channelKeyPath: DeterministicWallet.KeyPath): ExtendedPublicKey = channelPublicKeysMemo getUnchecked internalKeyPath(channelKeyPath, 2L)
+  def paymentPoint(channelKeyPath: KeyPath): ExtendedPublicKey = channelPublicKeysMemo getUnchecked internalKeyPath(channelKeyPath, 2L)
 
-  def delayedPaymentPoint(channelKeyPath: DeterministicWallet.KeyPath): ExtendedPublicKey = channelPublicKeysMemo getUnchecked internalKeyPath(channelKeyPath, 3L)
+  def delayedPaymentPoint(channelKeyPath: KeyPath): ExtendedPublicKey = channelPublicKeysMemo getUnchecked internalKeyPath(channelKeyPath, 3L)
 
-  def htlcPoint(channelKeyPath: DeterministicWallet.KeyPath): ExtendedPublicKey = channelPublicKeysMemo getUnchecked internalKeyPath(channelKeyPath, 4L)
+  def htlcPoint(channelKeyPath: KeyPath): ExtendedPublicKey = channelPublicKeysMemo getUnchecked internalKeyPath(channelKeyPath, 4L)
 
-  def commitmentSecret(channelKeyPath: DeterministicWallet.KeyPath, index: Long): PrivateKey = Generators.perCommitSecret(shaSeed(channelKeyPath), index)
+  def commitmentSecret(channelKeyPath: KeyPath, index: Long): PrivateKey = Generators.perCommitSecret(shaSeed(channelKeyPath), index)
 
-  def commitmentPoint(channelKeyPath: DeterministicWallet.KeyPath, index: Long): PublicKey = Generators.perCommitPoint(shaSeed(channelKeyPath), index)
+  def commitmentPoint(channelKeyPath: KeyPath, index: Long): PublicKey = Generators.perCommitPoint(shaSeed(channelKeyPath), index)
 
   def sign(tx: Transactions.TransactionWithInputInfo, publicKey: ExtendedPublicKey, txOwner: Transactions.TxOwner, commitmentFormat: Transactions.CommitmentFormat): ByteVector64 =
     Transactions.sign(tx, channelPrivateKeysMemo.get(publicKey.path).privateKey, txOwner, commitmentFormat)

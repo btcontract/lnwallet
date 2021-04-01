@@ -473,7 +473,7 @@ object LightningMessageCodecs {
   }.as[TrampolineOn]
 
   final val TRAMPOLINE_STATUS_ON_TAG = 44789
-  final val TRAMPOLINE_STATUS_OFF_TAG = 44787
+  final val TRAMPOLINE_STATUS_UNDESIRED_TAG = 44787
 
   //
 
@@ -550,7 +550,7 @@ object LightningMessageCodecs {
     case SWAP_OUT_TRANSACTION_RESPONSE_MESSAGE_TAG => swapOutTransactionResponseCodec.decode(msg.data).require.value
     case SWAP_OUT_TRANSACTION_DENIED_MESSAGE_TAG => swapOutTransactionDeniedCodec.decode(msg.data).require.value
 
-    case TRAMPOLINE_STATUS_OFF_TAG => provide(TrampolineOff).decode(msg.data).require.value
+    case TRAMPOLINE_STATUS_UNDESIRED_TAG => provide(TrampolineUndesired).decode(msg.data).require.value
     case TRAMPOLINE_STATUS_ON_TAG => trampolineOnCodec.decode(msg.data).require.value
     case _ => throw new RuntimeException
   }
@@ -581,7 +581,7 @@ object LightningMessageCodecs {
     case msg: SwapOutTransactionResponse => UnknownMessage(SWAP_OUT_TRANSACTION_RESPONSE_MESSAGE_TAG, swapOutTransactionResponseCodec.encode(msg).require)
     case msg: SwapOutTransactionDenied => UnknownMessage(SWAP_OUT_TRANSACTION_DENIED_MESSAGE_TAG, swapOutTransactionDeniedCodec.encode(msg).require)
 
-    case TrampolineOff => UnknownMessage(TRAMPOLINE_STATUS_OFF_TAG, provide(TrampolineOff).encode(TrampolineOff).require)
+    case TrampolineUndesired => UnknownMessage(TRAMPOLINE_STATUS_UNDESIRED_TAG, provide(TrampolineUndesired).encode(TrampolineUndesired).require)
     case msg: TrampolineOn => UnknownMessage(TRAMPOLINE_STATUS_ON_TAG, trampolineOnCodec.encode(msg).require)
     case _ => msg
   }

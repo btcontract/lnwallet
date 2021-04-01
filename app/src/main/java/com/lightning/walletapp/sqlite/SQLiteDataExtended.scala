@@ -5,6 +5,7 @@ import immortan.utils.ImplicitJsonFormats._
 import com.lightning.walletapp.sqlite.SQLiteDataExtended._
 
 import immortan.sqlite.{DBInterface, SQLiteData}
+import immortan.utils.{FeeRatesInfo, FiatRatesInfo}
 import com.lightning.walletapp.utils.{AddonData, BasicAddon, UsedAddons}
 import fr.acinq.eclair.blockchain.electrum.ElectrumWallet.WalletReady
 import fr.acinq.bitcoin.Satoshi
@@ -14,6 +15,8 @@ import scala.util.Try
 object SQLiteDataExtended {
   final val LABEL_ADDONS = "label-addons"
   final val LABEL_WALLET_READY = "label-wallet-ready"
+  final val LABEL_FIAT_RATES = "label-fiat-rates"
+  final val LABEL_FEE_RATES = "label-fee-rates"
 
   // Last wallet ready message
 
@@ -49,4 +52,12 @@ class SQLiteDataExtended(db: DBInterface) extends SQLiteData(db) {
   def putLastWalletReady(wr: WalletReady): Unit = put(LABEL_WALLET_READY, wr.toJson.compactPrint getBytes "UTF-8")
 
   def getLastWalletReady: Try[WalletReady] = tryGet(LABEL_WALLET_READY).map(SQLiteData.byteVecToString) map to[WalletReady]
+
+  def putFiatRatesInfo(data: FiatRatesInfo): Unit = put(LABEL_FIAT_RATES, data.toJson.compactPrint getBytes "UTF-8")
+
+  def getFiatRatesInfo: Try[FiatRatesInfo] = tryGet(LABEL_FIAT_RATES).map(SQLiteData.byteVecToString) map to[FiatRatesInfo]
+
+  def putFeeRatesInfo(data: FeeRatesInfo): Unit = put(LABEL_FEE_RATES, data.toJson.compactPrint getBytes "UTF-8")
+
+  def getFeeRatesInfo: Try[FeeRatesInfo] = tryGet(LABEL_FEE_RATES).map(SQLiteData.byteVecToString) map to[FeeRatesInfo]
 }
