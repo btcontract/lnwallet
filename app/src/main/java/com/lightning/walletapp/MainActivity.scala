@@ -1,21 +1,26 @@
 package com.lightning.walletapp
 
+import com.lightning.walletapp.R.string._
+import info.guardianproject.netcipher.proxy.{OrbotHelper, StatusCallback}
+import android.net.{ConnectivityManager, NetworkCapabilities}
+import immortan.crypto.Tools.{runAnd, none}
+import android.content.{Context, Intent}
+
 import org.ndeftools.util.activity.NfcReaderActivity
 import com.ornach.nobobutton.NoboButton
-import immortan.crypto.Tools.none
 import immortan.utils.InputParser
 import android.widget.TextView
-import android.content.Intent
 import org.ndeftools.Message
 import android.os.Bundle
 import android.view.View
+import scala.util.Try
 
 
 object MainActivity {
   val mainActivityClass: Class[MainActivity] = classOf[MainActivity]
 }
 
-class MainActivity extends NfcReaderActivity with BaseActivity {
+class MainActivity extends NfcReaderActivity with BaseActivity { me =>
   lazy val skipOrbotCheck: NoboButton = findViewById(R.id.skipOrbotCheck).asInstanceOf[NoboButton]
   lazy val takeOrbotAction: NoboButton = findViewById(R.id.takeOrbotAction).asInstanceOf[NoboButton]
   lazy val mainOrbotMessage: TextView = findViewById(R.id.mainOrbotMessage).asInstanceOf[TextView]
@@ -47,5 +52,77 @@ class MainActivity extends NfcReaderActivity with BaseActivity {
 
   def proceed(disregard: Any): Unit = {
 
+  }
+
+  // Tor and auth
+
+  trait Step {
+    def makeAttempt: Unit
+  }
+
+  class EnsureAuth(next: Step) extends Step {
+    def makeAttempt: Unit = {
+      new utils.BiometricAuth(findViewById(R.id.mainLayout), me) {
+        def onHardwareUnavailable: Unit = WalletApp.app.quickToast(fp_not_available)
+        def onNoHardware: Unit = WalletApp.app.quickToast(fp_no_support)
+        def onCanAuthenticate: Unit = callAuthDialog
+        def onAuthSucceeded: Unit = next.makeAttempt
+        def onNoneEnrolled: Unit = next.makeAttempt
+      }.checkAuth
+    }
+  }
+
+  class EnsureTor(next: Step) extends Step {
+    private[this] val orbotHelper = OrbotHelper.get(me)
+    private[this] val initCallback = new StatusCallback {
+      def onStatusTimeout: Unit = showIssue(orbot_err_unclear, getString(orbot_action_open), closeAppExitOrbot).run
+      def onNotYetInstalled: Unit = showIssue(orbot_err_not_installed, getString(orbot_action_install), closeAppInstallOrbot).run
+      def onEnabled(intent: Intent): Unit = if (isVPNOn) runAnd(orbotHelper removeStatusCallback this)(next.makeAttempt) else onStatusTimeout
+      def onStopping: Unit = onStatusTimeout
+      def onDisabled: Unit = none
+      def onStarting: Unit = none
+    }
+
+    def isVPNOn: Boolean = Try {
+      val cm = WalletApp.app.getSystemService(Context.CONNECTIVITY_SERVICE).asInstanceOf[ConnectivityManager]
+      cm.getAllNetworks.exists(cm getNetworkCapabilities _ hasTransport NetworkCapabilities.TRANSPORT_VPN)
+    } getOrElse false
+
+    def closeAppExitOrbot: Unit = {
+      val pack = OrbotHelper.ORBOT_PACKAGE_NAME
+      val intent = getPackageManager getLaunchIntentForPackage pack
+      Option(intent).foreach(startActivity)
+      finishAffinity
+      System exit 0
+    }
+
+    def closeAppInstallOrbot: Unit = {
+      orbotHelper installOrbot me
+      finishAffinity
+      System exit 0
+    }
+
+    def proceedAnyway: Unit = {
+      // We must disable Tor check because disconnect later will bring us here again
+      WalletApp.app.prefs.edit.putBoolean(WalletApp.ENSURE_TOR, false).commit
+      next.makeAttempt
+    }
+
+    private def showIssue(msgRes: Int, btnText: String, whenTapped: => Unit) = UITask {
+      skipOrbotCheck setOnClickListener onButtonTap(proceedAnyway)
+      takeOrbotAction setOnClickListener onButtonTap(whenTapped)
+      mainOrbotIssues setVisibility View.VISIBLE
+      mainOrbotCheck setVisibility View.GONE
+      mainOrbotMessage setText msgRes
+      takeOrbotAction setText btnText
+      timer.cancel
+    }
+
+    def makeAttempt: Unit = {
+      orbotHelper.addStatusCallback(initCallback)
+      try timer.schedule(initCallback.onStatusTimeout, 20000) catch none
+      try timer.schedule(mainOrbotCheck setVisibility View.VISIBLE, 2000) catch none
+      if (!orbotHelper.init) initCallback.onNotYetInstalled
+    }
   }
 }
