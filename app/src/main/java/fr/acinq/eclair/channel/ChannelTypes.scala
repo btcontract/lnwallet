@@ -20,7 +20,6 @@ import scodec.bits._
 import fr.acinq.eclair._
 import fr.acinq.bitcoin._
 import fr.acinq.eclair.wire._
-import com.softwaremill.quicklens._
 import fr.acinq.eclair.transactions.Transactions._
 import fr.acinq.bitcoin.Crypto.{PrivateKey, PublicKey}
 import immortan.{LNParams, RemoteNodeInfo}

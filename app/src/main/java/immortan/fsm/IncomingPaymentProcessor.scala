@@ -170,7 +170,7 @@ case class TrampolineStopping(retryOnceFinalized: Boolean) extends IncomingProce
 case class TrampolineRevealed(preimage: ByteVector32, senderData: Option[OutgoingPaymentSenderData] = None) extends IncomingProcessorData // SENDING | FINALIZING
 case class TrampolineAborted(failure: FailureMessage) extends IncomingProcessorData // FINALIZING
 
-class TrampolinePaymentRelayer(val fullTag: FullPaymentTag, cm: ChannelMaster) extends IncomingPaymentProcessor with OutgoingPaymentEvents { self =>
+class TrampolinePaymentRelayer(val fullTag: FullPaymentTag, cm: ChannelMaster) extends IncomingPaymentProcessor with OutgoingListener { self =>
   // Important: we may have outgoing leftovers on restart, so we always need to create a sender FSM right away, which will be firing events once leftovers get finalized
   override def preimageObtained(data: OutgoingPaymentSenderData, fulfill: RemoteFulfill): Unit = self doProcess TrampolineRevealed(fulfill.preimage, data.toSome)
   override def wholePaymentFailed(data: OutgoingPaymentSenderData): Unit = self doProcess data

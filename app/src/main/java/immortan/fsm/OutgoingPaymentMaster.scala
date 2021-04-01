@@ -56,7 +56,7 @@ case class RemoteFailure(packet: Sphinx.DecryptedFailurePacket, route: Route) ex
 case class SplitIntoHalves(amount: MilliSatoshi)
 case class NodeFailed(failedNodeId: PublicKey, increment: Int)
 case class ChannelFailed(failedDescAndCap: DescAndCapacity, increment: Int)
-case class CreateSenderFSM(fullTag: FullPaymentTag, listener: OutgoingPaymentEvents)
+case class CreateSenderFSM(fullTag: FullPaymentTag, listener: OutgoingListener)
 case class RemoveSenderFSM(fullTag: FullPaymentTag)
 
 // Important: with trampoline payment targetNodeId is next trampoline node, not necessairly final recipient
@@ -261,13 +261,13 @@ case class OutgoingPaymentSenderData(cmd: SendMultiPart, parts: Map[ByteVector, 
   }
 }
 
-trait OutgoingPaymentEvents {
+trait OutgoingListener {
   // With local failures this will be the only way to know
   def wholePaymentFailed(data: OutgoingPaymentSenderData): Unit = none
   def preimageObtained(data: OutgoingPaymentSenderData, fulfill: RemoteFulfill): Unit = none
 }
 
-class OutgoingPaymentSender(val fullTag: FullPaymentTag, val listener: OutgoingPaymentEvents, opm: OutgoingPaymentMaster) extends StateMachine[OutgoingPaymentSenderData] { me =>
+class OutgoingPaymentSender(val fullTag: FullPaymentTag, val listener: OutgoingListener, opm: OutgoingPaymentMaster) extends StateMachine[OutgoingPaymentSenderData] { me =>
   become(OutgoingPaymentSenderData(SendMultiPart(fullTag, LNParams.routerConf, invalidPubKey), Map.empty), INIT)
 
   def doProcess(msg: Any): Unit = (msg, state) match {

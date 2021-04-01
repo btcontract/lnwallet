@@ -6,7 +6,6 @@ import fr.acinq.eclair.wire.CommonCodecs._
 import fr.acinq.bitcoin.{ByteVector32, Satoshi}
 import immortan.sqlite.{PaymentSummary, RelaySummary, TxSummary}
 import immortan.utils.FiatRates.{BitpayItemList, CoinGeckoItemMap}
-import fr.acinq.eclair.blockchain.electrum.ElectrumWallet.WalletReady
 import fr.acinq.bitcoin.Crypto.PublicKey
 import immortan.crypto.Tools.Fiat2Btc
 import fr.acinq.eclair.MilliSatoshi
@@ -14,11 +13,13 @@ import scodec.bits.BitVector
 
 
 object ImplicitJsonFormats extends DefaultJsonProtocol {
-  def to[T : JsonFormat](raw: String): T = raw.parseJson.convertTo[T]
   val json2String: JsValue => String = (_: JsValue).convertTo[String]
+
   final val TAG = "tag"
 
   def writeExt[T](ext: (String, JsValue), base: JsValue): JsObject = JsObject(base.asJsObject.fields + ext)
+
+  def to[T : JsonFormat](raw: String): T = raw.parseJson.convertTo[T]
 
   def taggedJsonFmt[T](base: JsonFormat[T], tag: String): JsonFormat[T] = new JsonFormat[T] {
     def write(unserialized: T): JsValue = writeExt(TAG -> JsString(tag), base write unserialized)
@@ -76,10 +77,6 @@ object ImplicitJsonFormats extends DefaultJsonProtocol {
 
   implicit val penaltyTxDescriptionFmt: JsonFormat[PenaltyTxDescription] = taggedJsonFmt(jsonFormat[String, String, Long,
     PenaltyTxDescription](PenaltyTxDescription.apply, "txid", "nodeId", "sid"), tag = "PenaltyTxDescription")
-
-  // Last seen ready event
-
-  implicit val walletReadyFmt: JsonFormat[WalletReady] = jsonFormat[Satoshi, Satoshi, Long, Long, WalletReady](WalletReady.apply, "confirmedBalance", "unconfirmedBalance", "height", "timestamp")
 
   // Payment description
 

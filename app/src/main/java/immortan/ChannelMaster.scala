@@ -82,7 +82,7 @@ class ChannelMaster(val payBag: PaymentBag, val chanBag: ChannelBag, val dataBag
   // Keep track of last disconnect stamp
   // Notify channels about current chain height
   // Connect sockets once chain height becomes known
-  val chainChannelBridge: WalletEventsListener = new WalletEventsListener {
+  val chainChannelListener: WalletEventsListener = new WalletEventsListener {
     override def onCurrentBlockCount(event: CurrentBlockCount): Unit = {
       LNParams.blockCount.set(event.blockCount)
       all.values.foreach(_ process event)
@@ -99,7 +99,7 @@ class ChannelMaster(val payBag: PaymentBag, val chanBag: ChannelBag, val dataBag
     }
   }
 
-  val socketChannelBridge: ConnectionListener = new ConnectionListener {
+  val socketChannelListener: ConnectionListener = new ConnectionListener {
     override def onOperational(worker: CommsTower.Worker, theirInit: Init): Unit =
       fromNode(worker.info.nodeId).foreach(_.chan process CMD_SOCKET_ONLINE)
 
@@ -118,6 +118,37 @@ class ChannelMaster(val payBag: PaymentBag, val chanBag: ChannelBag, val dataBag
     override def onDisconnect(worker: CommsTower.Worker): Unit = {
       fromNode(worker.info.nodeId).foreach(_.chan process CMD_SOCKET_OFFLINE)
       delayedReconnect(worker)
+    }
+  }
+
+  val localPaymentListener: OutgoingListener = new OutgoingListener {
+    override def wholePaymentFailed(data: OutgoingPaymentSenderData): Unit = chanBag.db txWrap {
+      dataBag.putReport(data.cmd.fullTag.paymentHash, data failuresAsString LNParams.denomination)
+      payBag.updAbortedOutgoing(data.cmd.fullTag.paymentHash)
+      opm process RemoveSenderFSM(data.cmd.fullTag)
+    }
+
+    override def preimageObtained(data: OutgoingPaymentSenderData, fulfill: RemoteFulfill): Unit = {
+      // We have just seen a FIRST preimage for locally initiated outgoing payment, fulfilling of the rest of parts is not reported
+      // Note that fully SUCCEEDED outgoing FSM for locally initiated payments won't get removed from OutgoingPaymentMaster map
+
+      chanBag.db txWrap {
+        // First, unconditionally persist a preimage before doing anything else
+        payBag.addPreimage(fulfill.ourAdd.paymentHash, fulfill.preimage)
+        // Will be silently disregarded if this is a routed payment
+        payBag.updOkOutgoing(fulfill, data.usedFee)
+      }
+
+      chanBag.db txWrap {
+        payBag.getPaymentInfo(fulfill.ourAdd.paymentHash).foreach { paymentInfo =>
+          dataBag.putReport(fulfill.ourAdd.paymentHash, data usedRoutesAsString LNParams.denomination)
+          payBag.addSearchablePayment(paymentInfo.description.queryText, fulfill.ourAdd.paymentHash)
+          for (ext <- data.successfulUpdates) pf.normalStore.incrementChannelScore(ext.update)
+        }
+      }
+
+      getPaymentInfoMemo.invalidate(fulfill.ourAdd.paymentHash)
+      getPreimageMemo.invalidate(fulfill.ourAdd.paymentHash)
     }
   }
 
@@ -141,7 +172,7 @@ class ChannelMaster(val payBag: PaymentBag, val chanBag: ChannelBag, val dataBag
 
   def initConnect: Unit = {
     val eligibleForConnect = all.values.filter(Channel.isOperationalOrWaiting).flatMap(Channel.chanAndCommitsOpt)
-    for (cnc <- eligibleForConnect) CommsTower.listenNative(Set(socketChannelBridge), cnc.commits.remoteInfo)
+    for (cnc <- eligibleForConnect) CommsTower.listenNative(Set(socketChannelListener), cnc.commits.remoteInfo)
   }
 
   def allIncomingResolutions: Iterable[IncomingResolution] = all.values.flatMap(Channel.chanAndCommitsOpt).flatMap(_.commits.crossSignedIncoming).map(initResolveMemo.get)
@@ -206,38 +237,5 @@ class ChannelMaster(val payBag: PaymentBag, val chanBag: ChannelBag, val dataBag
     case resolve: ReasonableTrampoline => inProcessors.values.find(_.fullTag == resolve.fullTag).foreach(_ doProcess resolve)
     case resolve: ReasonableLocal => inProcessors.values.find(_.fullTag == resolve.fullTag).foreach(_ doProcess resolve)
     case _ => // Do nothing
-  }
-
-  // Executed in OutgoingPaymentMaster context
-
-  val localPaymentListener: OutgoingPaymentEvents = new OutgoingPaymentEvents {
-    override def wholePaymentFailed(data: OutgoingPaymentSenderData): Unit = chanBag.db txWrap {
-      dataBag.putReport(data.cmd.fullTag.paymentHash, data failuresAsString LNParams.denomination)
-      payBag.updAbortedOutgoing(data.cmd.fullTag.paymentHash)
-      opm process RemoveSenderFSM(data.cmd.fullTag)
-    }
-
-    override def preimageObtained(data: OutgoingPaymentSenderData, fulfill: RemoteFulfill): Unit = {
-      // We have just seen a FIRST preimage for locally initiated outgoing payment, fulfilling of the rest of parts is not reported
-      // Note that fully SUCCEEDED outgoing FSM for locally initiated payments won't get removed from OutgoingPaymentMaster map
-
-      chanBag.db txWrap {
-        // First, unconditionally persist a preimage before doing anything else
-        payBag.addPreimage(fulfill.ourAdd.paymentHash, fulfill.preimage)
-        // Should be silently disregarded if this is a routed payment
-        payBag.updOkOutgoing(fulfill, data.usedFee)
-      }
-
-      chanBag.db txWrap {
-        payBag.getPaymentInfo(fulfill.ourAdd.paymentHash).foreach { paymentInfo =>
-          dataBag.putReport(fulfill.ourAdd.paymentHash, data usedRoutesAsString LNParams.denomination)
-          payBag.addSearchablePayment(paymentInfo.description.queryText, fulfill.ourAdd.paymentHash)
-          for (ext <- data.successfulUpdates) pf.normalStore.incrementChannelScore(ext.update)
-        }
-      }
-
-      getPaymentInfoMemo.invalidate(fulfill.ourAdd.paymentHash)
-      getPreimageMemo.invalidate(fulfill.ourAdd.paymentHash)
-    }
   }
 }

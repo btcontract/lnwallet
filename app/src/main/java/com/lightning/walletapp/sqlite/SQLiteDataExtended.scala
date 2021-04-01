@@ -1,0 +1,52 @@
+package com.lightning.walletapp.sqlite
+
+import spray.json._
+import immortan.utils.ImplicitJsonFormats._
+import com.lightning.walletapp.sqlite.SQLiteDataExtended._
+
+import immortan.sqlite.{DBInterface, SQLiteData}
+import com.lightning.walletapp.utils.{AddonData, BasicAddon, UsedAddons}
+import fr.acinq.eclair.blockchain.electrum.ElectrumWallet.WalletReady
+import fr.acinq.bitcoin.Satoshi
+import scala.util.Try
+
+
+object SQLiteDataExtended {
+  final val LABEL_ADDONS = "label-addons"
+  final val LABEL_WALLET_READY = "label-wallet-ready"
+
+  // Last wallet ready message
+
+  implicit val walletReadyFmt: JsonFormat[WalletReady] = jsonFormat[Satoshi, Satoshi, Long, Long,
+    WalletReady](WalletReady.apply, "confirmedBalance", "unconfirmedBalance", "height", "timestamp")
+
+  // Addons
+
+  implicit object AddonDataFmt extends JsonFormat[AddonData] {
+    def write(internal: AddonData): JsValue = internal match {
+      case data: BasicAddon => data.toJson
+      case _ => throw new Exception
+    }
+
+    def read(raw: JsValue): AddonData = raw.asJsObject fields TAG match {
+      case JsString("BasicAddon") => raw.convertTo[BasicAddon]
+      case tag => throw new Exception(s"Unknown addon=$tag")
+    }
+  }
+
+  implicit val basicAddonFmt: JsonFormat[BasicAddon] = taggedJsonFmt(jsonFormat[Option[String], String, String, String,
+    BasicAddon](BasicAddon.apply, "authToken", "supportEmail", "description", "domain"), tag = "BasicAddon")
+
+  implicit val usedAddonsFmt: JsonFormat[UsedAddons] =
+    jsonFormat[List[AddonData], UsedAddons](UsedAddons.apply, "addons")
+}
+
+class SQLiteDataExtended(db: DBInterface) extends SQLiteData(db) {
+  def putAddons(addons: UsedAddons): Unit = put(LABEL_ADDONS, addons.toJson.compactPrint getBytes "UTF-8")
+
+  def tryGetAddons: Try[UsedAddons] = tryGet(LABEL_ADDONS).map(SQLiteData.byteVecToString) map to[UsedAddons]
+
+  def putLastWalletReady(wr: WalletReady): Unit = put(LABEL_WALLET_READY, wr.toJson.compactPrint getBytes "UTF-8")
+
+  def getLastWalletReady: Try[WalletReady] = tryGet(LABEL_WALLET_READY).map(SQLiteData.byteVecToString) map to[WalletReady]
+}

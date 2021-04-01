@@ -1,14 +1,15 @@
 package com.lightning.walletapp
 
 import com.lightning.walletapp.R.string._
+import com.lightning.walletapp.utils.{AwaitService, DelayedNotification, UsedAddons}
 import android.content.{ClipboardManager, Context, Intent, SharedPreferences}
 import android.app.{Application, NotificationChannel, NotificationManager}
-import com.lightning.walletapp.utils.{AwaitService, DelayedNotification}
 import immortan.crypto.Tools.{Bytes, Fiat2Btc, runAnd}
 import fr.acinq.bitcoin.{Block, ByteVector32, Crypto}
 import immortan.{LNParams, WalletExt}
 
 import fr.acinq.eclair.blockchain.electrum.ElectrumWallet.WalletReady
+import com.lightning.walletapp.sqlite.SQLiteDataExtended
 import androidx.appcompat.app.AppCompatDelegate
 import immortan.utils.Denomination.formatFiat
 import immortan.utils.BtcDenomination
@@ -23,14 +24,23 @@ import android.os.Build
 import scala.util.Try
 
 
-object WalletApp {
-  var app: WalletApp = _
-  var fiatCode: String = _
-  var chainWallet: WalletExt = _
+object WalletApp { me =>
+  var extDataBag: SQLiteDataExtended = _
   var lastWalletReady: WalletReady = _
+  var usedAddons: UsedAddons = _
+  var chainWallet: WalletExt = _
+  var fiatCode: String = _
+  var app: WalletApp = _
 
   // Should be automatically updated on receiving to current address, cached for performance
   var currentChainReceiveAddress: Future[String] = Future.failed(new RuntimeException)
+
+  def syncAddonUpdate(fun: UsedAddons => UsedAddons): Unit = me synchronized {
+    // Prevent update races whenever multiple addons try to update data concurrently
+    val usedAddons1: UsedAddons = fun(usedAddons)
+    extDataBag.putAddons(usedAddons1)
+    usedAddons = usedAddons1
+  }
 
   // Fiat conversion
 
