@@ -27,7 +27,7 @@ object SQLiteData {
   def byteVecToString(bv: ByteVector): String = new String(bv.toArray, "UTF-8")
 }
 
-class SQLiteData(db: DBInterface) extends WalletDb with DataBag {
+class SQLiteData(val db: DBInterface) extends WalletDb with DataBag {
   def delete(label: String): Unit = db.change(DataTable.killSql, label)
 
   def tryGet(label: String): Try[ByteVector] = db.select(DataTable.selectSql, label).headTry(_ byteVec DataTable.content)

@@ -44,7 +44,7 @@ object SQLiteDataExtended {
     jsonFormat[List[AddonData], UsedAddons](UsedAddons.apply, "addons")
 }
 
-class SQLiteDataExtended(db: DBInterface) extends SQLiteData(db) {
+class SQLiteDataExtended(override val db: DBInterface) extends SQLiteData(db) {
   def putAddons(addons: UsedAddons): Unit = put(LABEL_ADDONS, addons.toJson.compactPrint getBytes "UTF-8")
 
   def tryGetAddons: Try[UsedAddons] = tryGet(LABEL_ADDONS).map(SQLiteData.byteVecToString) map to[UsedAddons]

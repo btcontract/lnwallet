@@ -31,7 +31,7 @@ object PathFinder {
 
 case class AvgHopParams(cltvExpiryDelta: CltvExpiryDelta, feeProportionalMillionths: MilliSatoshi, feeBaseMsat: MilliSatoshi, sampleSize: Long)
 
-abstract class PathFinder(val normalStore: NetworkBag, hostedStore: NetworkBag) extends StateMachine[Data] { me =>
+abstract class PathFinder(val normalStore: NetworkBag, val hostedStore: NetworkBag) extends StateMachine[Data] { me =>
   private val extraEdges = CacheBuilder.newBuilder.expireAfterWrite(1, TimeUnit.DAYS).maximumSize(5000).build[ShortIdAndPosition, GraphEdge]
   val extraEdgesMap: mutable.Map[ShortIdAndPosition, GraphEdge] = extraEdges.asMap.asScala
 
@@ -99,9 +99,11 @@ abstract class PathFinder(val normalStore: NetworkBag, hostedStore: NetworkBag) 
       }
 
     case (CMDResync, OPERATIONAL) =>
-      // Normal resync has happened recently, but PHC resync is outdated (PHC failed last time due to running out of attempts)
-      // in this case we skip normal sync and start directly with PHC sync to save time and increase PHC sync success chances
-      new PHCSyncMaster(getExtraNodes, data) { def onSyncComplete(pure: CompleteHostedRoutingData): Unit = me process pure }
+      new PHCSyncMaster(getExtraNodes, data) {
+        // Normal resync has happened recently, but PHC resync is outdated (PHC failed last time due to running out of attempts)
+        // in this case we skip normal sync and start directly with PHC sync to save time and increase PHC sync success chances
+        def onSyncComplete(pure: CompleteHostedRoutingData): Unit = me process pure
+      }
 
     case (pure: CompleteHostedRoutingData, OPERATIONAL) =>
       // First, completely replace PHC data with obtained one

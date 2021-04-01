@@ -1,18 +1,18 @@
 package com.lightning.walletapp
 
 import com.lightning.walletapp.R.string._
-import com.lightning.walletapp.utils.{AwaitService, DelayedNotification, UsedAddons}
+import com.lightning.walletapp.utils.{AwaitService, DelayedNotification, UsedAddons, WebsocketBus}
 import android.content.{ClipboardManager, Context, Intent, SharedPreferences}
 import android.app.{Application, NotificationChannel, NotificationManager}
+import immortan.utils.{BtcDenomination, FeeRates, FiatRates}
 import immortan.crypto.Tools.{Bytes, Fiat2Btc, runAnd}
 import fr.acinq.bitcoin.{Block, ByteVector32, Crypto}
-import immortan.{LNParams, WalletExt}
+import immortan.{CommsTower, LNParams}
 
 import fr.acinq.eclair.blockchain.electrum.ElectrumWallet.WalletReady
 import com.lightning.walletapp.sqlite.SQLiteDataExtended
 import androidx.appcompat.app.AppCompatDelegate
 import immortan.utils.Denomination.formatFiat
-import immortan.utils.BtcDenomination
 import com.blockstream.libwally.Wally
 import fr.acinq.eclair.MilliSatoshi
 import androidx.multidex.MultiDex
@@ -25,8 +25,8 @@ import scala.util.Try
 
 
 object WalletApp { me =>
-  var extDataBag: SQLiteDataExtended = _
   var lastWalletReady: WalletReady = _
+  var extDataBag: SQLiteDataExtended = _
   var usedAddons: UsedAddons = _
   var app: WalletApp = _
 
@@ -46,6 +46,27 @@ object WalletApp { me =>
   def feeRatesData: String = app.prefs.getString(FEE_RATES_DATA, new String)
   def fiatRatesData: String = app.prefs.getString(FIAT_RATES_DATA, new String)
   def routingDesired: Boolean = app.prefs.getBoolean(ROUTING_DESIRED, false)
+
+  // Due to Android specifics any of these may be nullified at runtime, must check for liveness on every entry
+  def isAlive: Boolean = null != lastWalletReady & null != extDataBag & null != usedAddons & null != app
+
+  def freePossiblyUsedResouces: Unit = {
+    // Drop whatever network connections we still have
+    WebsocketBus.workers.keys.foreach(WebsocketBus.forget)
+    CommsTower.workers.values.map(_.pair).foreach(CommsTower.forget)
+
+    // Clear listeners
+    Try(LNParams.cm.shutDown)
+    Try(LNParams.chainWallet.shutDown)
+    Try(FeeRates.subscription.unsubscribe)
+    Try(FiatRates.subscription.unsubscribe)
+
+    // Nullify all vars
+    lastWalletReady = null
+    extDataBag = null
+    usedAddons = null
+    LNParams.shutDown
+  }
 
   def syncAddonUpdate(fun: UsedAddons => UsedAddons): Unit = me synchronized {
     // Prevent races whenever multiple addons try to update data concurrently

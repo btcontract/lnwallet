@@ -28,6 +28,7 @@ object IncomingPaymentProcessor {
 sealed trait IncomingPaymentProcessor extends StateMachine[IncomingProcessorData] { me =>
   lazy val tuple: (FullPaymentTag, IncomingPaymentProcessor) = (fullTag, me)
   val fullTag: FullPaymentTag
+  def becomeShutdown: Unit
 }
 
 // LOCAL RECEIVER
@@ -49,8 +50,7 @@ class IncomingPaymentReceiver(val fullTag: FullPaymentTag, cm: ChannelMaster) ex
   def doProcess(msg: Any): Unit = (msg, data, state) match {
     case (inFlight: InFlightPayments, _, RECEIVING | FINALIZING) if !inFlight.in.contains(fullTag) =>
       // We have previously failed or fulfilled an incoming payment and all parts have been cleared
-      cm.inProcessors -= fullTag
-      become(null, SHUTDOWN)
+      becomeShutdown
 
     case (inFlight: InFlightPayments, null, RECEIVING) =>
       val adds = inFlight.in(fullTag).asInstanceOf[ReasonableLocals]
@@ -129,6 +129,11 @@ class IncomingPaymentReceiver(val fullTag: FullPaymentTag, cm: ChannelMaster) ex
     cm.getPreimageMemo.invalidate(fullTag.paymentHash)
     become(IncomingRevealed(preimage), FINALIZING)
     fulfill(preimage, adds)
+  }
+
+  def becomeShutdown: Unit = {
+    cm.inProcessors -= fullTag
+    become(null, SHUTDOWN)
   }
 }
 

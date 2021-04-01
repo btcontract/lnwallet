@@ -117,7 +117,7 @@ class ChannelMaster(val payBag: PaymentBag, val chanBag: ChannelBag, val dataBag
 
     override def onDisconnect(worker: CommsTower.Worker): Unit = {
       fromNode(worker.info.nodeId).foreach(_.chan process CMD_SOCKET_OFFLINE)
-      delayedReconnect(worker)
+      Rx.ioQueue.delay(5.seconds).foreach(_ => initConnect)
     }
   }
 
@@ -159,9 +159,10 @@ class ChannelMaster(val payBag: PaymentBag, val chanBag: ChannelBag, val dataBag
 
   // CHANNEL MANAGEMENT
 
-  def delayedReconnect(worker: CommsTower.Worker): Unit = {
-    // Reconnect by default, but may be overridden if needed
-    Rx.ioQueue.delay(5.seconds).foreach(_ => initConnect)
+  def shutDown: Unit = {
+    for (chan <- all.values) chan.listeners = Set.empty
+    for (fsm <- inProcessors.values) fsm.becomeShutdown
+    pf.listeners = Set.empty
   }
 
   def implantChannel(cs: Commitments, freshChannel: Channel): Unit = {
