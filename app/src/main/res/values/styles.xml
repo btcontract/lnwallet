@@ -19,14 +19,6 @@
 
     <!-- item styles -->
 
-    <style name="TransparentButton">
-        <item name="android:textAllCaps">false</item>
-        <item name="android:layout_width">wrap_content</item>
-        <item name="android:layout_height">wrap_content</item>
-        <item name="android:background">?android:selectableItemBackground</item>
-
-    </style>
-
     <style name="ActionButton">
         <item name="nb_focusColor">@color/ln</item>
         <item name="nb_textColor">@color/colorAccent</item>
