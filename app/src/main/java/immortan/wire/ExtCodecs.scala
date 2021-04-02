@@ -13,21 +13,12 @@ import scodec.Codec
 
 case class HostedState(nodeId1: PublicKey, nodeId2: PublicKey, lastCrossSignedState: LastCrossSignedState)
 
-case class ChannelBackup(channels: ByteVector, htlcInfos: ByteVector, preimages: ByteVector)
-
 object ExtCodecs {
   val hostedStateCodec = {
     (publicKey withContext "nodeId1") ::
       (publicKey withContext "nodeId2") ::
       (lastCrossSignedStateCodec withContext "lastCrossSignedState")
   }.as[HostedState]
-
-  val channelBackupCodec = {
-    (varsizebinarydata withContext "channels") ::
-      (varsizebinarydata withContext "htlcInfos") ::
-      (varsizebinarydata withContext "preimages")
-  }.as[ChannelBackup]
-
 
   val lightningNodeKeysCodec = {
     (extendedPrivateKeyCodec withContext "extendedNodeKey") ::
