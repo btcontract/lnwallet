@@ -10,7 +10,7 @@ class SetupActivity extends BaseActivity {
   final val FILE_REQUEST_CODE: Int = 112
 
   def INIT(state: Bundle): Unit = {
-
+    setContentView(R.layout.activity_setup)
   }
 
   def openFilePicker: Unit = {

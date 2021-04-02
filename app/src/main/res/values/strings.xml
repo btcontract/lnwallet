@@ -1,13 +1,20 @@
 <resources>
     <string name="lang">eng</string>
     <string name="app_name">BLW</string>
+
     <string name="emergency_mode">Something went wrong</string>
     <string name="emergency_share">Share error report</string>
 
+    <string name="setup_title">Wallet setup</string>
+    <string name="setup_create_new">Create new wallet</string>
+    <string name="setup_recovery_phrase">Restore from recovery phrase only</string>
+    <string name="setup_backup_file">Restore from backup file + recovery phrase</string>
+    <string name="setup_create_new_hint">A fresh Bitcoin wallet with a new BIP-39 recovery phrase will be generated from scratch. Once created, please note a recovery phrase down and secure it in a safe place!</string>
+    <string name="setup_backup_file_hint">Provide a file containing Lightning backup, then provide a recovery phrase to fully restore Bitcoin wallet along with Lightning channels. Turn other copies of your wallet off before proceeding.</string>
+    <string name="setup_recovery_phrase_hint">Provide a 12-word BIP-39 phrase to restore Bitcoin wallet and hosted channels only. If you had any Lightning channels on a previous device, their balances will be refunded on connecting to remote nodes you had them with.</string>
+
     <string name="dialog_ok">OK</string>
     <string name="dialog_cancel">Cancel</string>
-
-    <string name="action_recovery_phrase_hint">Type 12 phrase words</string>
 
     <!-- wait for some incoming or processing incoming MPP -->
 

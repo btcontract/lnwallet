@@ -1,6 +1,6 @@
 <LinearLayout style="@style/StandardLinearLayout" xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <FrameLayout style="@style/FillingView">
+    <FrameLayout style="@style/BoundedFillingView">
 
         <com.cottacush.android.currencyedittext.CurrencyEditText
             style="@style/XSmallMarginFillingView"
@@ -24,7 +24,7 @@
         android:layout_width="fill_parent"
         android:id="@+id/hintFiatDenom"/>
 
-    <FrameLayout style="@style/FillingView">
+    <FrameLayout style="@style/BoundedFillingView">
 
         <com.cottacush.android.currencyedittext.CurrencyEditText
             style="@style/XSmallMarginFillingView"
@@ -47,7 +47,7 @@
 
     <com.google.android.material.textfield.TextInputLayout
         android:id="@+id/extraInputLayout"
-        style="@style/FillingView">
+        style="@style/BoundedFillingView">
 
         <EditText
             style="@style/XYMarginFillingView"
