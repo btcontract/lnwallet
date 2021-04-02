@@ -149,4 +149,14 @@
         <attr name="layout_weight" format="float"/>
         <attr name="android:layout_gravity"/>
     </declare-styleable>
+
+    <!-- indicator -->
+
+    <declare-styleable name="BaseIndicatorLine">
+        <attr name="ci_drawable" format="reference"/>
+        <attr name="ci_orientation" format="enum">
+            <enum name="horizontal" value="0"/>
+            <enum name="vertical" value="1"/>
+        </attr>
+    </declare-styleable>
 </resources>

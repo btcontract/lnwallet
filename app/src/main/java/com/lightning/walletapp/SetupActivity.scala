@@ -57,16 +57,16 @@ class SetupActivity extends BaseActivity { me =>
 
   def showMnemonicPopup(title: Int): Unit = {
     val mnemonicWrap = getLayoutInflater.inflate(R.layout.frag_mnemonic, null).asInstanceOf[LinearLayout]
-    val restoreCode = mnemonicWrap.findViewById(R.id.restoreCode).asInstanceOf[com.hootsuite.nachos.NachoTextView]
+    val recoveryPhrase = mnemonicWrap.findViewById(R.id.recoveryPhrase).asInstanceOf[com.hootsuite.nachos.NachoTextView]
 
-    restoreCode.addChipTerminator(' ', com.hootsuite.nachos.terminator.ChipTerminatorHandler.BEHAVIOR_CHIPIFY_TO_TERMINATOR)
-    restoreCode.addChipTerminator(',', com.hootsuite.nachos.terminator.ChipTerminatorHandler.BEHAVIOR_CHIPIFY_TO_TERMINATOR)
-    restoreCode.addChipTerminator('\n', com.hootsuite.nachos.terminator.ChipTerminatorHandler.BEHAVIOR_CHIPIFY_TO_TERMINATOR)
-    restoreCode setAdapter new ArrayAdapter(me, android.R.layout.simple_list_item_1, WalletApp.app.englishWordList)
-    restoreCode setDropDownBackgroundResource R.color.button_material_dark
+    recoveryPhrase.addChipTerminator(' ', com.hootsuite.nachos.terminator.ChipTerminatorHandler.BEHAVIOR_CHIPIFY_TO_TERMINATOR)
+    recoveryPhrase.addChipTerminator(',', com.hootsuite.nachos.terminator.ChipTerminatorHandler.BEHAVIOR_CHIPIFY_TO_TERMINATOR)
+    recoveryPhrase.addChipTerminator('\n', com.hootsuite.nachos.terminator.ChipTerminatorHandler.BEHAVIOR_CHIPIFY_TO_TERMINATOR)
+    recoveryPhrase setAdapter new ArrayAdapter(me, android.R.layout.simple_list_item_1, WalletApp.app.englishWordList)
+    recoveryPhrase setDropDownBackgroundResource R.color.button_material_dark
 
     def maybeProceed(alert: AlertDialog): Unit = {
-      val mnemonic = restoreCode.getText.toString.toLowerCase.trim
+      val mnemonic = recoveryPhrase.getText.toString.toLowerCase.trim
       val pureMnemonic = mnemonic.replaceAll("[^a-zA-Z0-9']+", SEPARATOR).split(SEPARATOR)
       if (pureMnemonic.length != 12) WalletApp.app.quickToast(R.string.error_short_phrase)
       else alert.dismiss
