@@ -15,6 +15,9 @@
     <color name="buttonRedBorder">#D1231E</color>
     <color name="buttonRed">#AF1212</color>
 
+    <color name="buttonGrayRipple">#9295A3</color>
+    <color name="buttonGrayBorder">#63646E</color>
+
     <!-- nachos -->
 
     <color name="chip_default_text_color">#DE000000</color>

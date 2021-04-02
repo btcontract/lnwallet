@@ -4,7 +4,7 @@
     xmlns:app="http://schemas.android.com/apk/res-auto">
 
     <TextView
-        style="@style/BoundedFillingView"
+        style="@style/FillingView"
         android:layout_width="wrap_content"
         android:text="@string/emergency_mode"
         android:textSize="@dimen/header_size"/>

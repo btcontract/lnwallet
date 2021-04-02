@@ -159,9 +159,9 @@ class WalletApp extends Application { me =>
   def clipboardManager: ClipboardManager = getSystemService(Context.CLIPBOARD_SERVICE).asInstanceOf[ClipboardManager]
   def getBufferUnsafe: String = clipboardManager.getPrimaryClip.getItemAt(0).getText.toString
 
-  def englishWordList: Seq[String] = {
+  def englishWordList: Array[String] = {
     val raw  = getAssets.open("bip39_english_wordlist.txt")
-    scala.io.Source.fromInputStream(raw, "UTF-8").getLines.toList
+    scala.io.Source.fromInputStream(raw, "UTF-8").getLines.toArray
   }
 
   def electrumCheckpoints(chainHash: ByteVector32): InputStream = chainHash match {
