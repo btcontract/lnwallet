@@ -56,10 +56,13 @@ abstract class HCOpenHandler(info: RemoteNodeInfo, peerSpecificSecret: ByteVecto
     }
   }
 
-  // Initialize HC
-  freshChannel.listeners = Set(makeChanListener)
-  freshChannel doProcess WaitRemoteHostedReply(info, peerSpecificRefundPubKey, peerSpecificSecret)
-
-  // Connect or fire listeners if connected already
-  CommsTower.listenNative(Set(makeChanListener), info)
+  if (cm.hostedFromNode(info.nodeId).isEmpty) {
+    freshChannel.listeners = Set(makeChanListener)
+    freshChannel doProcess WaitRemoteHostedReply(info, peerSpecificRefundPubKey, peerSpecificSecret)
+    CommsTower.listenNative(listeners1 = Set(makeChanListener), remoteInfo = info)
+  } else {
+    // Only one HC per remote peer is allowed, make sure this condition holds
+    val error = new RuntimeException("HC with given remote peer exists already")
+    onFailure(error)
+  }
 }

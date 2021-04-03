@@ -9,11 +9,10 @@ import immortan.PaymentStatus._
 import immortan.ChannelMaster._
 import fr.acinq.eclair.channel._
 import scala.concurrent.duration._
-
+import immortan.crypto.{CanBeRepliedTo, CanBeShutDown, StateMachine}
 import fr.acinq.eclair.transactions.{RemoteFulfill, RemoteReject}
 import immortan.ChannelListener.{Malfunction, Transition}
 import fr.acinq.bitcoin.Crypto.{PrivateKey, PublicKey}
-import immortan.crypto.{CanBeRepliedTo, StateMachine}
 import immortan.utils.{Rx, WalletEventsListener}
 
 import fr.acinq.eclair.blockchain.electrum.ElectrumWallet.WalletReady
@@ -73,7 +72,7 @@ case class InFlightPayments(out: Map[FullPaymentTag, OutgoingAdds], in: Map[Full
   val allTags: Set[FullPaymentTag] = out.keySet ++ in.keySet
 }
 
-class ChannelMaster(val payBag: PaymentBag, val chanBag: ChannelBag, val dataBag: DataBag, val pf: PathFinder) extends ChannelListener { me =>
+class ChannelMaster(val payBag: PaymentBag, val chanBag: ChannelBag, val dataBag: DataBag, val pf: PathFinder) extends ChannelListener with CanBeShutDown { me =>
   val getPaymentInfoMemo: LoadingCache[ByteVector32, PaymentInfoTry] = memoize(payBag.getPaymentInfo)
   val initResolveMemo: LoadingCache[UpdateAddHtlcExt, IncomingResolution] = memoize(initResolve)
   val getPreimageMemo: LoadingCache[ByteVector32, PreimageTry] = memoize(payBag.getPreimage)
@@ -159,9 +158,9 @@ class ChannelMaster(val payBag: PaymentBag, val chanBag: ChannelBag, val dataBag
 
   // CHANNEL MANAGEMENT
 
-  def shutDown: Unit = {
+  override def becomeShutDown: Unit = {
     for (chan <- all.values) chan.listeners = Set.empty
-    for (fsm <- inProcessors.values) fsm.becomeShutdown
+    for (fsm <- inProcessors.values) fsm.becomeShutDown
     pf.listeners = Set.empty
   }
 
@@ -180,7 +179,8 @@ class ChannelMaster(val payBag: PaymentBag, val chanBag: ChannelBag, val dataBag
   def allInChannelOutgoing: Map[FullPaymentTag, OutgoingAdds] = all.values.flatMap(Channel.chanAndCommitsOpt).flatMap(_.commits.allOutgoing).groupBy(_.fullTag)
 
   def fromNode(nodeId: PublicKey): Iterable[ChanAndCommits] = all.values.flatMap(Channel.chanAndCommitsOpt).filter(_.commits.remoteInfo.nodeId == nodeId)
-  def hostedFromNode(nodeId: PublicKey): Option[ChannelHosted] = fromNode(nodeId: PublicKey).collectFirst { case ChanAndCommits(chan: ChannelHosted, _) => chan }
+  def hostedFromNode(nodeId: PublicKey): Option[ChannelHosted] = fromNode(nodeId).collectFirst { case ChanAndCommits(chan: ChannelHosted, _) => chan }
+  def allHosted: Map[ByteVector32, ChannelHosted] = all.collect { case (channelId, hostedChannel: ChannelHosted) => channelId -> hostedChannel }
   def sendTo(change: Any, chanId: ByteVector32): Unit = all.getOrElse(chanId, NO_CHANNEL) process change
 
   // RECEIVE/SEND UTILITIES

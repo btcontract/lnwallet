@@ -38,14 +38,12 @@ object WalletApp { me =>
   final val ENSURE_TOR = "ensureTor"
   final val FEE_RATES_DATA = "feeRatesData"
   final val FIAT_RATES_DATA = "fiatRatesData"
-  final val ROUTING_DESIRED = "routingDesired"
 
   def useAuth: Boolean = app.prefs.getBoolean(USE_AUTH, false)
   def fiatCode: String = app.prefs.getString(FIAT_CODE, "usd")
   def ensureTor: Boolean = app.prefs.getBoolean(ENSURE_TOR, false)
   def feeRatesData: String = app.prefs.getString(FEE_RATES_DATA, new String)
   def fiatRatesData: String = app.prefs.getString(FIAT_RATES_DATA, new String)
-  def routingDesired: Boolean = app.prefs.getBoolean(ROUTING_DESIRED, false)
 
   // Due to Android specifics any of these may be nullified at runtime, must check for liveness on every entry
   def isAlive: Boolean = null != lastWalletReady & null != extDataBag & null != usedAddons & null != app
@@ -56,16 +54,16 @@ object WalletApp { me =>
     CommsTower.workers.values.map(_.pair).foreach(CommsTower.forget)
 
     // Clear listeners
-    Try(LNParams.cm.shutDown)
-    Try(LNParams.chainWallet.shutDown)
-    Try(FeeRates.subscription.unsubscribe)
+    Try(LNParams.cm.becomeShutDown)
+    Try(LNParams.chainWallet.becomeShutDown)
     Try(FiatRates.subscription.unsubscribe)
+    Try(FeeRates.subscription.unsubscribe)
 
     // Nullify all vars
+    LNParams.becomeShutDown
     lastWalletReady = null
     extDataBag = null
     usedAddons = null
-    LNParams.shutDown
   }
 
   def syncAddonUpdate(fun: UsedAddons => UsedAddons): Unit = me synchronized {
@@ -160,7 +158,7 @@ class WalletApp extends Application { me =>
   def getBufferUnsafe: String = clipboardManager.getPrimaryClip.getItemAt(0).getText.toString
 
   def englishWordList: Array[String] = {
-    val raw  = getAssets.open("bip39_english_wordlist.txt")
+    val raw = getAssets.open("bip39_english_wordlist.txt")
     scala.io.Source.fromInputStream(raw, "UTF-8").getLines.toArray
   }
 

@@ -5,7 +5,7 @@ import android.widget.LinearLayout;
 import com.lightning.walletapp.R;
 
 public class Config {
-    int backgroundResId = R.drawable.indicator_item;
+    int backgroundResId = R.drawable.indicator_item_based;
     int orientation = LinearLayout.HORIZONTAL;
     int gravity = Gravity.START;
 

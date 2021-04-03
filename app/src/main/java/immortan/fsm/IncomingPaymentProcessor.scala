@@ -6,6 +6,7 @@ import immortan.fsm.IncomingPaymentProcessor._
 import immortan.ChannelMaster.{OutgoingAdds, PreimageTry, ReasonableLocals, ReasonableTrampolines}
 import immortan.{ChannelMaster, InFlightPayments, LNParams, PaymentInfo, PaymentStatus}
 import fr.acinq.eclair.channel.{ReasonableLocal, ReasonableTrampoline}
+import immortan.crypto.{CanBeShutDown, StateMachine}
 import fr.acinq.eclair.transactions.RemoteFulfill
 import fr.acinq.eclair.router.RouteCalculation
 import fr.acinq.eclair.payment.IncomingPacket
@@ -13,7 +14,6 @@ import immortan.fsm.PaymentFailure.Failures
 import fr.acinq.bitcoin.Crypto.PublicKey
 import immortan.crypto.Tools.Any2Some
 import fr.acinq.bitcoin.ByteVector32
-import immortan.crypto.StateMachine
 import scala.util.Success
 
 
@@ -25,10 +25,9 @@ object IncomingPaymentProcessor {
   final val CMDTimeout = "cmd-timeout"
 }
 
-sealed trait IncomingPaymentProcessor extends StateMachine[IncomingProcessorData] { me =>
+sealed trait IncomingPaymentProcessor extends StateMachine[IncomingProcessorData] with CanBeShutDown { me =>
   lazy val tuple: (FullPaymentTag, IncomingPaymentProcessor) = (fullTag, me)
   val fullTag: FullPaymentTag
-  def becomeShutdown: Unit
 }
 
 // LOCAL RECEIVER
@@ -50,7 +49,7 @@ class IncomingPaymentReceiver(val fullTag: FullPaymentTag, cm: ChannelMaster) ex
   def doProcess(msg: Any): Unit = (msg, data, state) match {
     case (inFlight: InFlightPayments, _, RECEIVING | FINALIZING) if !inFlight.in.contains(fullTag) =>
       // We have previously failed or fulfilled an incoming payment and all parts have been cleared
-      becomeShutdown
+      becomeShutDown
 
     case (inFlight: InFlightPayments, null, RECEIVING) =>
       val adds = inFlight.in(fullTag).asInstanceOf[ReasonableLocals]
@@ -131,7 +130,7 @@ class IncomingPaymentReceiver(val fullTag: FullPaymentTag, cm: ChannelMaster) ex
     fulfill(preimage, adds)
   }
 
-  def becomeShutdown: Unit = {
+  override def becomeShutDown: Unit = {
     cm.inProcessors -= fullTag
     become(null, SHUTDOWN)
   }
@@ -189,7 +188,7 @@ class TrampolinePaymentRelayer(val fullTag: FullPaymentTag, cm: ChannelMaster) e
   def doProcess(msg: Any): Unit = (msg, data, state) match {
     case (inFlight: InFlightPayments, _, FINALIZING | SENDING) if !inFlight.allTags.contains(fullTag) =>
       // This happens AFTER we have resolved all outgoing payments and started resolving related incoming payments
-      becomeShutdown
+      becomeShutDown
 
     case (inFlight: InFlightPayments, TrampolineRevealed(preimage, senderData), SENDING) =>
       // A special case after we have just received a first preimage and can become revealed
@@ -240,7 +239,7 @@ class TrampolinePaymentRelayer(val fullTag: FullPaymentTag, cm: ChannelMaster) e
         case _ if relayCovered(ins) && outs.isEmpty => becomeSendingOrAborted(ins)
         case _ if relayCovered(ins) && outs.nonEmpty => become(TrampolineStopping(retryOnceFinalized = true), SENDING) // App has been restarted midway, fail safely and retry
         case _ if outs.nonEmpty => become(TrampolineStopping(retryOnceFinalized = false), SENDING) // Have not collected enough yet have outgoing (this is pathologic state)
-        case _ if !inFlight.allTags.contains(fullTag) => becomeShutdown // Somehow no leftovers are present at all, nothing left to do
+        case _ if !inFlight.allTags.contains(fullTag) => becomeShutDown // Somehow no leftovers are present at all, nothing left to do
         case _ => // Do nothing, wait for more parts with a timeout
       }
 
@@ -287,11 +286,15 @@ class TrampolinePaymentRelayer(val fullTag: FullPaymentTag, cm: ChannelMaster) e
         val totalFeeReserve = amountIn(adds) - innerPayload.amountToForward - relayFee(innerPayload, LNParams.trampoline)
         val routerConf = LNParams.routerConf.copy(maxCltvDelta = expiryIn(adds) - innerPayload.outgoingCltv - LNParams.trampoline.cltvExpiryDelta)
         val extraEdges = RouteCalculation.makeExtraEdges(innerPayload.invoiceRoutingInfo.map(_.map(_.toList).toList).getOrElse(Nil), innerPayload.outgoingNodeId)
-        val allowedChans = cm.all -- adds.map(_.add.channelId) // It makes no sense to try to route out a payment through channels used by peer to route it in
+
+        // It makes no sense to try to route out a payment through channels used by peer to route it in
+        // Also, if routing is undesired by user BUT peer does want to route then we exclude HCs to reduce risk
+        val excludeHostedChanIds: Set[ByteVector32] = if (LNParams.isRoutingDesired) Set.empty else cm.allHosted.keySet
+        val allowedChans = cm.all -- adds.map(_.add.channelId) -- excludeHostedChanIds
 
         val send = SendMultiPart(fullTag, routerConf, innerPayload.outgoingNodeId,
           onionTotal = innerPayload.amountToForward, actualTotal = innerPayload.amountToForward,
-          totalFeeReserve, targetExpiry = innerPayload.outgoingCltv, allowedChans = allowedChans.values.toSeq)
+          totalFeeReserve, targetExpiry = innerPayload.outgoingCltv, allowedChans.values.toSeq)
 
         become(TrampolineProcessing(innerPayload.outgoingNodeId), SENDING)
         // If invoice features are present, the sender is asking us to relay to a non-trampoline recipient, it is known that recipient supports MPP
@@ -315,7 +318,7 @@ class TrampolinePaymentRelayer(val fullTag: FullPaymentTag, cm: ChannelMaster) e
     fulfill(preimage, adds)
   }
 
-  def becomeShutdown: Unit = {
+  override def becomeShutDown: Unit = {
     cm.opm process RemoveSenderFSM(fullTag)
     cm.inProcessors -= fullTag
     become(null, SHUTDOWN)

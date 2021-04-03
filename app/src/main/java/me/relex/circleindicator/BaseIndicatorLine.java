@@ -11,7 +11,7 @@ import android.view.View;
 
 class BaseIndicatorLine extends LinearLayout {
 
-    private final static int DEFAULT_INDICATOR_HEIGHT = 6;
+    private final static int DEFAULT_INDICATOR_HEIGHT = 8;
 
     protected int mIndicatorMargin = -1;
     protected int mIndicatorWidth = -1;
@@ -53,7 +53,7 @@ class BaseIndicatorLine extends LinearLayout {
         }
 
         TypedArray typedArray = context.obtainStyledAttributes(attrs, R.styleable.BaseIndicatorLine);
-        config.backgroundResId = typedArray.getResourceId(R.styleable.BaseIndicatorLine_ci_drawable, R.drawable.indicator_item);
+        config.backgroundResId = typedArray.getResourceId(R.styleable.BaseIndicatorLine_ci_drawable, R.drawable.indicator_item_based);
         typedArray.recycle();
 
         return config;
@@ -66,7 +66,7 @@ class BaseIndicatorLine extends LinearLayout {
         mIndicatorWidth = miniSize * 3;
         mIndicatorMargin = 3;
 
-        mIndicatorBackgroundResId = (config.backgroundResId == 0) ? R.drawable.indicator_item : config.backgroundResId;
+        mIndicatorBackgroundResId = (config.backgroundResId == 0) ? R.drawable.indicator_item_based : config.backgroundResId;
 
         setOrientation(config.orientation == VERTICAL ? VERTICAL : HORIZONTAL);
         setGravity(config.gravity >= 0 ? config.gravity : Gravity.CENTER);

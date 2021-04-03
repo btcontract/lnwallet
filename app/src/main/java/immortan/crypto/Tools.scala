@@ -93,6 +93,10 @@ object Tools {
   }
 }
 
+trait CanBeShutDown {
+  def becomeShutDown: Unit
+}
+
 trait CanBeRepliedTo {
   def process(reply: Any): Unit
 }
