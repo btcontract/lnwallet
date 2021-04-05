@@ -3,8 +3,10 @@ package com.lightning.walletapp
 import com.lightning.walletapp.R.string._
 import info.guardianproject.netcipher.proxy.{OrbotHelper, StatusCallback}
 import android.net.{ConnectivityManager, NetworkCapabilities}
-import immortan.crypto.Tools.{runAnd, none}
+import immortan.{LNParams, MnemonicExtStorageFormat}
+import immortan.crypto.Tools.{none, runAnd}
 import android.content.{Context, Intent}
+import scala.util.{Success, Try}
 
 import org.ndeftools.util.activity.NfcReaderActivity
 import com.ornach.nobobutton.NoboButton
@@ -13,7 +15,6 @@ import android.widget.TextView
 import org.ndeftools.Message
 import android.os.Bundle
 import android.view.View
-import scala.util.Try
 
 
 object MainActivity {
@@ -50,9 +51,17 @@ class MainActivity extends NfcReaderActivity with BaseActivity { me =>
   def readEmptyNdefMessage: Unit = proceed(null)
   def readNonNdefMessage: Unit = proceed(null)
 
-  def proceed(disregard: Any): Unit = {
+  def proceed(disregard: Any): Unit =
+    WalletApp.isAlive match {
+      case false => runAnd(WalletApp.makeAlive)(me proceed null)
+      case true if LNParams.isOperational => me exitTo classOf[HubActivity]
 
-  }
+      case true =>
+        val step3 = new EnsureSeed
+        val step2 = if (WalletApp.ensureTor) new EnsureTor(step3) else step3
+        val step1 = if (WalletApp.useAuth) new EnsureAuth(step2) else step2
+        step1.makeAttempt
+    }
 
   // Tor and auth
 
@@ -60,16 +69,27 @@ class MainActivity extends NfcReaderActivity with BaseActivity { me =>
     def makeAttempt: Unit
   }
 
-  class EnsureAuth(next: Step) extends Step {
-    def makeAttempt: Unit = {
-      new utils.BiometricAuth(findViewById(R.id.mainLayout), me) {
-        def onHardwareUnavailable: Unit = WalletApp.app.quickToast(fp_not_available)
-        def onNoHardware: Unit = WalletApp.app.quickToast(fp_no_support)
-        def onCanAuthenticate: Unit = callAuthDialog
-        def onAuthSucceeded: Unit = next.makeAttempt
-        def onNoneEnrolled: Unit = next.makeAttempt
-      }.checkAuth
+  class EnsureSeed extends Step {
+    def makeAttempt: Unit = WalletApp.extDataBag.tryGetFormat match {
+      case Success(formatWithSeedPresent: MnemonicExtStorageFormat) =>
+        // For now we specifically need a seed to initialize chain wallet
+        WalletApp.makeOperational(formatWithSeedPresent)
+        me exitTo classOf[HubActivity]
+
+      case _ =>
+        // No seed present, wallet is new
+        me exitTo classOf[SetupActivity]
     }
+  }
+
+  class EnsureAuth(next: Step) extends Step {
+    def makeAttempt: Unit = new utils.BiometricAuth(findViewById(R.id.mainLayout), me) {
+      def onHardwareUnavailable: Unit = WalletApp.app.quickToast(fp_not_available)
+      def onNoHardware: Unit = WalletApp.app.quickToast(fp_no_support)
+      def onCanAuthenticate: Unit = callAuthDialog
+      def onAuthSucceeded: Unit = next.makeAttempt
+      def onNoneEnrolled: Unit = next.makeAttempt
+    }.checkAuth
   }
 
   class EnsureTor(next: Step) extends Step {

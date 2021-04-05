@@ -19,7 +19,6 @@ import immortan.utils.Denomination.formatFiat
 import fr.acinq.eclair.wire.TrampolineOn
 import com.blockstream.libwally.Wally
 import androidx.multidex.MultiDex
-import scala.concurrent.Future
 import scodec.bits.ByteVector
 import android.widget.Toast
 import android.os.Build
@@ -32,17 +31,14 @@ object WalletApp { me =>
   var usedAddons: UsedAddons = _
   var app: WalletApp = _
 
-  // Should be automatically updated on receiving to current address, cached for performance
-  var currentChainReceiveAddress: Future[String] = Future.failed(new RuntimeException)
-
   final val dbFileNameMisc = "misc.db"
   final val dbFileNameGraph = "graph.db"
-  final val dbFileNameEssential = "essentail.db"
+  final val dbFileNameEssential = "essential.db"
 
   final val USE_AUTH = "useAuth"
   final val FIAT_CODE = "fiatCode"
   final val ENSURE_TOR = "ensureTor"
-  final val ROUTING_DESIRED = "ensureTor"
+  final val ROUTING_DESIRED = "routingDesired"
   final val MAKE_CHAN_BACKUP = "makeChanBackup"
   final val CAP_LN_FEE_TO_CHAIN = "capLNFeeToChain"
   final val LAST_TOTAL_GOSSIP_SYNC = "lastTotalGossipSync"
@@ -62,11 +58,12 @@ object WalletApp { me =>
     WebsocketBus.workers.keys.foreach(WebsocketBus.forget)
     CommsTower.workers.values.map(_.pair).foreach(CommsTower.forget)
 
+    try FiatRates.subscription.unsubscribe catch none
+    try FeeRates.subscription.unsubscribe catch none
+
     // Clear listeners
     try LNParams.cm.becomeShutDown catch none
     try LNParams.chainWallet.becomeShutDown catch none
-    try FiatRates.subscription.unsubscribe catch none
-    try FeeRates.subscription.unsubscribe catch none
     try LNParams.becomeShutDown catch none
 
     extDataBag = null

@@ -94,5 +94,12 @@
             android:screenOrientation="portrait"
             android:theme="@style/AppThemeNoActionBar"/>
 
+        <activity
+            android:name="HubActivity"
+            android:launchMode="singleTask"
+            android:screenOrientation="portrait"
+            android:theme="@style/AppThemeNoActionBar"
+            android:windowSoftInputMode="adjustNothing"/>
+
     </application>
 </manifest>
