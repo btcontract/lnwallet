@@ -99,9 +99,9 @@ object LNParams extends CanBeShutDown {
   var isRoutingDesired: Boolean = true
 
   def isOperational: Boolean =
-    null != format & null != chainWallet & null != syncParams & null != trampoline &
-      null != feeRatesInfo & null != fiatRatesInfo & null != denomination & null != cm &
-      null != routerConf
+    null != format && null != chainWallet && null != syncParams && null != trampoline &&
+      null != feeRatesInfo && null != fiatRatesInfo && null != denomination &&
+      null != cm && null != cm.inProcessors && null != routerConf
 
   override def becomeShutDown: Unit = {
     isRoutingDesired = true

@@ -9,13 +9,20 @@ import immortan.crypto.Tools.Bytes
 case class PreparedQuerySQLiteAndroid(prepared: SQLiteStatement) extends PreparedQuery { me =>
 
   def bound(params: Object*): PreparedQuery = {
-    params.zipWithIndex.foreach {
-      case (queryParameter: JInt, positionIndex) => prepared.bindLong(positionIndex + 1, queryParameter.toLong)
-      case (queryParameter: JDouble, positionIndex) => prepared.bindDouble(positionIndex + 1, queryParameter)
-      case (queryParameter: String, positionIndex) => prepared.bindString(positionIndex + 1, queryParameter)
-      case (queryParameter: Bytes, positionIndex) => prepared.bindBlob(positionIndex + 1, queryParameter)
-      case (queryParameter: JLong, positionIndex) => prepared.bindLong(positionIndex + 1, queryParameter)
-      case _ => throw new RuntimeException
+    // Mutable, but local and saves one iteration
+    var positionIndex = 1
+
+    for (queryParameter <- params) {
+      queryParameter match {
+        case queryParameter: JInt => prepared.bindLong(positionIndex, queryParameter.toLong)
+        case queryParameter: JDouble => prepared.bindDouble(positionIndex, queryParameter)
+        case queryParameter: String => prepared.bindString(positionIndex, queryParameter)
+        case queryParameter: Bytes => prepared.bindBlob(positionIndex, queryParameter)
+        case queryParameter: JLong => prepared.bindLong(positionIndex, queryParameter)
+        case _ => throw new RuntimeException
+      }
+
+      positionIndex += 1
     }
 
     me

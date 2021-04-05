@@ -13,7 +13,7 @@ sealed trait StorageFormat {
   def keys: LightningNodeKeys
 }
 
-case class MnemonicExtStorageFormat(outstandingProviders: Set[NodeAnnouncement], keys: LightningNodeKeys, seed: Option[ByteVector] = None) extends StorageFormat {
+case class MnemonicExtStorageFormat(outstandingProviders: Set[NodeAnnouncement], keys: LightningNodeKeys, seed: ByteVector) extends StorageFormat {
   override def attachedChannelSecret(theirNodeId: PublicKey): ByteVector32 = Mac32.hmac256(keys.ourFakeNodeIdKey(theirNodeId).secretkeybytes, theirNodeId.value)
 }
 

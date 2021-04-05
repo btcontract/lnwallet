@@ -29,7 +29,7 @@ object ExtCodecs {
   val mnemonicExtStorageFormatCodec = {
     (setCodec(nodeAnnouncementCodec) withContext "outstandingProviders") ::
       (lightningNodeKeysCodec withContext "keys") ::
-      (optional(bool8, bytes) withContext "seed")
+      (varsizebinarydata withContext "seed")
   }.as[MnemonicExtStorageFormat]
 
   val passwordStorageFormatCodec = {

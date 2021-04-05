@@ -28,9 +28,8 @@ class MainActivity extends NfcReaderActivity with BaseActivity { me =>
   lazy val mainOrbotCheck: View = findViewById(R.id.mainOrbotCheck).asInstanceOf[View]
 
   def INIT(state: Bundle): Unit = {
-//    setContentView(R.layout.activity_main)
-//    initNfc(state)
-    me exitTo classOf[SetupActivity]
+    setContentView(R.layout.activity_main)
+    initNfc(state)
   }
 
   // NFC AND SHARE

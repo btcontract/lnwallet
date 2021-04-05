@@ -5,7 +5,7 @@ import com.lightning.walletapp.utils.{AwaitService, DelayedNotification, UsedAdd
 import android.content.{ClipboardManager, Context, Intent, SharedPreferences}
 import android.app.{Application, NotificationChannel, NotificationManager}
 import immortan.utils.{BtcDenomination, FeeRates, FiatRates}
-import immortan.crypto.Tools.{Bytes, Fiat2Btc, runAnd}
+import immortan.crypto.Tools.{Bytes, Fiat2Btc, runAnd, none}
 import fr.acinq.bitcoin.{Block, ByteVector32, Crypto}
 import immortan.{CommsTower, LNParams}
 
@@ -33,20 +33,23 @@ object WalletApp { me =>
   // Should be automatically updated on receiving to current address, cached for performance
   var currentChainReceiveAddress: Future[String] = Future.failed(new RuntimeException)
 
+  final val FEE_RATES_DATA = "feeRatesData"
+  final val FIAT_RATES_DATA = "fiatRatesData"
+
   final val USE_AUTH = "useAuth"
   final val FIAT_CODE = "fiatCode"
   final val ENSURE_TOR = "ensureTor"
-  final val FEE_RATES_DATA = "feeRatesData"
-  final val FIAT_RATES_DATA = "fiatRatesData"
+  final val MAKE_CHAN_BACKUP = "makeChanBackup"
+  final val CAP_LN_FEE_TO_CHAIN = "canLnFeeToChain"
 
   def useAuth: Boolean = app.prefs.getBoolean(USE_AUTH, false)
   def fiatCode: String = app.prefs.getString(FIAT_CODE, "usd")
   def ensureTor: Boolean = app.prefs.getBoolean(ENSURE_TOR, false)
-  def feeRatesData: String = app.prefs.getString(FEE_RATES_DATA, new String)
-  def fiatRatesData: String = app.prefs.getString(FIAT_RATES_DATA, new String)
+  def makeChanBackup: Boolean = app.prefs.getBoolean(MAKE_CHAN_BACKUP, true)
+  def canLnFeeToChain: Boolean = app.prefs.getBoolean(CAP_LN_FEE_TO_CHAIN, false)
 
   // Due to Android specifics any of these may be nullified at runtime, must check for liveness on every entry
-  def isAlive: Boolean = null != lastWalletReady & null != extDataBag & null != usedAddons & null != app
+  def isAlive: Boolean = null != lastWalletReady && null != extDataBag && null != usedAddons && null != app
 
   def freePossiblyUsedResouces: Unit = {
     // Drop whatever network connections we still have
@@ -54,16 +57,21 @@ object WalletApp { me =>
     CommsTower.workers.values.map(_.pair).foreach(CommsTower.forget)
 
     // Clear listeners
-    Try(LNParams.cm.becomeShutDown)
-    Try(LNParams.chainWallet.becomeShutDown)
-    Try(FiatRates.subscription.unsubscribe)
-    Try(FeeRates.subscription.unsubscribe)
+    try LNParams.cm.becomeShutDown catch none
+    try LNParams.chainWallet.becomeShutDown catch none
+    try FiatRates.subscription.unsubscribe catch none
+    try FeeRates.subscription.unsubscribe catch none
+    try LNParams.becomeShutDown catch none
 
     // Nullify all vars
-    LNParams.becomeShutDown
     lastWalletReady = null
     extDataBag = null
     usedAddons = null
+  }
+
+  def makeAlive: Unit = {
+    freePossiblyUsedResouces
+
   }
 
   def syncAddonUpdate(fun: UsedAddons => UsedAddons): Unit = me synchronized {
