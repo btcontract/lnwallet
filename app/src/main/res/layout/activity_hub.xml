@@ -1,0 +1,16 @@
+<RelativeLayout
+    style="@style/StandardLinearLayout"
+    xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <FrameLayout
+        android:id="@+id/contentWindow"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:layout_above="@id/bottomNavigation"/>
+
+    <com.aurelhubert.ahbottomnavigation.AHBottomNavigation
+        android:layout_alignParentBottom="true"
+        android:id="@+id/bottomNavigation"
+        style="@style/FillingView"/>
+
+</RelativeLayout>

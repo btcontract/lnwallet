@@ -27,13 +27,21 @@
 
     <string name="error_short_phrase">Recovery phrase must be 12 words long</string>
 
-    <!-- wait for some incoming or processing incoming MPP -->
+    <!-- items -->
+
+    <string name="item_shopping">Shopping</string>
+    <string name="item_wallet">Wallet</string>
+    <string name="item_addons">Addons</string>
+
+    <!-- /items -->
+
+    <!-- MPP -->
 
     <string name="incoming_notify_title_wait">Waiting for incoming payment</string>
     <string name="incoming_notify_title_process">Payment is being processed</string>
     <string name="incoming_notify_body">Keep wallet running to get %1$s</string>
 
-    <!-- /wait for some incoming or processing incoming MPP -->
+    <!-- /MPP -->
 
     <!-- auth -->
 
