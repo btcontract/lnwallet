@@ -10,7 +10,6 @@ import akka.actor.Actor
 
 object WalletEventsCatcher {
   case class AddEventListener(listener: WalletEventsListener)
-  case class RemoveEventListener(listener: WalletEventsListener)
 }
 
 class WalletEventsCatcher extends Actor {
@@ -24,8 +23,6 @@ class WalletEventsCatcher extends Actor {
 
   override def receive: Receive = {
     case AddEventListener(listener) => listeners += listener
-
-    case RemoveEventListener(listener) => listeners -= listener
 
     case event: WalletReady => for (lst <- listeners) lst.onWalletReady(event)
 

@@ -59,12 +59,10 @@ case class ChannelFailed(failedDescAndCap: DescAndCapacity, increment: Int)
 case class CreateSenderFSM(fullTag: FullPaymentTag, listener: OutgoingListener)
 case class RemoveSenderFSM(fullTag: FullPaymentTag)
 
-// Important: with trampoline payment targetNodeId is next trampoline node, not necessairly final recipient
-// Important: `fullTag` contains a DIFFERENT PaymentSecret taken from upstream (for routed payments), it is required to group payments with same hash
-// When splitting a payment `onionTotal` is expected to be higher than `actualTotal` to make recipient see the same TotalAmount across different HTLC sets
-case class SendMultiPart(fullTag: FullPaymentTag, routerConf: RouterConf, targetNodeId: PublicKey, onionTotal: MilliSatoshi = 0L.msat, actualTotal: MilliSatoshi = 0L.msat,
-                         totalFeeReserve: MilliSatoshi = 0L.msat, targetExpiry: CltvExpiry = CltvExpiry(0), allowedChans: Seq[Channel] = Nil, paymentSecret: ByteVector32 = ByteVector32.Zeroes,
-                         assistedEdges: Set[GraphEdge] = Set.empty, onionTlvs: Seq[OnionTlv] = Nil, userCustomTlvs: Seq[GenericTlv] = Nil) {
+case class SendMultiPart(fullTag: FullPaymentTag, routerConf: RouterConf, targetNodeId: PublicKey, onionTotal: MilliSatoshi = 0L.msat,
+                         actualTotal: MilliSatoshi = 0L.msat, totalFeeReserve: MilliSatoshi = 0L.msat, targetExpiry: CltvExpiry = CltvExpiry(0),
+                         allowedChans: Seq[Channel] = Nil, outerPaymentSecret: ByteVector32 = ByteVector32.Zeroes, assistedEdges: Set[GraphEdge] = Set.empty,
+                         onionTlvs: Seq[OnionTlv] = Nil, userCustomTlvs: Seq[GenericTlv] = Nil) {
 
   require(onionTotal >= actualTotal)
 }
@@ -264,7 +262,7 @@ case class OutgoingPaymentSenderData(cmd: SendMultiPart, parts: Map[ByteVector, 
 trait OutgoingListener {
   // With local failures this will be the only way to know
   def wholePaymentFailed(data: OutgoingPaymentSenderData): Unit = none
-  def preimageObtained(data: OutgoingPaymentSenderData, fulfill: RemoteFulfill): Unit = none
+  def gotFirstPreimage(data: OutgoingPaymentSenderData, fulfill: RemoteFulfill): Unit = none
 }
 
 class OutgoingPaymentSender(val fullTag: FullPaymentTag, val listener: OutgoingListener, opm: OutgoingPaymentMaster) extends StateMachine[OutgoingPaymentSenderData] { me =>
@@ -287,7 +285,7 @@ class OutgoingPaymentSender(val fullTag: FullPaymentTag, val listener: OutgoingL
     case (fulfill: RemoteFulfill, INIT | PENDING | ABORTED) if fulfill.ourAdd.paymentHash == fullTag.paymentHash =>
       val data1 = data.withoutPartId(fulfill.ourAdd.partId)
       // Provide original data with all used routes intact
-      listener.preimageObtained(data, fulfill)
+      listener.gotFirstPreimage(data, fulfill)
       become(data1, SUCCEEDED)
 
     case (fulfill: RemoteFulfill, SUCCEEDED) if fulfill.ourAdd.paymentHash == fullTag.paymentHash =>
@@ -302,9 +300,9 @@ class OutgoingPaymentSender(val fullTag: FullPaymentTag, val listener: OutgoingL
 
     case (CMDAskForRoute, PENDING) =>
       data.parts.values.collectFirst { case wait: WaitForRouteOrInFlight if wait.flight.isEmpty =>
-        val fakeLocalEdge = mkFakeLocalEdge(LNParams.format.keys.ourNodePubKey, wait.cnc.commits.remoteInfo.nodeId)
-        val routeParams = RouteParams(feeReserve = feeLeftover, routeMaxLength = data.cmd.routerConf.routeHopDistance, routeMaxCltv = data.cmd.routerConf.maxCltvDelta)
-        opm process RouteRequest(fullTag, wait.partId, LNParams.format.keys.ourNodePubKey, data.cmd.targetNodeId, wait.amount, fakeLocalEdge, routeParams)
+        val fakeLocalEdge = mkFakeLocalEdge(from = invalidPubKey, wait.cnc.commits.remoteInfo.nodeId)
+        val routeParams = RouteParams(feeReserve = feeLeftover, data.cmd.routerConf.routeHopDistance, data.cmd.routerConf.maxCltvDelta)
+        opm process RouteRequest(fullTag, wait.partId, source = invalidPubKey, data.cmd.targetNodeId, wait.amount, fakeLocalEdge, routeParams)
       }
 
     case (fail: NoRouteAvailable, PENDING) =>
@@ -320,7 +318,7 @@ class OutgoingPaymentSender(val fullTag: FullPaymentTag, val listener: OutgoingL
 
     case (found: RouteFound, PENDING) =>
       data.parts.values.collectFirst { case wait: WaitForRouteOrInFlight if wait.flight.isEmpty && wait.partId == found.partId =>
-        val finalPayload = Onion.createMultiPartPayload(wait.amount, data.cmd.onionTotal, data.cmd.targetExpiry, data.cmd.paymentSecret, data.cmd.onionTlvs, data.cmd.userCustomTlvs)
+        val finalPayload = Onion.createMultiPartPayload(wait.amount, data.cmd.onionTotal, data.cmd.targetExpiry, data.cmd.outerPaymentSecret, data.cmd.onionTlvs, data.cmd.userCustomTlvs)
         val (firstAmount, firstExpiry, onion) = OutgoingPacket.buildPacket(Sphinx.PaymentPacket)(wait.onionKey, fullTag.paymentHash, found.route.hops, finalPayload)
         val cmdAdd = CMD_ADD_HTLC(fullTag, firstAmount, firstExpiry, PacketAndSecrets(onion.packet, onion.sharedSecrets), finalPayload)
         become(data.copy(parts = data.parts + wait.copy(flight = InFlightInfo(cmdAdd, found.route).toSome).tuple), PENDING)

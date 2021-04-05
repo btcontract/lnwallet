@@ -121,33 +121,34 @@ class ChannelMaster(val payBag: PaymentBag, val chanBag: ChannelBag, val dataBag
   }
 
   val localPaymentListener: OutgoingListener = new OutgoingListener {
-    override def wholePaymentFailed(data: OutgoingPaymentSenderData): Unit = chanBag.db txWrap {
-      dataBag.putReport(data.cmd.fullTag.paymentHash, data failuresAsString LNParams.denomination)
-      payBag.updAbortedOutgoing(data.cmd.fullTag.paymentHash)
-      opm process RemoveSenderFSM(data.cmd.fullTag)
-    }
+    override def gotFirstPreimage(data: OutgoingPaymentSenderData, fulfill: RemoteFulfill): Unit = chanBag.db txWrap {
+      // Note that fully SUCCEEDED outgoing FSM for locally initiated payments won't get removed from OutgoingPaymentMaster
+      // also note that this method MAY get called multiple times for multipart payments if fulfills happen between restarts
+      payBag.setPreimage(fulfill.ourAdd.paymentHash, fulfill.preimage)
 
-    override def preimageObtained(data: OutgoingPaymentSenderData, fulfill: RemoteFulfill): Unit = {
-      // We have just seen a FIRST preimage for locally initiated outgoing payment, fulfilling of the rest of parts is not reported
-      // Note that fully SUCCEEDED outgoing FSM for locally initiated payments won't get removed from OutgoingPaymentMaster map
-
-      chanBag.db txWrap {
-        // First, unconditionally persist a preimage before doing anything else
-        payBag.addPreimage(fulfill.ourAdd.paymentHash, fulfill.preimage)
-        // Will be silently disregarded if this is a routed payment
+      getPaymentInfoMemo.get(fulfill.ourAdd.paymentHash).filter(_.status != PaymentStatus.SUCCEEDED).foreach { paymentInfo =>
+        // Persist various payment metadata if this is ACTUALLY the first preimage (otherwise payment would be marked as successful)
+        payBag.addSearchablePayment(paymentInfo.description.queryText, fulfill.ourAdd.paymentHash)
         payBag.updOkOutgoing(fulfill, data.usedFee)
-      }
 
-      chanBag.db txWrap {
-        payBag.getPaymentInfo(fulfill.ourAdd.paymentHash).foreach { paymentInfo =>
-          dataBag.putReport(fulfill.ourAdd.paymentHash, data usedRoutesAsString LNParams.denomination)
-          payBag.addSearchablePayment(paymentInfo.description.queryText, fulfill.ourAdd.paymentHash)
-          for (ext <- data.successfulUpdates) pf.normalStore.incrementChannelScore(ext.update)
+        if (data.inFlightParts.nonEmpty) {
+          // Sender FSM won't have in-flight parts after restart
+          val usedRoutesReport = data.usedRoutesAsString(LNParams.denomination)
+          for (ext <- data.successfulUpdates) pf.normalStore.incrementScore(ext.update)
+          dataBag.putReport(fulfill.ourAdd.paymentHash, usedRoutesReport)
         }
       }
 
       getPaymentInfoMemo.invalidate(fulfill.ourAdd.paymentHash)
       getPreimageMemo.invalidate(fulfill.ourAdd.paymentHash)
+    }
+
+    override def wholePaymentFailed(data: OutgoingPaymentSenderData): Unit = chanBag.db txWrap {
+      // This method gets called after NO payment parts are left in system, irregardless of restarts
+      val failureReport = data.failuresAsString(LNParams.denomination)
+      dataBag.putReport(data.cmd.fullTag.paymentHash, failureReport)
+      payBag.updAbortedOutgoing(data.cmd.fullTag.paymentHash)
+      opm process RemoveSenderFSM(data.cmd.fullTag)
     }
   }
 
@@ -159,7 +160,7 @@ class ChannelMaster(val payBag: PaymentBag, val chanBag: ChannelBag, val dataBag
   // CHANNEL MANAGEMENT
 
   override def becomeShutDown: Unit = {
-    for (chan <- all.values) chan.listeners = Set.empty
+    for (channel <- all.values) channel.listeners = Set.empty
     for (fsm <- inProcessors.values) fsm.becomeShutDown
     pf.listeners = Set.empty
   }

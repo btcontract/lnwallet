@@ -219,14 +219,14 @@ case class RemoteNodeInfo(nodeId: PublicKey, address: NodeAddress, alias: String
 
   def commitmentPoint(channelKeyPath: KeyPath, index: Long): PublicKey = Generators.perCommitPoint(shaSeed(channelKeyPath), index)
 
-  def sign(tx: Transactions.TransactionWithInputInfo, publicKey: ExtendedPublicKey, txOwner: Transactions.TxOwner, commitmentFormat: Transactions.CommitmentFormat): ByteVector64 =
-    Transactions.sign(tx, channelPrivateKeysMemo.get(publicKey.path).privateKey, txOwner, commitmentFormat)
+  def sign(tx: Transactions.TransactionWithInputInfo, publicKey: ExtendedPublicKey, txOwner: Transactions.TxOwner, format: Transactions.CommitmentFormat): ByteVector64 =
+    Transactions.sign(tx, channelPrivateKeysMemo.get(publicKey.path).privateKey, txOwner, format)
 
-  def sign(tx: Transactions.TransactionWithInputInfo, publicKey: ExtendedPublicKey, remotePoint: PublicKey, txOwner: Transactions.TxOwner, commitmentFormat: Transactions.CommitmentFormat): ByteVector64 =
-    Transactions.sign(tx, Generators.derivePrivKey(channelPrivateKeysMemo.get(publicKey.path).privateKey, remotePoint), txOwner, commitmentFormat)
+  def sign(tx: Transactions.TransactionWithInputInfo, publicKey: ExtendedPublicKey, remotePoint: PublicKey, txOwner: Transactions.TxOwner, format: Transactions.CommitmentFormat): ByteVector64 =
+    Transactions.sign(tx, Generators.derivePrivKey(channelPrivateKeysMemo.get(publicKey.path).privateKey, remotePoint), txOwner, format)
 
-  def sign(tx: Transactions.TransactionWithInputInfo, publicKey: ExtendedPublicKey, remoteSecret: PrivateKey, txOwner: Transactions.TxOwner, commitmentFormat: Transactions.CommitmentFormat): ByteVector64 =
-    Transactions.sign(tx, Generators.revocationPrivKey(channelPrivateKeysMemo.get(publicKey.path).privateKey, remoteSecret), txOwner, commitmentFormat)
+  def sign(tx: Transactions.TransactionWithInputInfo, publicKey: ExtendedPublicKey, remoteSecret: PrivateKey, txOwner: Transactions.TxOwner, format: Transactions.CommitmentFormat): ByteVector64 =
+    Transactions.sign(tx, Generators.revocationPrivKey(channelPrivateKeysMemo.get(publicKey.path).privateKey, remoteSecret), txOwner, format)
 }
 
 case class WalletExt(wallet: ElectrumEclairWallet, eventsCatcher: ActorRef, clientPool: ActorRef, watcher: ActorRef) extends CanBeShutDown {
@@ -253,7 +253,7 @@ trait NetworkBag {
   def listChannelsWithOneUpdate: ShortChanIdSet
   def listExcludedChannels: Set[Long]
 
-  def incrementChannelScore(cu: ChannelUpdate): Unit
+  def incrementScore(cu: ChannelUpdate): Unit
   def getRoutingData: Map[ShortChannelId, PublicChannel]
   def removeGhostChannels(ghostIds: ShortChanIdSet, oneSideIds: ShortChanIdSet): Unit
   def processCompleteHostedData(pure: CompleteHostedRoutingData): Unit
@@ -263,7 +263,7 @@ trait NetworkBag {
 // Bag of stored payments and successful relays
 
 trait PaymentBag {
-  def addPreimage(paymentHash: ByteVector32, preimage: ByteVector32)
+  def setPreimage(paymentHash: ByteVector32, preimage: ByteVector32)
   def addSearchablePayment(search: String, paymentHash: ByteVector32): Unit
   def addRelayedPreimageInfo(fullTag: FullPaymentTag, preimage: ByteVector32, relayed: MilliSatoshi, earned: MilliSatoshi)
 

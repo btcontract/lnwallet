@@ -288,12 +288,6 @@ object LightningMessageCodecs {
       (varsizebinarydata withContext "secret")
   }.as[InvokeHostedChannel]
 
-  val hostedChannelBrandingCodec = {
-    (rgb withContext "rgbColor") ::
-      (varsizebinarydata withContext "pngIcon") ::
-      (text withContext "contactInfo")
-  }.as[HostedChannelBranding]
-
   lazy val initHostedChannelCodec = {
     (uint64 withContext "maxHtlcValueInFlightMsat") ::
       (millisatoshi withContext "htlcMinimumMsat") ::
@@ -305,12 +299,16 @@ object LightningMessageCodecs {
       (channelVersionCodec withContext "version")
   }.as[InitHostedChannel]
 
-  // LCSS must NOT have arbitrary trailing data because it is stored as non-length-delimited
+  val hostedChannelBrandingCodec = {
+    (rgb withContext "rgbColor") ::
+      (varsizebinarydata withContext "pngIcon") ::
+      (variableSizeBytes(uint16, utf8) withContext "contactInfo")
+  }.as[HostedChannelBranding]
 
   lazy val lastCrossSignedStateCodec = {
-    (bool withContext "isHost") ::
+    (bool8 withContext "isHost") ::
       (varsizebinarydata withContext "refundScriptPubKey") ::
-      (initHostedChannelCodec withContext "initHostedChannel") ::
+      (lengthDelimited(initHostedChannelCodec) withContext "initHostedChannel") ::
       (uint32 withContext "blockDay") ::
       (millisatoshi withContext "localBalanceMsat") ::
       (millisatoshi withContext "remoteBalanceMsat") ::
@@ -337,14 +335,15 @@ object LightningMessageCodecs {
       (bytes64 withContext "localSigOfRemoteLCSS")
   }.as[StateOverride]
 
-  val refundPendingCodec = (uint32 withContext "startedAt").as[RefundPending]
+  val refundPendingCodec =
+    (uint32 withContext "startedAt").as[RefundPending]
 
-  val announcementSignatureCodec = {
+  lazy val announcementSignatureCodec = {
     (bytes64 withContext "nodeSignature") ::
-      (bool withContext "wantsReply")
+      (bool8 withContext "wantsReply")
   }.as[AnnouncementSignature]
 
-  lazy val resizeChannelCodec = {
+  val resizeChannelCodec = {
     (satoshi withContext "newCapacity") ::
       (bytes64 withContext "clientSig")
   }.as[ResizeChannel]

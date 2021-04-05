@@ -45,56 +45,61 @@ object ImplicitJsonFormats extends DefaultJsonProtocol {
   // Tx description
 
   implicit object TxDescriptionFmt extends JsonFormat[TxDescription] {
-    def write(internal: TxDescription): JsValue = internal match {
-      case paymentDescription: PlainTxDescription => paymentDescription.toJson
-      case paymentDescription: ChanFundingTxDescription => paymentDescription.toJson
-      case paymentDescription: CommitClaimTxDescription => paymentDescription.toJson
-      case paymentDescription: HtlcClaimTxDescription => paymentDescription.toJson
-      case paymentDescription: PenaltyTxDescription => paymentDescription.toJson
-      case _ => throw new Exception
-    }
-
     def read(raw: JsValue): TxDescription = raw.asJsObject.fields(TAG) match {
       case JsString("PlainTxDescription") => raw.convertTo[PlainTxDescription]
+      case JsString("OpReturnTxDescription") => raw.convertTo[OpReturnTxDescription]
       case JsString("ChanFundingTxDescription") => raw.convertTo[ChanFundingTxDescription]
       case JsString("CommitClaimTxDescription") => raw.convertTo[CommitClaimTxDescription]
       case JsString("HtlcClaimTxDescription") => raw.convertTo[HtlcClaimTxDescription]
       case JsString("PenaltyTxDescription") => raw.convertTo[PenaltyTxDescription]
       case _ => throw new Exception
     }
+
+    def write(internal: TxDescription): JsValue = internal match {
+      case paymentDescription: PlainTxDescription => paymentDescription.toJson
+      case paymentDescription: OpReturnTxDescription => paymentDescription.toJson
+      case paymentDescription: ChanFundingTxDescription => paymentDescription.toJson
+      case paymentDescription: CommitClaimTxDescription => paymentDescription.toJson
+      case paymentDescription: HtlcClaimTxDescription => paymentDescription.toJson
+      case paymentDescription: PenaltyTxDescription => paymentDescription.toJson
+      case _ => throw new Exception
+    }
   }
 
-  implicit val plainTxDescriptionFmt: JsonFormat[PlainTxDescription] = taggedJsonFmt(jsonFormat[String,
-    PlainTxDescription](PlainTxDescription.apply, "txid"), tag = "PlainTxDescription")
+  implicit val plainTxDescriptionFmt: JsonFormat[PlainTxDescription] = taggedJsonFmt(jsonFormat[Option[String],
+    PlainTxDescription](PlainTxDescription.apply, "label"), tag = "PlainTxDescription")
 
-  implicit val chanFundingTxDescriptionFmt: JsonFormat[ChanFundingTxDescription] = taggedJsonFmt(jsonFormat[String, String, Long,
-    ChanFundingTxDescription](ChanFundingTxDescription.apply, "txid", "nodeId", "sid"), tag = "ChanFundingTxDescription")
+  implicit val opReturnTxDescriptionFmt: JsonFormat[OpReturnTxDescription] = taggedJsonFmt(jsonFormat[String, ByteVector32,
+    OpReturnTxDescription](OpReturnTxDescription.apply, "nodeId", "preimage"), tag = "OpReturnTxDescription")
 
-  implicit val commitClaimTxDescriptionFmt: JsonFormat[CommitClaimTxDescription] = taggedJsonFmt(jsonFormat[String, String, Long,
-    CommitClaimTxDescription](CommitClaimTxDescription.apply, "txid", "nodeId", "sid"), tag = "CommitClaimTxDescription")
+  implicit val chanFundingTxDescriptionFmt: JsonFormat[ChanFundingTxDescription] = taggedJsonFmt(jsonFormat[String,
+    ChanFundingTxDescription](ChanFundingTxDescription.apply, "nodeId"), tag = "ChanFundingTxDescription")
 
-  implicit val htlcClaimTxDescriptionFmt: JsonFormat[HtlcClaimTxDescription] = taggedJsonFmt(jsonFormat[String, String, Long,
-    HtlcClaimTxDescription](HtlcClaimTxDescription.apply, "txid", "nodeId", "sid"), tag = "HtlcClaimTxDescription")
+  implicit val commitClaimTxDescriptionFmt: JsonFormat[CommitClaimTxDescription] = taggedJsonFmt(jsonFormat[String,
+    CommitClaimTxDescription](CommitClaimTxDescription.apply, "nodeId"), tag = "CommitClaimTxDescription")
 
-  implicit val penaltyTxDescriptionFmt: JsonFormat[PenaltyTxDescription] = taggedJsonFmt(jsonFormat[String, String, Long,
-    PenaltyTxDescription](PenaltyTxDescription.apply, "txid", "nodeId", "sid"), tag = "PenaltyTxDescription")
+  implicit val htlcClaimTxDescriptionFmt: JsonFormat[HtlcClaimTxDescription] = taggedJsonFmt(jsonFormat[String,
+    HtlcClaimTxDescription](HtlcClaimTxDescription.apply, "nodeId"), tag = "HtlcClaimTxDescription")
+
+  implicit val penaltyTxDescriptionFmt: JsonFormat[PenaltyTxDescription] = taggedJsonFmt(jsonFormat[String,
+    PenaltyTxDescription](PenaltyTxDescription.apply, "nodeId"), tag = "PenaltyTxDescription")
 
   // Payment description
 
   implicit object PaymentDescriptionFmt extends JsonFormat[PaymentDescription] {
-    def write(internal: PaymentDescription): JsValue = internal match {
-      case paymentDescription: PlainDescription => paymentDescription.toJson
-      case paymentDescription: PlainMetaDescription => paymentDescription.toJson
-      case paymentDescription: SwapInDescription => paymentDescription.toJson
-      case paymentDescription: SwapOutDescription => paymentDescription.toJson
-      case _ => throw new Exception
-    }
-
     def read(raw: JsValue): PaymentDescription = raw.asJsObject.fields(TAG) match {
       case JsString("PlainDescription") => raw.convertTo[PlainDescription]
       case JsString("PlainMetaDescription") => raw.convertTo[PlainMetaDescription]
       case JsString("SwapInDescription") => raw.convertTo[SwapInDescription]
       case JsString("SwapOutDescription") => raw.convertTo[SwapOutDescription]
+      case _ => throw new Exception
+    }
+
+    def write(internal: PaymentDescription): JsValue = internal match {
+      case paymentDescription: PlainDescription => paymentDescription.toJson
+      case paymentDescription: PlainMetaDescription => paymentDescription.toJson
+      case paymentDescription: SwapInDescription => paymentDescription.toJson
+      case paymentDescription: SwapOutDescription => paymentDescription.toJson
       case _ => throw new Exception
     }
   }
@@ -114,17 +119,17 @@ object ImplicitJsonFormats extends DefaultJsonProtocol {
   // Payment action
 
   implicit object PaymentActionFmt extends JsonFormat[PaymentAction] {
-    def write(internal: PaymentAction): JsValue = internal match {
-      case paymentAction: MessageAction => paymentAction.toJson
-      case paymentAction: UrlAction => paymentAction.toJson
-      case paymentAction: AESAction => paymentAction.toJson
-      case _ => throw new Exception
-    }
-
     def read(raw: JsValue): PaymentAction = raw.asJsObject.fields(TAG) match {
       case JsString("message") => raw.convertTo[MessageAction]
       case JsString("aes") => raw.convertTo[AESAction]
       case JsString("url") => raw.convertTo[UrlAction]
+      case _ => throw new Exception
+    }
+
+    def write(internal: PaymentAction): JsValue = internal match {
+      case paymentAction: MessageAction => paymentAction.toJson
+      case paymentAction: UrlAction => paymentAction.toJson
+      case paymentAction: AESAction => paymentAction.toJson
       case _ => throw new Exception
     }
   }

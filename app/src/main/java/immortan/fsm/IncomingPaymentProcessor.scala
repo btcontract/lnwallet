@@ -37,6 +37,7 @@ sealed trait IncomingProcessorData
 case class IncomingRevealed(preimage: ByteVector32) extends IncomingProcessorData
 case class IncomingAborted(failure: Option[FailureMessage] = None) extends IncomingProcessorData
 
+// TODO: remove crowdfund invoice
 class IncomingPaymentReceiver(val fullTag: FullPaymentTag, cm: ChannelMaster) extends IncomingPaymentProcessor {
   def gotSome(adds: ReasonableLocals): Boolean = adds.nonEmpty && amountIn(adds) >= adds.head.packet.payload.totalAmount
   def askCovered(adds: ReasonableLocals, info: PaymentInfo): Boolean = info.pr.amount.exists(asked => amountIn(adds) >= asked)
@@ -122,7 +123,7 @@ class IncomingPaymentReceiver(val fullTag: FullPaymentTag, cm: ChannelMaster) ex
     // With final payment we ALREADY know a preimage, but also put it into storage
     // doing so makes it transferrable as storage db gets included in backup file
     cm.payBag.updOkIncoming(amountIn(adds), fullTag.paymentHash)
-    cm.payBag.addPreimage(fullTag.paymentHash, preimage)
+    cm.payBag.setPreimage(fullTag.paymentHash, preimage)
 
     cm.getPaymentInfoMemo.invalidate(fullTag.paymentHash)
     cm.getPreimageMemo.invalidate(fullTag.paymentHash)
@@ -176,7 +177,7 @@ case class TrampolineAborted(failure: FailureMessage) extends IncomingProcessorD
 
 class TrampolinePaymentRelayer(val fullTag: FullPaymentTag, cm: ChannelMaster) extends IncomingPaymentProcessor with OutgoingListener { self =>
   // Important: we may have outgoing leftovers on restart, so we always need to create a sender FSM right away, which will be firing events once leftovers get finalized
-  override def preimageObtained(data: OutgoingPaymentSenderData, fulfill: RemoteFulfill): Unit = self doProcess TrampolineRevealed(fulfill.preimage, data.toSome)
+  override def gotFirstPreimage(data: OutgoingPaymentSenderData, fulfill: RemoteFulfill): Unit = self doProcess TrampolineRevealed(fulfill.preimage, data.toSome)
   override def wholePaymentFailed(data: OutgoingPaymentSenderData): Unit = self doProcess data
 
   import immortan.fsm.TrampolinePaymentRelayer._
@@ -297,15 +298,15 @@ class TrampolinePaymentRelayer(val fullTag: FullPaymentTag, cm: ChannelMaster) e
           totalFeeReserve, targetExpiry = innerPayload.outgoingCltv, allowedChans.values.toSeq)
 
         become(TrampolineProcessing(innerPayload.outgoingNodeId), SENDING)
-        // If invoice features are present, the sender is asking us to relay to a non-trampoline recipient, it is known that recipient supports MPP
-        if (innerPayload.invoiceFeatures.isDefined) cm.opm process send.copy(assistedEdges = extraEdges, paymentSecret = innerPayload.paymentSecret.get)
-        else cm.opm process send.copy(onionTlvs = OnionTlv.TrampolineOnion(adds.head.packet.nextPacket) :: Nil, paymentSecret = randomBytes32)
+        // If invoice features are present then sender is asking for relay to non-trampoline recipient, it is known that recipient supports MPP
+        if (innerPayload.invoiceFeatures.isDefined) cm.opm process send.copy(assistedEdges = extraEdges, outerPaymentSecret = innerPayload.paymentSecret.get)
+        else cm.opm process send.copy(onionTlvs = OnionTlv.TrampolineOnion(adds.head.packet.nextPacket) :: Nil, outerPaymentSecret = randomBytes32)
     }
   }
 
   def becomeInitRevealed(revealed: TrampolineRevealed): Unit = {
     // First, unconditionally persist a preimage before doing anything else
-    cm.payBag.addPreimage(fullTag.paymentHash, revealed.preimage)
+    cm.payBag.setPreimage(fullTag.paymentHash, revealed.preimage)
     cm.getPreimageMemo.invalidate(fullTag.paymentHash)
     // Await for subsequent incoming leftovers
     become(revealed, SENDING)

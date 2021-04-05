@@ -93,7 +93,7 @@ abstract class ChannelHosted extends Channel { me =>
       // Relaxed constraints for receiveng preimages over HCs
       case (hc: HostedCommits, msg: UpdateFulfillHtlc, OPEN | SUSPENDED) =>
         val ourAdd = hc.nextLocalSpec.findOutgoingHtlcById(msg.id).get.add
-        val filfill = RemoteFulfill(msg.paymentPreimage, ourAdd)
+        val filfill = RemoteFulfill(ourAdd, msg.paymentPreimage)
         BECOME(hc.addRemoteProposal(msg), state)
         events.fulfillReceived(filfill)
 
@@ -277,6 +277,7 @@ abstract class ChannelHosted extends Channel { me =>
         case malform: UpdateFailMalformedHtlc => RemoteUpdateMalform(malform, hc.localSpec.findOutgoingHtlcById(malform.id).get.add)
       }
 
+      // First persist a new state, then call an event
       StoreBecomeSend(hc1, OPEN, lcss1.stateUpdate)
       events.stateUpdated(lastRemoteRejects)
     }

@@ -28,7 +28,6 @@ object LightningNodeKeys {
 
 case class LightningNodeKeys(extendedNodeKey: ExtendedPrivateKey, xpub: String, hashingKey: PrivateKey) {
   lazy val ourNodePrivateKey: PrivateKey = extendedNodeKey.privateKey
-  lazy val ourNodePubKey: PublicKey = extendedNodeKey.publicKey
 
   // Used for separate key per domain
   def makeLinkingKey(domain: String): PrivateKey = {

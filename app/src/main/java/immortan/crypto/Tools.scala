@@ -69,7 +69,7 @@ object Tools {
 
   def mkFakeLocalEdge(from: PublicKey, toPeer: PublicKey): GraphEdge = {
     // Augments a graph with local edge corresponding to our local channel
-    // Parameters do not matter except that it must point from us to peer
+    // Parameters do not matter except that it must point to real peer
 
     val zeroCltvDelta = CltvExpiryDelta(0)
     val randomShortChannelId = ShortChannelId(secureRandom.nextLong)

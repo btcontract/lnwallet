@@ -12,7 +12,6 @@ import fr.acinq.eclair.transactions._
 import scala.util.{Success, Try}
 import akka.actor.{ActorRef, Props}
 import fr.acinq.bitcoin.{ByteVector32, Script, ScriptFlags, Transaction}
-import fr.acinq.eclair.blockchain.electrum.ElectrumWallet.TransactionReceived
 import fr.acinq.eclair.transactions.Transactions.TxOwner
 import fr.acinq.eclair.payment.OutgoingPacket
 import fr.acinq.eclair.router.Announcements
@@ -299,7 +298,8 @@ abstract class ChannelNormal(bag: ChannelBag) extends Channel with Handlers { me
 
       case (norm: DATA_NORMAL, msg: UpdateFulfillHtlc, OPEN) =>
         val (commits1, ourAdd) = norm.commitments.receiveFulfill(msg)
-        val fulfill = RemoteFulfill(msg.paymentPreimage, ourAdd)
+        val fulfill = RemoteFulfill(ourAdd, msg.paymentPreimage)
+        // First persist a new state, then call an event
         BECOME(norm.copy(commitments = commits1), OPEN)
         events.fulfillReceived(fulfill)
 
@@ -420,7 +420,29 @@ abstract class ChannelNormal(bag: ChannelBag) extends Channel with Handlers { me
         BECOME(wait, OPEN)
 
 
-      case (_: HasNormalCommitments, _: CurrentBlockCount, OPEN | SLEEPING | CLOSING) => ???
+      case (_: HasNormalCommitments, _: CurrentBlockCount, OPEN | SLEEPING) => ??? // May need to force-close
+
+
+      case (_: HasNormalCommitments, _: CurrentBlockCount, OPEN | SLEEPING | CLOSING) => ??? // May need to further spend HTLC
+
+
+      case (closing: DATA_CLOSING, WatchEventSpent(BITCOIN_OUTPUT_SPENT, tx), CLOSING) =>
+        // Peer has just used a preimage on chain to claim our outgoing payment's UTXO, payment is sent
+        chainWallet.watcher ! WatchConfirmed(receiver, tx, LNParams.minDepthBlocks, BITCOIN_TX_CONFIRMED(tx))
+        val remoteFulfills = Helpers.Closing.extractPreimages(closing.commitments.localCommit, tx).map(RemoteFulfill.tupled)
+
+        val rev1 = closing.revokedCommitPublished.map { rev =>
+          // This might be an old revoked state which is a violation of contract and allows us to take a whole channel balance right away
+          val (rev1, txOpt) = Helpers.Closing.claimRevokedHtlcTxOutputs(closing.commitments, rev, tx, LNParams.feeRatesInfo.onChainFeeConf.feeEstimator)
+          for (claimTx <- txOpt) chainWallet.watcher ! WatchSpent(receiver, tx, claimTx.txIn.filter(_.outPoint.txid == tx.txid).head.outPoint.index.toInt, BITCOIN_OUTPUT_SPENT)
+          for (claimTx <- txOpt) chainWallet.watcher ! PublishAsap(claimTx)
+          rev1
+        }
+
+        // First persist a new state, then call an event
+        StoreBecomeSend(closing.copy(revokedCommitPublished = rev1), CLOSING)
+        // Proceed as if we have normally received preimages off chain
+        remoteFulfills.foreach(events.fulfillReceived)
 
 
       case (data1: DATA_NORMAL, reestablish: ChannelReestablish, SLEEPING) => handleNormalSync(data1, reestablish)

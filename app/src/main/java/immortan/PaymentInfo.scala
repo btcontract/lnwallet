@@ -2,7 +2,7 @@ package immortan
 
 import immortan.utils.ImplicitJsonFormats._
 import immortan.crypto.Tools.{Bytes, Fiat2Btc}
-import fr.acinq.bitcoin.{ByteVector32, ByteVector64, Satoshi}
+import fr.acinq.bitcoin.{ByteVector32, Satoshi}
 import fr.acinq.eclair.wire.{FullPaymentTag, PaymentTagTlv}
 import fr.acinq.eclair.{MilliSatoshi, ShortChannelId}
 import fr.acinq.eclair.payment.PaymentRequest
@@ -32,7 +32,6 @@ case class PaymentInfo(prString: String, preimage: ByteVector32, status: String,
                        balanceSnapshot: MilliSatoshi, fiatRatesString: String, chainFee: MilliSatoshi, incoming: Long) {
 
   val isIncoming: Boolean = 1 == incoming
-  val isCrowdfund: Boolean = 0L == received.toLong
   val tag: Int = if (isIncoming) PaymentTagTlv.FINAL_INCOMING else PaymentTagTlv.LOCALLY_SENT
   val fullTag: FullPaymentTag = FullPaymentTag(paymentHash, paymentSecret, tag)
 
@@ -89,10 +88,9 @@ case class RelayedPreimageInfo(paymentHashString: String, preimageString: String
 
 // Tx descriptions
 
-case class TxInfo(txidString: String, depth: Long, receivedMsat: MilliSatoshi, sentMsat: MilliSatoshi,
-                  feeMsat: MilliSatoshi, seenAt: Long, completedAt: Long, descriptionString: String,
-                  balanceSnapshot: MilliSatoshi, fiatRatesString: String,
-                  incoming: Long, doubleSpent: Long) {
+case class TxInfo(txidString: String, depth: Long, receivedMsat: MilliSatoshi, sentMsat: MilliSatoshi, feeMsat: MilliSatoshi,
+                  seenAt: Long, completedAt: Long, descriptionString: String, balanceSnapshot: MilliSatoshi,
+                  fiatRatesString: String, incoming: Long, doubleSpent: Long) {
 
   val isIncoming: Boolean = 1L == incoming
   val isDoubleSpent: Boolean = 1L == doubleSpent
@@ -102,21 +100,21 @@ case class TxInfo(txidString: String, depth: Long, receivedMsat: MilliSatoshi, s
   lazy val txid: ByteVector32 = ByteVector32.fromValidHex(txidString)
 }
 
-sealed trait TxDescription { val txid: String }
+sealed trait TxDescription
 
-case class PlainTxDescription(txid: String) extends TxDescription
+case class PlainTxDescription(label: Option[String] = None) extends TxDescription
 
 sealed trait ChanTxDescription extends TxDescription {
   val remoteNodeId: PublicKey = PublicKey(ByteVector32 fromValidHex nodeId)
-  val shortChanId: ShortChannelId = ShortChannelId(sid)
   def nodeId: String
-  def sid: Long
 }
 
-case class ChanFundingTxDescription(txid: String, nodeId: String, sid: Long) extends TxDescription
+case class OpReturnTxDescription(nodeId: String, preimage: ByteVector32) extends ChanTxDescription
 
-case class CommitClaimTxDescription(txid: String, nodeId: String, sid: Long) extends TxDescription
+case class ChanFundingTxDescription(nodeId: String) extends ChanTxDescription
 
-case class HtlcClaimTxDescription(txid: String, nodeId: String, sid: Long) extends TxDescription
+case class CommitClaimTxDescription(nodeId: String) extends ChanTxDescription
 
-case class PenaltyTxDescription(txid: String, nodeId: String, sid: Long) extends TxDescription
+case class HtlcClaimTxDescription(nodeId: String) extends ChanTxDescription
+
+case class PenaltyTxDescription(nodeId: String) extends ChanTxDescription

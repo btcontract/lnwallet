@@ -256,7 +256,7 @@ object ChannelCodecs {
 
   val hostedCommitsCodec: Codec[HostedCommits] = {
     (remoteNodeInfoCodec withContext "remoteInfo") ::
-      (lastCrossSignedStateCodec withContext "lastCrossSignedState") ::
+      (lengthDelimited(lastCrossSignedStateCodec) withContext "lastCrossSignedState") ::
       (listOfN(uint16, updateMessageCodec) withContext "nextLocalUpdates") ::
       (listOfN(uint16, updateMessageCodec) withContext "nextRemoteUpdates") ::
       (commitmentSpecCodec withContext "localSpec") ::

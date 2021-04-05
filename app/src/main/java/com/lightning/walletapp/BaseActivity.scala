@@ -107,8 +107,8 @@ trait BaseActivity extends AppCompatActivity { me =>
 
   // Builders
 
-  def rm(prev: Dialog)(exe: => Unit): Unit = {
-    // Add some delay between popup switches
+  def removeAndProceedWithTimeout(prev: Dialog)(exe: => Unit): Unit = {
+    // Add some delay between dismissing previous popup and doing something next
     timer.schedule(exe, 225)
     prev.dismiss
   }
@@ -149,7 +149,7 @@ trait BaseActivity extends AppCompatActivity { me =>
 
     val alert = showForm(bld.create)
     val posAct = me onButtonTap ok(alert)
-    val negAct = me onButtonTap rm(alert)(no)
+    val negAct = me onButtonTap removeAndProceedWithTimeout(alert)(no)
     if (-1 != noRes) alert getButton DialogInterface.BUTTON_NEGATIVE setOnClickListener negAct
     if (-1 != okRes) alert getButton DialogInterface.BUTTON_POSITIVE setOnClickListener posAct
     alert
@@ -223,5 +223,19 @@ trait BaseActivity extends AppCompatActivity { me =>
     inputAmountHint setText LNParams.denomination.sign.toUpperCase
     fiatInputAmountHint setText fiatCode.toUpperCase
     inputAmount.requestFocus
+  }
+
+  class SpinnerPopup(lg: Option[CharSequence], sm: Option[CharSequence] = None) {
+    val progressBar: View = getLayoutInflater.inflate(R.layout.frag_progress_bar, null)
+    val builder: AlertDialog.Builder = titleBodyAsViewBuilder(title = null, progressBar)
+    val alert: AlertDialog = mkCheckForm(none, cancel, builder, okRes = -1, dialog_cancel)
+    var isCancelled: Boolean = false
+
+    val largeText: TextView = progressBar.findViewById(R.id.largeText).asInstanceOf[TextView]
+    val smallText: TextView = progressBar.findViewById(R.id.smallText).asInstanceOf[TextView]
+
+    lg match { case Some(text) => largeText setText text case None => largeText setVisibility View.GONE }
+    sm match { case Some(text) => smallText setText text case None => smallText setVisibility View.GONE }
+    def cancel: Unit = removeAndProceedWithTimeout(alert) { isCancelled = true }
   }
 }
