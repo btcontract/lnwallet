@@ -40,10 +40,11 @@ object CheckPoint {
     * we're on the right chain and to validate proof-of-work by checking the difficulty target
     * @return an ordered list of checkpoints, with one checkpoint every 2016 blocks
     */
-  def load(chainHash: ByteVector32): Vector[CheckPoint] = (chainHash: @unchecked) match {
+  var loadFromChainHash: ByteVector32 => Vector[CheckPoint] = {
     case Block.LivenetGenesisBlock.hash => load(classOf[CheckPoint].getResourceAsStream("/electrum/checkpoints_mainnet.json"))
     case Block.TestnetGenesisBlock.hash => load(classOf[CheckPoint].getResourceAsStream("/electrum/checkpoints_testnet.json"))
-    case Block.RegtestGenesisBlock.hash => Vector.empty[CheckPoint] // no checkpoints on regtest
+    case Block.RegtestGenesisBlock.hash => Vector.empty[CheckPoint]
+    case _ => throw new RuntimeException
   }
 
   def load(stream: InputStream): Vector[CheckPoint] = {
@@ -62,7 +63,7 @@ object CheckPoint {
     * @return a series of checkpoints
     */
   def load(chainHash: ByteVector32, headerDb: HeaderDb): Vector[CheckPoint] = {
-    val checkpoints = CheckPoint.load(chainHash)
+    val checkpoints = CheckPoint.loadFromChainHash(chainHash)
     val checkpoints1 = headerDb.getTip match {
       case Some((height, _)) =>
         val newcheckpoints = for {h <- checkpoints.size * RETARGETING_PERIOD - 1 + RETARGETING_PERIOD to height - RETARGETING_PERIOD by RETARGETING_PERIOD} yield {

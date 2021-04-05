@@ -21,10 +21,9 @@ import java.net.InetSocketAddress
 import java.util.concurrent.atomic.AtomicLong
 
 import akka.actor.{Actor, ActorRef, FSM, OneForOneStrategy, Props, SupervisorStrategy, Terminated}
-import fr.acinq.bitcoin.BlockHeader
+import fr.acinq.bitcoin.{Block, BlockHeader, ByteVector32}
 import fr.acinq.eclair.blockchain.CurrentBlockCount
 import fr.acinq.eclair.blockchain.electrum.ElectrumClient.SSL
-import fr.acinq.eclair.blockchain.electrum.ElectrumClientPool.ElectrumServerAddress
 import immortan.LNParams
 import org.json4s.JsonAST.{JObject, JString}
 import org.json4s.native.JsonMethods
@@ -33,11 +32,12 @@ import scala.concurrent.ExecutionContext
 import scala.concurrent.duration._
 import scala.util.Random
 
-class ElectrumClientPool(blockCount: AtomicLong, serverAddresses: Set[ElectrumServerAddress])(implicit val ec: ExecutionContext) extends Actor with FSM[ElectrumClientPool.State, ElectrumClientPool.Data] {
+class ElectrumClientPool(blockCount: AtomicLong, chainHash: ByteVector32)(implicit val ec: ExecutionContext) extends Actor with FSM[ElectrumClientPool.State, ElectrumClientPool.Data] {
   import ElectrumClientPool._
 
-  val statusListeners = collection.mutable.HashSet.empty[ActorRef]
+  val serverAddresses: Set[ElectrumServerAddress] = ElectrumClientPool.loadFromChainHash(chainHash)
   val addresses = collection.mutable.Map.empty[ActorRef, InetSocketAddress]
+  val statusListeners = collection.mutable.HashSet.empty[ActorRef]
 
   // on startup, we attempt to connect to a number of electrum clients
   // they will send us an `ElectrumReady` message when they're connected, or
@@ -178,6 +178,13 @@ class ElectrumClientPool(blockCount: AtomicLong, serverAddresses: Set[ElectrumSe
 object ElectrumClientPool {
 
   case class ElectrumServerAddress(address: InetSocketAddress, ssl: SSL)
+
+  var loadFromChainHash: ByteVector32 => Set[ElectrumServerAddress] = {
+    case Block.LivenetGenesisBlock.hash => readServerAddresses(classOf[ElectrumServerAddress].getResourceAsStream("/electrum/servers_mainnet.json"), sslEnabled = false)
+    case Block.TestnetGenesisBlock.hash => readServerAddresses(classOf[ElectrumServerAddress].getResourceAsStream("/electrum/servers_testnet.json"), sslEnabled = false)
+    case Block.RegtestGenesisBlock.hash => readServerAddresses(classOf[ElectrumServerAddress].getResourceAsStream("/electrum/servers_regtest.json"), sslEnabled = false)
+    case _ => throw new RuntimeException
+  }
 
   def readServerAddresses(stream: InputStream, sslEnabled: Boolean): Set[ElectrumServerAddress] = try {
     val JObject(values) = JsonMethods.parse(stream)

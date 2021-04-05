@@ -16,7 +16,6 @@ import fr.acinq.eclair.channel.{LocalParams, PersistentChannelData}
 import fr.acinq.eclair.transactions.{DirectedHtlc, RemoteFulfill, Transactions}
 import akka.actor.{ActorRef, ActorSystem, PoisonPill, Props, SupervisorStrategy}
 import immortan.utils.{Denomination, FeeRatesInfo, FiatRatesInfo, PaymentRequestExt, WalletEventsCatcher}
-import fr.acinq.eclair.blockchain.electrum.ElectrumClientPool.ElectrumServerAddress
 import fr.acinq.eclair.blockchain.electrum.db.WalletDb
 import scala.concurrent.ExecutionContextExecutor
 import fr.acinq.eclair.router.ChannelUpdateExt
@@ -36,7 +35,8 @@ object LNParams extends CanBeShutDown {
   val cltvRejectThreshold: Int = 144 // Reject incoming payment if CLTV expiry is closer than this to current chain tip when HTLC arrives
   val incomingPaymentCltvExpiry: Int = 144 + 72 // Ask payer to set final CLTV expiry to payer's current chain tip + this many blocks
 
-  val maxCltvExpiryDelta: CltvExpiryDelta = CltvExpiryDelta(1008)
+  val routingCltvExpiryDelta: CltvExpiryDelta = CltvExpiryDelta(144 * 2) // Ask relayer to set CLTV expiry delta for our channel to this much blocks
+  val maxCltvExpiryDelta: CltvExpiryDelta = CltvExpiryDelta(1008) // A relative expiry per single channel hop can not exceed this much blocks
   val maxToLocalDelay: CltvExpiryDelta = CltvExpiryDelta(2016)
   val maxFundingSatoshis: Satoshi = Satoshi(10000000000L)
   val maxReserveToFundingRatio: Double = 0.05
@@ -78,14 +78,16 @@ object LNParams extends CanBeShutDown {
   // Variables to be assigned at runtime
 
   var format: StorageFormat = _
-  var chainWallet: WalletExt = _
-  var syncParams: SyncParams = _
-  var trampoline: TrampolineOn = _
-  var feeRatesInfo: FeeRatesInfo = _
-  var fiatRatesInfo: FiatRatesInfo = _
-  var denomination: Denomination = _
   var routerConf: RouterConf = _
+  var syncParams: SyncParams = _
+  var denomination: Denomination = _
+  var fiatRatesInfo: FiatRatesInfo = _
+  var feeRatesInfo: FeeRatesInfo = _
+  var trampoline: TrampolineOn = _
   var cm: ChannelMaster = _
+
+  // Better be set last
+  var chainWallet: WalletExt = _
 
   // Last known chain tip (zero is unknown)
   val blockCount: AtomicLong = new AtomicLong(0L)
@@ -100,8 +102,8 @@ object LNParams extends CanBeShutDown {
 
   def isOperational: Boolean =
     null != format && null != chainWallet && null != syncParams && null != trampoline &&
-      null != feeRatesInfo && null != fiatRatesInfo && null != denomination &&
-      null != cm && null != cm.inProcessors && null != routerConf
+      null != feeRatesInfo && null != fiatRatesInfo && null != denomination && null != cm &&
+      null != cm.inProcessors && null != routerConf
 
   override def becomeShutDown: Unit = {
     isRoutingDesired = true
@@ -109,22 +111,24 @@ object LNParams extends CanBeShutDown {
     blockCount.set(0L)
 
     format = null
-    chainWallet = null
-    syncParams = null
-    trampoline = null
-    feeRatesInfo = null
-    fiatRatesInfo = null
-    denomination = null
     routerConf = null
+    syncParams = null
+    denomination = null
+    fiatRatesInfo = null
+    feeRatesInfo = null
+    trampoline = null
     cm = null
+
+    // Better ne erased last
+    chainWallet = null
   }
 
   implicit val timeout: Timeout = Timeout(30.seconds)
   implicit val system: ActorSystem = ActorSystem("immortan-actor-system")
   implicit val ec: ExecutionContextExecutor = scala.concurrent.ExecutionContext.Implicits.global
 
-  def createWallet(addresses: Set[ElectrumServerAddress], walletDb: WalletDb, seed: ByteVector): WalletExt = {
-    val clientPool = system.actorOf(SimpleSupervisor.props(Props(new ElectrumClientPool(blockCount, addresses)), "pool", SupervisorStrategy.Resume))
+  def createWallet(walletDb: WalletDb, seed: ByteVector): WalletExt = {
+    val clientPool = system.actorOf(SimpleSupervisor.props(Props(new ElectrumClientPool(blockCount, chainHash)), "pool", SupervisorStrategy.Resume))
     val watcher = system.actorOf(SimpleSupervisor.props(Props(new ElectrumWatcher(blockCount, clientPool)), "watcher", SupervisorStrategy.Resume))
     val wallet = system.actorOf(ElectrumWallet.props(seed, clientPool, ElectrumWallet.WalletParameters(chainHash, walletDb)), "wallet")
     val catcher = system.actorOf(Props(new WalletEventsCatcher), "catcher")
@@ -160,11 +164,6 @@ class SyncParams {
   val acceptThreshold = 1 // ShortIds and updates are accepted if confirmed by more than this peers
   val messagesToAsk = 1000 // Ask for this many messages from peer before they say this chunk is done
   val chunksToWait = 4 // Wait for at least this much chunk iterations from any peer before recording results
-
-  val defaultRouterConf: RouterConf =
-    RouterConf(maxCltvDelta = CltvExpiryDelta(2016), routeHopDistance = 6,
-      mppMinPartAmount = MilliSatoshi(10000000L), maxRemoteAttempts = 12,
-      maxChannelFailures = 6, maxStrangeNodeFailures = 12)
 }
 
 // Important: LNParams.format must be defined

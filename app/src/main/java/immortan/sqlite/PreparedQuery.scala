@@ -18,13 +18,20 @@ trait PreparedQuery {
 case class PreparedQuerySQLiteGeneral(stmt: PreparedStatement) extends PreparedQuery { me =>
 
   def bound(params: Object*): PreparedQuery = {
-    params.zipWithIndex.foreach {
-      case (queryParameter: JDouble, positionIndex) => stmt.setDouble(positionIndex + 1, queryParameter)
-      case (queryParameter: String, positionIndex) => stmt.setString(positionIndex + 1, queryParameter)
-      case (queryParameter: Bytes, positionIndex) => stmt.setBytes(positionIndex + 1, queryParameter)
-      case (queryParameter: JLong, positionIndex) => stmt.setLong(positionIndex + 1, queryParameter)
-      case (queryParameter: JInt, positionIndex) => stmt.setInt(positionIndex + 1, queryParameter)
-      case _ => throw new RuntimeException
+    // Mutable, but local and saves one iteration
+    var positionIndex = 1
+
+    for (queryParameter <- params) {
+      queryParameter match {
+        case queryParameter: JDouble => stmt.setDouble(positionIndex, queryParameter)
+        case queryParameter: String => stmt.setString(positionIndex, queryParameter)
+        case queryParameter: Bytes => stmt.setBytes(positionIndex, queryParameter)
+        case queryParameter: JLong => stmt.setLong(positionIndex, queryParameter)
+        case queryParameter: JInt => stmt.setInt(positionIndex, queryParameter)
+        case _ => throw new RuntimeException
+      }
+
+      positionIndex += 1
     }
 
     me

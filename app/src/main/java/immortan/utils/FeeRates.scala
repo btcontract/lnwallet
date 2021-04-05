@@ -26,10 +26,10 @@ object FeeRates {
   }
 
   var listeners: Set[FeeRatesListener] = Set.empty
+
   val subscription: Subscription = retryRepeatDelayedCall.subscribe(newRates => {
-    val newRatesInfo = FeeRatesInfo(newRates, System.currentTimeMillis)
-    for (lst <- listeners) lst.onFeeRates(newRatesInfo)
-    LNParams.feeRatesInfo = newRatesInfo
+    LNParams.feeRatesInfo = FeeRatesInfo(newRates, System.currentTimeMillis)
+    for (lst <- listeners) lst.onFeeRates(LNParams.feeRatesInfo)
   }, none)
 
   val defaultFeerates: FeeratesPerKB =

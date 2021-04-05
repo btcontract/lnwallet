@@ -5,15 +5,15 @@ import immortan.crypto.Tools._
 import scala.collection.JavaConverters._
 
 import immortan.utils.{Rx, Statistics}
+import java.util.concurrent.{Executors, TimeUnit}
 import immortan.crypto.{CanBeRepliedTo, StateMachine}
 import fr.acinq.eclair.{CltvExpiryDelta, MilliSatoshi}
+import fr.acinq.eclair.wire.{ChannelUpdate, ShortIdAndPosition}
 import scala.concurrent.{ExecutionContext, ExecutionContextExecutor}
 import fr.acinq.eclair.router.{Announcements, ChannelUpdateExt, Router}
 import fr.acinq.eclair.router.Router.{Data, PublicChannel, RouteRequest}
 import fr.acinq.eclair.router.Graph.GraphStructure.{DirectedGraph, GraphEdge}
 import fr.acinq.eclair.router.RouteCalculation.handleRouteRequest
-import fr.acinq.eclair.wire.{ChannelUpdate, ShortIdAndPosition}
-import java.util.concurrent.{Executors, TimeUnit}
 import com.google.common.cache.CacheBuilder
 import scala.collection.mutable
 
@@ -31,15 +31,14 @@ object PathFinder {
 
 case class AvgHopParams(cltvExpiryDelta: CltvExpiryDelta, feeProportionalMillionths: MilliSatoshi, feeBaseMsat: MilliSatoshi, sampleSize: Long)
 
-abstract class PathFinder(val normalStore: NetworkBag, val hostedStore: NetworkBag) extends StateMachine[Data] { me =>
+abstract class PathFinder(val normalBag: NetworkBag, val hostedBag: NetworkBag) extends StateMachine[Data] { me =>
   private val extraEdges = CacheBuilder.newBuilder.expireAfterWrite(1, TimeUnit.DAYS).maximumSize(5000).build[ShortIdAndPosition, GraphEdge]
   val extraEdgesMap: mutable.Map[ShortIdAndPosition, GraphEdge] = extraEdges.asMap.asScala
+  var listeners: Set[CanBeRepliedTo] = Set.empty
+  var debugMode: Boolean = false
 
   implicit val context: ExecutionContextExecutor = ExecutionContext fromExecutor Executors.newSingleThreadExecutor
   def process(changeMessage: Any): Unit = scala.concurrent.Future(me doProcess changeMessage)
-
-  var listeners: Set[CanBeRepliedTo] = Set.empty
-  var debugMode: Boolean = false
 
   // We don't load routing data on every startup but when user (or system) actually needs it
   become(Data(channels = Map.empty, hostedChannels = Map.empty, graph = DirectedGraph.apply), WAITING)
@@ -48,8 +47,11 @@ abstract class PathFinder(val normalStore: NetworkBag, val hostedStore: NetworkB
 
   def getLastTotalResyncStamp: Long
   def getLastNormalResyncStamp: Long
+
   def updateLastTotalResyncStamp(stamp: Long): Unit
   def updateLastNormalResyncStamp(stamp: Long): Unit
+
+  def getPHCExtraNodes: Set[RemoteNodeInfo]
   def getExtraNodes: Set[RemoteNodeInfo]
 
   def doProcess(change: Any): Unit = (change, state) match {
@@ -85,21 +87,21 @@ abstract class PathFinder(val normalStore: NetworkBag, val hostedStore: NetworkB
       me process CMDResync
 
     case (CMDLoadGraph, WAITING) =>
-      val normalShortIdToPubChan = normalStore.getRoutingData
-      val hostedShortIdToPubChan = hostedStore.getRoutingData
+      val normalShortIdToPubChan = normalBag.getRoutingData
+      val hostedShortIdToPubChan = hostedBag.getRoutingData
       val searchGraph1 = DirectedGraph.makeGraph(normalShortIdToPubChan ++ hostedShortIdToPubChan).addEdges(extraEdgesMap.values)
       become(Data(normalShortIdToPubChan, hostedShortIdToPubChan, searchGraph1), OPERATIONAL)
       listeners.foreach(_ process NotifyOperational)
 
     case (CMDResync, OPERATIONAL) if System.currentTimeMillis - getLastNormalResyncStamp > RESYNC_PERIOD =>
       // Last normal sync has happened too long ago, start with normal sync, then proceed with PHC sync
-      new SyncMaster(getExtraNodes, normalStore.listExcludedChannels, data) { self =>
+      new SyncMaster(getExtraNodes, normalBag.listExcludedChannels, data) { self =>
         def onChunkSyncComplete(pure: PureRoutingData): Unit = me process pure
         def onTotalSyncComplete: Unit = me process self
       }
 
     case (CMDResync, OPERATIONAL) =>
-      new PHCSyncMaster(getExtraNodes, data) {
+      new PHCSyncMaster(getPHCExtraNodes, data) {
         // Normal resync has happened recently, but PHC resync is outdated (PHC failed last time due to running out of attempts)
         // in this case we skip normal sync and start directly with PHC sync to save time and increase PHC sync success chances
         def onSyncComplete(pure: CompleteHostedRoutingData): Unit = me process pure
@@ -107,10 +109,10 @@ abstract class PathFinder(val normalStore: NetworkBag, val hostedStore: NetworkB
 
     case (pure: CompleteHostedRoutingData, OPERATIONAL) =>
       // First, completely replace PHC data with obtained one
-      hostedStore.processCompleteHostedData(pure)
+      hostedBag.processCompleteHostedData(pure)
 
       // Then reconstruct graph with new PHC data
-      val hostedShortIdToPubChan = hostedStore.getRoutingData
+      val hostedShortIdToPubChan = hostedBag.getRoutingData
       val searchGraph1 = DirectedGraph.makeGraph(data.channels ++ hostedShortIdToPubChan)
       val searchGraph2 = searchGraph1.addEdges(extraEdgesMap.values)
 
@@ -120,21 +122,25 @@ abstract class PathFinder(val normalStore: NetworkBag, val hostedStore: NetworkB
 
     case (pure: PureRoutingData, OPERATIONAL) =>
       // Run in this thread to not overload SyncMaster
-      normalStore.processPureData(pure)
+      normalBag.processPureData(pure)
 
     case (sync: SyncMaster, OPERATIONAL) =>
       // Get rid of channels which peers know nothing about
-      val normalShortIdToPubChan = normalStore.getRoutingData
-      val oneSideShortIds = normalStore.listChannelsWithOneUpdate
+      val normalShortIdToPubChan = normalBag.getRoutingData
+      val oneSideShortIds = normalBag.listChannelsWithOneUpdate
       val ghostIds = normalShortIdToPubChan.keySet.diff(sync.provenShortIds)
       val normalShortIdToPubChan1 = normalShortIdToPubChan -- ghostIds -- oneSideShortIds
       val searchGraph1 = DirectedGraph.makeGraph(normalShortIdToPubChan1 ++ data.hostedChannels)
       val searchGraph2 = searchGraph1.addEdges(extraEdgesMap.values)
 
+      new PHCSyncMaster(getPHCExtraNodes, data) {
+        // Normal resync has just finished, we have everything to start PHC sync
+        def onSyncComplete(pure: CompleteHostedRoutingData): Unit = me process pure
+      }
+
       become(Data(normalShortIdToPubChan1, data.hostedChannels, searchGraph2), OPERATIONAL)
-      new PHCSyncMaster(getExtraNodes, data) { def onSyncComplete(pure: CompleteHostedRoutingData): Unit = me process pure }
-      // Perform database cleaning in a different thread since it's relatively slow and we are operational now
-      Rx.ioQueue.foreach(_ => normalStore.removeGhostChannels(ghostIds, oneSideShortIds), none)
+      // Perform database cleaning in a different thread since it's slow and we are operational now
+      Rx.ioQueue.foreach(_ => normalBag.removeGhostChannels(ghostIds, oneSideShortIds), none)
       // Update normal checkpoint, if PHC sync fails this time we'll jump to it next time
       updateLastNormalResyncStamp(System.currentTimeMillis)
       listeners.foreach(_ process NotifyOperational)
@@ -146,11 +152,11 @@ abstract class PathFinder(val normalStore: NetworkBag, val hostedStore: NetworkB
     // If disabled channel stays disabled for a long time it will be pruned by peers and then by us
 
     case (cu: ChannelUpdate, OPERATIONAL) if data.channels.contains(cu.shortChannelId) =>
-      val data1 = resolve(data.channels(cu.shortChannelId), cu, normalStore)
+      val data1 = resolve(data.channels(cu.shortChannelId), cu, normalBag)
       become(data1, OPERATIONAL)
 
     case (cu: ChannelUpdate, OPERATIONAL) if data.hostedChannels.contains(cu.shortChannelId) =>
-      val data1 = resolve(data.hostedChannels(cu.shortChannelId), cu, hostedStore)
+      val data1 = resolve(data.hostedChannels(cu.shortChannelId), cu, hostedBag)
       become(data1, OPERATIONAL)
 
     case (cu: ChannelUpdate, OPERATIONAL) =>

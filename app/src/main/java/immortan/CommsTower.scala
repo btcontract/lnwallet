@@ -121,6 +121,7 @@ object CommsTower {
       theirInit = Some(remoteInit)
 
       if (!thread.isCompleted) {
+        // TODO: propagate info that disconnect has happened because of incompatible features
         val areNetworksOK = remoteInit.networks.intersect(LNParams.ourInit.networks).nonEmpty
         val areFeaturesOK = Features.areCompatible(LNParams.ourInit.features, remoteInit.features)
         if (areNetworksOK && areFeaturesOK) for (lst <- listeners1) lst.onOperational(me, remoteInit)

@@ -1,7 +1,8 @@
 package immortan.sqlite
 
 import immortan.sqlite.SQLiteData._
-import fr.acinq.eclair.wire.{HostedChannelBranding, SwapInState}
+import fr.acinq.eclair.wire.LightningMessageCodecs.{trampolineOnCodec, swapInStateCodec}
+import fr.acinq.eclair.wire.{HostedChannelBranding, SwapInState, TrampolineOn}
 import immortan.{DataBag, StorageFormat, SwapInStateExt}
 import fr.acinq.bitcoin.{BlockHeader, ByteVector32}
 import java.lang.{Integer => JInt}
@@ -10,7 +11,6 @@ import fr.acinq.eclair.blockchain.electrum.db.WalletDb
 import fr.acinq.eclair.blockchain.electrum.ElectrumWallet.PersistentData
 import fr.acinq.eclair.blockchain.electrum.db.sqlite.SqliteWalletDb.persistentDataCodec
 import fr.acinq.eclair.wire.LightningMessageCodecs.hostedChannelBrandingCodec
-import fr.acinq.eclair.wire.LightningMessageCodecs.swapInStateCodec
 import immortan.wire.ExtCodecs.storageFormatCodec
 import fr.acinq.bitcoin.Crypto.PublicKey
 import immortan.crypto.Tools.Bytes
@@ -21,6 +21,7 @@ import scala.util.Try
 object SQLiteData {
   final val LABEL_FORMAT = "label-format"
   final val LABEL_ELECTRUM_DATA = "label-electrum-data"
+  final val LABLEL_TRAMPOLINE_ON = "label-trampoline-on"
   final val LABEL_BRANDING_PREFIX = "label-branding-node-"
   final val LABEL_SWAP_IN_STATE_PREFIX = "label-swap-in-node-"
   final val LABEL_PAYMENT_REPORT_PREFIX = "label-payment-report-"
@@ -43,6 +44,12 @@ class SQLiteData(val db: DBInterface) extends WalletDb with DataBag {
   def putFormat(format: StorageFormat): Unit = put(LABEL_FORMAT, storageFormatCodec.encode(format).require.toByteArray)
 
   def tryGetFormat: Try[StorageFormat] = tryGet(LABEL_FORMAT).map(raw => storageFormatCodec.decode(raw.toBitVector).require.value)
+
+  // Trampoline
+
+  def putTrampolineOn(ton: TrampolineOn): Unit = put(LABLEL_TRAMPOLINE_ON, trampolineOnCodec.encode(ton).require.toByteArray)
+
+  def tryGetTrampolineOn: Try[TrampolineOn] = tryGet(LABLEL_TRAMPOLINE_ON).map(raw => trampolineOnCodec.decode(raw.toBitVector).require.value)
 
   // Payment reports
 

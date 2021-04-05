@@ -385,6 +385,13 @@ sealed trait TrampolineStatus extends LightningMessage
 
 case object TrampolineUndesired extends TrampolineStatus
 
+object TrampolineOn {
+  def default(minimumMsat: MilliSatoshi, cltvExpiryDelta: CltvExpiryDelta): TrampolineOn = {
+    // A relatively high and linear defaults in case if peer still wants to route while routing is undesired by us
+    TrampolineOn(minimumMsat, 10000000000L.msat, 10000L.msat, 1000L, exponent = 1.0, logExponent = 0.0, cltvExpiryDelta)
+  }
+}
+
 case class TrampolineOn(minimumMsat: MilliSatoshi, maximumMsat: MilliSatoshi, feeBaseMsat: MilliSatoshi,
                         feeProportionalMillionths: Long, exponent: Double, logExponent: Double,
                         cltvExpiryDelta: CltvExpiryDelta) extends TrampolineStatus

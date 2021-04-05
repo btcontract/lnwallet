@@ -131,9 +131,9 @@ object Blockchain {
     * @return
     */
   def load(chainHash: ByteVector32, headerDb: HeaderDb): Blockchain = {
-    val checkpoints = CheckPoint.load(chainHash)
+    val checkpoints = CheckPoint.loadFromChainHash(chainHash)
     val checkpoints1 = headerDb.getTip match {
-      case Some((height, header)) =>
+      case Some((height, _)) =>
         val newcheckpoints = for {h <- checkpoints.size * RETARGETING_PERIOD - 1 + RETARGETING_PERIOD to height - RETARGETING_PERIOD by RETARGETING_PERIOD} yield {
           val cpheader = headerDb.getHeader(h).get
           val nextDiff = headerDb.getHeader(h + 1).get.bits

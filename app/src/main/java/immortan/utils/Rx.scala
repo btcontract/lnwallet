@@ -8,7 +8,7 @@ import rx.lang.scala.Observable
 object Rx {
   def initDelay[T](next: Observable[T], startMillis: Long, timeoutMillis: Long): Observable[T] = {
     val adjustedTimeout = startMillis + timeoutMillis - System.currentTimeMillis
-    val delayLeft = if (adjustedTimeout < 5L) 5L else adjustedTimeout
+    val delayLeft = if (adjustedTimeout < 10L) 10L else adjustedTimeout
     Observable.just(null).delay(delayLeft.millis).flatMap(_ => next)
   }
 

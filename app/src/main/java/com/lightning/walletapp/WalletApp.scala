@@ -1,55 +1,61 @@
 package com.lightning.walletapp
 
+import immortan.sqlite._
+import com.lightning.walletapp.sqlite._
 import com.lightning.walletapp.R.string._
-import com.lightning.walletapp.utils.{AwaitService, DelayedNotification, UsedAddons, WebsocketBus}
-import android.content.{ClipboardManager, Context, Intent, SharedPreferences}
+import fr.acinq.bitcoin.{Block, Crypto, SatoshiLong}
+import fr.acinq.eclair.{CltvExpiryDelta, MilliSatoshi}
+import immortan.crypto.Tools.{Bytes, Fiat2Btc, none, runAnd}
 import android.app.{Application, NotificationChannel, NotificationManager}
-import immortan.utils.{BtcDenomination, FeeRates, FiatRates}
-import immortan.crypto.Tools.{Bytes, Fiat2Btc, runAnd, none}
-import fr.acinq.bitcoin.{Block, ByteVector32, Crypto}
-import immortan.{CommsTower, LNParams}
-
+import android.content.{ClipboardManager, Context, Intent, SharedPreferences}
+import fr.acinq.eclair.blockchain.electrum.{CheckPoint, ElectrumClientPool, ElectrumWallet}
+import com.lightning.walletapp.utils.{AwaitService, DelayedNotification, UsedAddons, WebsocketBus}
+import immortan.utils.{BtcDenomination, FeeRates, FeeRatesInfo, FiatRates, FiatRatesInfo, SatDenomination}
+import immortan.{Channel, ChannelMaster, CommsTower, LNParams, MnemonicExtStorageFormat, PathFinder, RemoteNodeInfo, SyncParams}
 import fr.acinq.eclair.blockchain.electrum.ElectrumWallet.WalletReady
-import com.lightning.walletapp.sqlite.SQLiteDataExtended
+import fr.acinq.eclair.router.Router.RouterConf
 import androidx.appcompat.app.AppCompatDelegate
 import immortan.utils.Denomination.formatFiat
+import fr.acinq.eclair.wire.TrampolineOn
 import com.blockstream.libwally.Wally
-import fr.acinq.eclair.MilliSatoshi
 import androidx.multidex.MultiDex
 import scala.concurrent.Future
 import scodec.bits.ByteVector
 import android.widget.Toast
-import java.io.InputStream
 import android.os.Build
 import scala.util.Try
 
 
 object WalletApp { me =>
-  var lastWalletReady: WalletReady = _
   var extDataBag: SQLiteDataExtended = _
+  var lastWalletReady: WalletReady = _
   var usedAddons: UsedAddons = _
   var app: WalletApp = _
 
   // Should be automatically updated on receiving to current address, cached for performance
   var currentChainReceiveAddress: Future[String] = Future.failed(new RuntimeException)
 
-  final val FEE_RATES_DATA = "feeRatesData"
-  final val FIAT_RATES_DATA = "fiatRatesData"
+  final val dbFileNameMisc = "misc.db"
+  final val dbFileNameGraph = "graph.db"
+  final val dbFileNameEssential = "essentail.db"
 
   final val USE_AUTH = "useAuth"
   final val FIAT_CODE = "fiatCode"
   final val ENSURE_TOR = "ensureTor"
+  final val ROUTING_DESIRED = "ensureTor"
   final val MAKE_CHAN_BACKUP = "makeChanBackup"
-  final val CAP_LN_FEE_TO_CHAIN = "canLnFeeToChain"
+  final val CAP_LN_FEE_TO_CHAIN = "capLNFeeToChain"
+  final val LAST_TOTAL_GOSSIP_SYNC = "lastTotalGossipSync"
+  final val LAST_NORMAL_GOSSIP_SYNC = "lastNormalGossipSync"
 
   def useAuth: Boolean = app.prefs.getBoolean(USE_AUTH, false)
   def fiatCode: String = app.prefs.getString(FIAT_CODE, "usd")
   def ensureTor: Boolean = app.prefs.getBoolean(ENSURE_TOR, false)
   def makeChanBackup: Boolean = app.prefs.getBoolean(MAKE_CHAN_BACKUP, true)
-  def canLnFeeToChain: Boolean = app.prefs.getBoolean(CAP_LN_FEE_TO_CHAIN, false)
+  def canLNFeeToChain: Boolean = app.prefs.getBoolean(CAP_LN_FEE_TO_CHAIN, false)
 
   // Due to Android specifics any of these may be nullified at runtime, must check for liveness on every entry
-  def isAlive: Boolean = null != lastWalletReady && null != extDataBag && null != usedAddons && null != app
+  def isAlive: Boolean = null != extDataBag && null != lastWalletReady && null != usedAddons && null != app
 
   def freePossiblyUsedResouces: Unit = {
     // Drop whatever network connections we still have
@@ -63,15 +69,88 @@ object WalletApp { me =>
     try FeeRates.subscription.unsubscribe catch none
     try LNParams.becomeShutDown catch none
 
-    // Nullify all vars
-    lastWalletReady = null
     extDataBag = null
+    lastWalletReady = null
     usedAddons = null
   }
 
   def makeAlive: Unit = {
-    freePossiblyUsedResouces
+    // Make application minimally operational (so we can check for seed in db)
+    val miscInterface = new DBInterfaceSQLiteAndroidMisc(app, dbFileNameMisc)
 
+    miscInterface txWrap {
+      extDataBag = new SQLiteDataExtended(miscInterface)
+      usedAddons = extDataBag.tryGetAddons getOrElse UsedAddons(List.empty)
+
+      lastWalletReady = extDataBag.tryGetLastWalletReady getOrElse {
+        // We need to show something to user so use this until wallet is done
+        ElectrumWallet.WalletReady(0L.sat, 0L.sat, 0L, System.currentTimeMillis)
+      }
+    }
+  }
+
+  def makeOperational(format: MnemonicExtStorageFormat): Unit = {
+    require(isAlive, "Application is not alive, hence can not become operational")
+    val essentialInterface = new DBInterfaceSQLiteAndroidMisc(app, dbFileNameEssential)
+    val graphInterface = new DBInterfaceSQLiteAndroidMisc(app, dbFileNameGraph)
+
+    val normalBag = new SQLiteNetwork(graphInterface, NormalChannelUpdateTable, NormalChannelAnnouncementTable, NormalExcludedChannelTable)
+    val hostedBag = new SQLiteNetwork(graphInterface, HostedChannelUpdateTable, HostedChannelAnnouncementTable, HostedExcludedChannelTable)
+    val payBag = new SQLitePayment(extDataBag.db, essentialInterface)
+    val chanBag = new SQLiteChannel(essentialInterface)
+
+    val defaultRouterConf: RouterConf =
+      RouterConf(maxCltvDelta = CltvExpiryDelta(2016), routeHopDistance = 6,
+        mppMinPartAmount = MilliSatoshi(10000000L), maxRemoteAttempts = 12,
+        maxChannelFailures = 6, maxStrangeNodeFailures = 12)
+
+    LNParams.format = format
+    LNParams.routerConf = defaultRouterConf
+    LNParams.denomination = SatDenomination
+    LNParams.syncParams = new SyncParams
+
+    extDataBag.db txWrap {
+      LNParams.fiatRatesInfo = extDataBag.tryGetFiatRatesInfo getOrElse FiatRatesInfo(Map.empty, Map.empty, stamp = Long.MaxValue) // TODO: set to 0L
+      LNParams.feeRatesInfo = extDataBag.tryGetFeeRatesInfo getOrElse FeeRatesInfo(FeeRates.defaultFeerates, stamp = Long.MaxValue) // TODO: set to 0L
+      LNParams.trampoline = extDataBag.tryGetTrampolineOn getOrElse TrampolineOn.default(LNParams.minPayment, LNParams.routingCltvExpiryDelta)
+    }
+
+    val pf = new PathFinder(normalBag, hostedBag) {
+      override def getLastTotalResyncStamp: Long = app.prefs.getLong(LAST_TOTAL_GOSSIP_SYNC, Long.MaxValue) // TODO: set to 0L
+      override def getLastNormalResyncStamp: Long = app.prefs.getLong(LAST_NORMAL_GOSSIP_SYNC, Long.MaxValue) // TODO: set to 0L
+      override def updateLastTotalResyncStamp(stamp: Long): Unit = app.prefs.edit.putLong(LAST_TOTAL_GOSSIP_SYNC, stamp).commit
+      override def updateLastNormalResyncStamp(stamp: Long): Unit = app.prefs.edit.putLong(LAST_NORMAL_GOSSIP_SYNC, stamp).commit
+      override def getExtraNodes: Set[RemoteNodeInfo] = LNParams.cm.all.values.flatMap(Channel.chanAndCommitsOpt).map(_.commits.remoteInfo).toSet
+      override def getPHCExtraNodes: Set[RemoteNodeInfo] = LNParams.cm.allHosted.values.flatMap(Channel.chanAndCommitsOpt).map(_.commits.remoteInfo).toSet
+    }
+
+    ElectrumClientPool.loadFromChainHash = {
+      case Block.LivenetGenesisBlock.hash => ElectrumClientPool.readServerAddresses(app.getAssets open "servers_mainnet.json", sslEnabled = false)
+      case Block.TestnetGenesisBlock.hash => ElectrumClientPool.readServerAddresses(app.getAssets open "servers_testnet.json", sslEnabled = false)
+      case Block.RegtestGenesisBlock.hash => ElectrumClientPool.readServerAddresses(app.getAssets open "servers_regtest.json", sslEnabled = false)
+      case _ => throw new RuntimeException
+    }
+
+    CheckPoint.loadFromChainHash = {
+      case Block.LivenetGenesisBlock.hash => CheckPoint.load(app.getAssets open "checkpoints_mainnet.json")
+      case Block.TestnetGenesisBlock.hash => CheckPoint.load(app.getAssets open "checkpoints_testnet.json")
+      case Block.RegtestGenesisBlock.hash => Vector.empty
+      case _ => throw new RuntimeException
+    }
+
+    LNParams.cm = new ChannelMaster(payBag, chanBag, extDataBag, pf)
+    LNParams.chainWallet = LNParams.createWallet(extDataBag, format.seed)
+    LNParams.isRoutingDesired = app.prefs.getBoolean(ROUTING_DESIRED, false)
+
+    // Take care of essential listeners
+    LNParams.chainWallet.eventsCatcher ! LNParams.cm.chainChannelListener
+    FeeRates.listeners += LNParams.cm.feeRatesListener
+    pf.listeners += LNParams.cm.opm
+
+    // Get up channels and payment FSMs
+    LNParams.cm.all = Channel.load(Set(LNParams.cm), LNParams.cm.chanBag)
+    // This is a critically important update which will create routed and incoming FSMs if we still have pending payments in channels
+    LNParams.cm.notifyFSMs(LNParams.cm.allInChannelOutgoing, LNParams.cm.allIncomingResolutions, Nil, makeMissingOutgoingFSM = true)
   }
 
   def syncAddonUpdate(fun: UsedAddons => UsedAddons): Unit = me synchronized {
@@ -168,17 +247,5 @@ class WalletApp extends Application { me =>
   def englishWordList: Array[String] = {
     val raw = getAssets.open("bip39_english_wordlist.txt")
     scala.io.Source.fromInputStream(raw, "UTF-8").getLines.toArray
-  }
-
-  def electrumCheckpoints(chainHash: ByteVector32): InputStream = chainHash match {
-    case Block.LivenetGenesisBlock.hash => getAssets.open("checkpoints_mainnet.json")
-    case Block.TestnetGenesisBlock.hash => getAssets.open("checkpoints_testnet.json")
-    case _ => throw new RuntimeException
-  }
-
-  def electrumServers(chainHash: ByteVector32): InputStream = chainHash match {
-    case Block.LivenetGenesisBlock.hash => getAssets.open("servers_mainnet.json")
-    case Block.TestnetGenesisBlock.hash => getAssets.open("servers_testnet.json")
-    case _ => throw new RuntimeException
   }
 }

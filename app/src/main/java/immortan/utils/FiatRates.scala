@@ -26,10 +26,10 @@ object FiatRates {
   }
 
   var listeners: Set[FiatRatesListener] = Set.empty
+
   val subscription: Subscription = retryRepeatDelayedCall.subscribe(newRates => {
-    val newRatesInfo = FiatRatesInfo(newRates, LNParams.fiatRatesInfo.rates, System.currentTimeMillis)
-    for (lst <- listeners) lst.onFiatRates(newRatesInfo)
-    LNParams.fiatRatesInfo = newRatesInfo
+    LNParams.fiatRatesInfo = FiatRatesInfo(newRates, LNParams.fiatRatesInfo.rates, System.currentTimeMillis)
+    for (lst <- listeners) lst.onFiatRates(LNParams.fiatRatesInfo)
   }, none)
 }
 

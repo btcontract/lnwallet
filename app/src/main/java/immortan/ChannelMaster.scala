@@ -9,12 +9,11 @@ import immortan.PaymentStatus._
 import immortan.ChannelMaster._
 import fr.acinq.eclair.channel._
 import scala.concurrent.duration._
-import immortan.crypto.{CanBeRepliedTo, CanBeShutDown, StateMachine}
-import fr.acinq.eclair.transactions.{RemoteFulfill, RemoteReject}
-import immortan.ChannelListener.{Malfunction, Transition}
 import fr.acinq.bitcoin.Crypto.{PrivateKey, PublicKey}
-import immortan.utils.{Rx, WalletEventsListener}
-
+import immortan.ChannelListener.{Malfunction, Transition}
+import fr.acinq.eclair.transactions.{RemoteFulfill, RemoteReject}
+import immortan.crypto.{CanBeRepliedTo, CanBeShutDown, StateMachine}
+import immortan.utils.{FeeRatesInfo, FeeRatesListener, Rx, WalletEventsListener}
 import fr.acinq.eclair.blockchain.electrum.ElectrumWallet.WalletReady
 import fr.acinq.eclair.blockchain.CurrentBlockCount
 import fr.acinq.eclair.payment.IncomingPacket
@@ -77,25 +76,30 @@ class ChannelMaster(val payBag: PaymentBag, val chanBag: ChannelBag, val dataBag
   val initResolveMemo: LoadingCache[UpdateAddHtlcExt, IncomingResolution] = memoize(initResolve)
   val getPreimageMemo: LoadingCache[ByteVector32, PreimageTry] = memoize(payBag.getPreimage)
 
-  // Keep track of chain height
-  // Keep track of last disconnect stamp
-  // Notify channels about current chain height
-  // Connect sockets once chain height becomes known
   val chainChannelListener: WalletEventsListener = new WalletEventsListener {
     override def onCurrentBlockCount(event: CurrentBlockCount): Unit = {
+      // Notify channels about current chain height
       LNParams.blockCount.set(event.blockCount)
       all.values.foreach(_ process event)
     }
 
     override def onWalletReady(event: WalletReady): Unit = {
+      // Invalidate last disconnect stamp since we're up again
       LNParams.blockCount.set(event.height)
       LNParams.lastDisconnect = None
+      // Connect sockets now
       initConnect
     }
 
     override def onElectrumDisconnected: Unit = {
+      // Remember when disconnect happened to eventually stop accepting payments
       LNParams.lastDisconnect = System.currentTimeMillis.toSome
     }
+  }
+
+  val feeRatesListener: FeeRatesListener = new FeeRatesListener {
+    // Unless anchor outputs are used we need to priodically adjust channel fee-rates to avoid force-closing
+    def onFeeRates(rates: FeeRatesInfo): Unit = all.values.foreach(_ process CMD_CHECK_FEERATE)
   }
 
   val socketChannelListener: ConnectionListener = new ConnectionListener {
@@ -134,7 +138,7 @@ class ChannelMaster(val payBag: PaymentBag, val chanBag: ChannelBag, val dataBag
         if (data.inFlightParts.nonEmpty) {
           // Sender FSM won't have in-flight parts after restart
           val usedRoutesReport = data.usedRoutesAsString(LNParams.denomination)
-          for (ext <- data.successfulUpdates) pf.normalStore.incrementScore(ext.update)
+          for (ext <- data.successfulUpdates) pf.normalBag.incrementScore(ext.update)
           dataBag.putReport(fulfill.ourAdd.paymentHash, usedRoutesReport)
         }
       }
@@ -155,7 +159,6 @@ class ChannelMaster(val payBag: PaymentBag, val chanBag: ChannelBag, val dataBag
   val opm: OutgoingPaymentMaster = new OutgoingPaymentMaster(me)
   var inProcessors = Map.empty[FullPaymentTag, IncomingPaymentProcessor]
   var all = Map.empty[ByteVector32, Channel]
-  pf.listeners += opm
 
   // CHANNEL MANAGEMENT
 
