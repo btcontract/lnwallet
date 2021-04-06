@@ -1,16 +1,54 @@
 <RelativeLayout
-    style="@style/StandardLinearLayout"
-    xmlns:android="http://schemas.android.com/apk/res/android">
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    style="@style/StandardXYMarginLinearLayout"
+    android:id="@+id/contentWindow">
 
-    <FrameLayout
-        android:id="@+id/contentWindow"
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:layout_above="@id/bottomNavigation"/>
+    <androidx.appcompat.widget.SwitchCompat
+        android:layout_alignParentEnd="true"
+        android:text="@string/dialog_routing"
+        android:id="@+id/switch_compat"
+        style="@style/BoundedView"
+        android:checked="false"/>
 
-    <com.aurelhubert.ahbottomnavigation.AHBottomNavigation
+    <LinearLayout
+        android:baselineAligned="true"
+        style="@style/StandardLinearLayout">
+
+        <ListView
+            android:layout_weight="1"
+            android:id="@+id/itemsList"
+            android:layout_height="wrap_content"
+            android:layout_width="0dp"/>
+
+    </LinearLayout>
+
+    <LinearLayout
+        android:background="@drawable/linear_layout_rounded_corners"
+        android:layout_centerHorizontal="true"
         android:layout_alignParentBottom="true"
-        android:id="@+id/bottomNavigation"
-        style="@style/FillingView"/>
+        android:layout_height="wrap_content"
+        android:layout_width="wrap_content"
+        android:orientation="horizontal"
+        android:id="@+id/actionBar"
+        android:gravity="center">
 
+        <com.ornach.nobobutton.NoboButton
+            android:layout_margin="@dimen/chip_default_padding_edge"
+            app:nb_text="@string/dialog_send"
+            android:layout_width="110dp"
+            style="@style/GrayButton"/>
+
+        <com.ornach.nobobutton.NoboButton
+            app:nb_drawableResource="@drawable/outline_qr_code_scanner_24"
+            android:onClick="bringUpScanner"
+            style="@style/GrayButton"/>
+
+        <com.ornach.nobobutton.NoboButton
+            android:layout_margin="@dimen/chip_default_padding_edge"
+            app:nb_text="@string/dialog_receive"
+            android:layout_width="110dp"
+            style="@style/GrayButton"/>
+
+    </LinearLayout>
 </RelativeLayout>

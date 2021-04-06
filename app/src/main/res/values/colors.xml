@@ -1,5 +1,7 @@
 <resources>
     <color name="bg">#282B30</color>
+    <color name="bgalpha">#99282B30</color>
+
     <color name="ln">#0099FE</color>
     <color name="btc">#E68A00</color>
     <color name="colorBlue">#8FDCFF</color>
@@ -16,8 +18,8 @@
     <color name="buttonRedBorder">#D1231E</color>
     <color name="buttonRed">#AF1212</color>
 
-    <color name="buttonGrayRipple">#9295A3</color>
-    <color name="buttonGrayBorder">#63646E</color>
+    <color name="buttonGrayRipple">#868899</color>
+    <color name="buttonGrayBorder">#393939</color>
 
     <!-- nachos -->
 

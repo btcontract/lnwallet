@@ -38,11 +38,19 @@
     <string name="action_recovery_phrase_hint">Type 12 phrase words</string>
 
     <string name="dialog_ok">OK</string>
+    <string name="dialog_view">View</string>
     <string name="dialog_cancel">Cancel</string>
+    <string name="dialog_routing">Routing</string>
+    <string name="dialog_receive">Receive</string>
+    <string name="dialog_send">Send</string>
+
+    <string name="buffer_invoice_found">Lighting invoice is found in clipboard</string>
+    <string name="buffer_address_found">Bitcoin address is found in clipboard</string>
+    <string name="buffer_link_found">Payment link is found in clipboard</string>
 
     <!-- errors -->
 
-    <string name="error_could_not_decrypt"><![CDATA[<strong>Backup decryption failed</strong>.<br><br>Please make sure that both backup file and recovery phrase are correct.<br><br>Error details:<br><br>%1$s]]></string>
+    <string name="error_could_not_decrypt"><![CDATA[<strong>Backup decryption failed</strong>.<br><br>Make sure that both backup file and recovery phrase are correct.<br><br>Error details:<br><br>%1$s]]></string>
     <string name="error_wrong_phrase"><![CDATA[<strong>A phrase must be 12 words long</strong>.<br><br><strong>All words must be different</strong>.]]></string>
 
     <!-- /errors -->

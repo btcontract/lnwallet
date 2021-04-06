@@ -74,9 +74,7 @@ class MainActivity extends NfcReaderActivity with BaseActivity { me =>
     def makeAttempt: Unit = WalletApp.extDataBag.tryGetFormat match {
       case Success(formatWithSeedPresent: MnemonicExtStorageFormat) =>
         // For now we specifically need a seed to initialize chain wallet
-        val a = System.currentTimeMillis()
         WalletApp.makeOperational(formatWithSeedPresent)
-        println(s"-- ${System.currentTimeMillis() - a}")
         me exitTo ClassNames.hubActivityClass
 
       case _ =>

@@ -1,28 +1,64 @@
 package com.lightning.walletapp
 
+import immortan.utils._
+import immortan.crypto.Tools._
 import com.lightning.walletapp.R.string._
-import com.aurelhubert.ahbottomnavigation._
-import android.widget.FrameLayout
+import android.widget.RelativeLayout
+import android.content.ClipData
 import android.os.Bundle
+import android.view.View
 import immortan.LNParams
+import scala.util.Try
 
 
-class HubActivity extends BaseActivity with AHBottomNavigation.OnTabSelectedListener { me =>
-  lazy val bottomNavigation: AHBottomNavigation = findViewById(R.id.bottomNavigation).asInstanceOf[AHBottomNavigation]
-  lazy val contentWindow: FrameLayout = findViewById(R.id.contentWindow).asInstanceOf[FrameLayout]
+class HubActivity extends BaseActivity with ExternalDataChecker { me =>
+  private[this] lazy val contentWindow = findViewById(R.id.contentWindow).asInstanceOf[RelativeLayout]
+
+  override def onResume: Unit = {
+    checkCurrentClipboard
+    super.onResume
+  }
+
+  def checkExternalData: Unit = {
+
+  }
 
   def INIT(state: Bundle): Unit =
     if (WalletApp.isAlive && LNParams.isOperational) {
       setContentView(com.lightning.walletapp.R.layout.activity_hub)
-      val wallet = new AHBottomNavigationItem(item_wallet, R.drawable.ic_item_wallet_black_24dp, R.color.accent, "wallet")
-      val shopping = new AHBottomNavigationItem(item_shopping, R.drawable.ic_item_shopping_black_24dp, R.color.accent, "shopping")
-      val addons = new AHBottomNavigationItem(item_addons, R.drawable.ic_item_add_black_24dp, R.color.accent, "addons")
-      bottomNavigation addItems java.util.Arrays.asList(wallet, shopping, addons)
-      bottomNavigation setOnTabSelectedListener me
     } else {
       WalletApp.freePossiblyUsedResouces
       me exitTo ClassNames.mainActivityClass
     }
 
-  def onTabSelected(position: Int, tag: String, wasSelected: Boolean): Boolean = true
+  def checkCurrentClipboard: Unit =
+    Try(WalletApp.app.getBufferUnsafe) foreach { content =>
+      runInFutureProcessOnUI(InputParser.parse(content), none) {
+
+        case _: PaymentRequestExt =>
+          val message = getString(buffer_invoice_found)
+          snack(contentWindow, message, dialog_view, _.dismiss)
+          clearClipboard
+
+        case _: BitcoinUri =>
+          val message = getString(buffer_address_found)
+          snack(contentWindow, message, dialog_view, _.dismiss)
+          clearClipboard
+
+        case _: LNUrl =>
+          val message = getString(buffer_link_found)
+          snack(contentWindow, message, dialog_view, _.dismiss)
+          clearClipboard
+
+        case _ =>
+        // Do nothing
+      }
+    }
+
+  def clearClipboard: Unit = {
+    val nothing = ClipData.newPlainText(null, new String)
+    WalletApp.app.clipboardManager.setPrimaryClip(nothing)
+  }
+
+  def bringUpScanner(view: View): Unit = callScanner(me)
 }
