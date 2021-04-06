@@ -37,9 +37,7 @@ sealed trait IncomingProcessorData
 case class IncomingRevealed(preimage: ByteVector32) extends IncomingProcessorData
 case class IncomingAborted(failure: Option[FailureMessage] = None) extends IncomingProcessorData
 
-// TODO: remove crowdfund invoice
 class IncomingPaymentReceiver(val fullTag: FullPaymentTag, cm: ChannelMaster) extends IncomingPaymentProcessor {
-  def gotSome(adds: ReasonableLocals): Boolean = adds.nonEmpty && amountIn(adds) >= adds.head.packet.payload.totalAmount
   def askCovered(adds: ReasonableLocals, info: PaymentInfo): Boolean = info.pr.amount.exists(asked => amountIn(adds) >= asked)
   def amountIn(adds: ReasonableLocals): MilliSatoshi = adds.map(_.add.amountMsat).sum
 
@@ -73,23 +71,9 @@ class IncomingPaymentReceiver(val fullTag: FullPaymentTag, cm: ChannelMaster) ex
       delayedCMDWorker.replaceWork(CMDTimeout)
 
     case (CMDTimeout, null, RECEIVING) =>
-      become(null, FINALIZING)
+      // Too many time has passed since last seen incoming payment
+      become(IncomingAborted(PaymentTimeout.toSome), FINALIZING)
       cm.stateUpdated(Nil)
-
-    // We need this extra RECEIVING -> FINALIZING step instead of failing right away
-    // in case if we ever decide to use an amount-less fast crowdfund invoices
-
-    case (inFlight: InFlightPayments, null, FINALIZING) =>
-      val adds = inFlight.in(fullTag).asInstanceOf[ReasonableLocals]
-      val preimageTry: PreimageTry = cm.getPreimageMemo.get(fullTag.paymentHash)
-
-      cm.getPaymentInfoMemo.get(fullTag.paymentHash).toOption match {
-        case Some(alreadyRevealed) if alreadyRevealed.isIncoming && PaymentStatus.SUCCEEDED == alreadyRevealed.status => becomeRevealed(alreadyRevealed.preimage, adds)
-        case Some(coveredAll) if coveredAll.isIncoming && coveredAll.pr.amount.isDefined && askCovered(adds, coveredAll) => becomeRevealed(coveredAll.preimage, adds)
-        case Some(collectedSome) if collectedSome.isIncoming && collectedSome.pr.amount.isEmpty && gotSome(adds) => becomeRevealed(collectedSome.preimage, adds)
-        case _ if preimageTry.isSuccess => becomeRevealed(preimageTry.get, adds) // Conditions are not met but we have a preimage: fulfill anyway
-        case _ => becomeAborted(IncomingAborted(PaymentTimeout.toSome), adds)// Conditions are not met: nothing to do but fail
-      }
 
     case (inFlight: InFlightPayments, revealed: IncomingRevealed, FINALIZING) =>
       val adds = inFlight.in(fullTag).asInstanceOf[ReasonableLocals]

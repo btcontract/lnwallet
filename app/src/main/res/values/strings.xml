@@ -8,15 +8,30 @@
     <string name="setup_title">Wallet setup</string>
     <string name="setup_create_new">Create new wallet</string>
     <string name="setup_restore_existing">Restore existing wallet</string>
-    <string name="setup_recovery_phrase">From recovery phrase only</string>
-    <string name="setup_backup_file">From backup + recovery phrase</string>
-    <string name="setup_create_new_hint">A fresh Bitcoin wallet with a new BIP-39 recovery phrase will be generated from scratch. Once created, please write that recovery phrase down and secure it in a safe place!</string>
-    <string name="setup_backup_file_hint">Provide a file containing Lightning backup, then provide a recovery phrase to fully restore Bitcoin wallet along with Lightning channels. Turn other copies of your wallet off before proceeding.</string>
-    <string name="setup_recovery_phrase_hint">Provide a BIP-39 phrase to restore Bitcoin wallet and hosted channels only. If you had any Lightning channels on a previous device, their balances will be refunded on connecting to remote nodes you had them with.</string>
+    <string name="setup_recovery_phrase">Recovery phrase only</string>
+    <string name="setup_backup_file">Backup + recovery phrase</string>
 
-    <string name="action_recovery_phrase_backup_title"><![CDATA[
-        Wallet recovery phrase<br><br><small>Lightning backup file is present: recovery phrase will be used to decrypt it and restore fully working channels on this device.<br><br>
-        Please note that Lightning channels can work correctly on one device at a time, please do not use them on previous device once restored on this one.</small>
+    <string name="setup_create_new_hint">
+        A fresh Bitcoin wallet with a new BIP-39 recovery phrase will be generated from scratch.
+        Once created, please write that recovery phrase down and secure it in a safe place!
+    </string>
+
+    <string name="setup_backup_file_hint">
+        Provide a file containing Lightning backup, then provide a recovery
+        phrase to fully restore Bitcoin wallet along with Lightning channels.
+        Turn other copies of your wallet off before proceeding.
+    </string>
+
+    <string name="setup_recovery_phrase_hint">
+        Provide a BIP-39 phrase to restore Bitcoin wallet and hosted channels only.
+        If you had any Lightning channels on a previous device, their balances will
+        be refunded on connecting to remote nodes you had them with.
+    </string>
+
+    <string name="action_backup_present_title"><![CDATA[
+        Wallet recovery phrase<br><br><small><strong>Lightning backup file is present</strong>.
+        <br><br>Recovery phrase will be used to decrypt it and restore fully working channels on this device.<br><br>
+        Lightning channels can work correctly on one device at a time, please do not use them on previous device once restored on this one.</small>
     ]]></string>
 
     <string name="action_recovery_phrase_title"><![CDATA[Wallet recovery phrase]]></string>
@@ -25,7 +40,12 @@
     <string name="dialog_ok">OK</string>
     <string name="dialog_cancel">Cancel</string>
 
-    <string name="error_short_phrase">Recovery phrase must be 12 words long</string>
+    <!-- errors -->
+
+    <string name="error_could_not_decrypt"><![CDATA[<strong>Backup decryption failed</strong>.<br><br>Please make sure that both backup file and recovery phrase are correct.<br><br>Error details:<br><br>%1$s]]></string>
+    <string name="error_wrong_phrase"><![CDATA[<strong>A phrase must be 12 words long</strong>.<br><br><strong>All words must be different</strong>.]]></string>
+
+    <!-- /errors -->
 
     <!-- items -->
 

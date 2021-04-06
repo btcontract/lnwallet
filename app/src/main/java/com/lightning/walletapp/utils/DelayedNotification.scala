@@ -4,7 +4,7 @@ import androidx.work._
 import android.content.{Context, Intent}
 import android.app.{Notification, PendingIntent}
 import androidx.core.app.{NotificationCompat, NotificationManagerCompat}
-import com.lightning.walletapp.MainActivity
+import com.lightning.walletapp.ClassNames
 import java.util.concurrent.TimeUnit
 import fr.acinq.eclair.secureRandom
 
@@ -31,7 +31,7 @@ object DelayedNotification {
 
   class NotificationSchedule(context: Context, params: WorkerParameters) extends Worker(context, params) {
     private def setNotification(context: Context, notificationTitle: String, notificationBody: String): Unit = {
-      val disaplyIntent = PendingIntent.getActivity(context, 0, new Intent(context, MainActivity.mainActivityClass), 0)
+      val disaplyIntent = PendingIntent.getActivity(context, 0, new Intent(context, ClassNames.mainActivityClass), 0)
       val notificationBuilder = new NotificationCompat.Builder(context, CHANNEL_ID)
       val notificationId = secureRandom.nextInt(1000000)
 

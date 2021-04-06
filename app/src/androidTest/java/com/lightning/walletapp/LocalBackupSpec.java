@@ -43,7 +43,7 @@ public class LocalBackupSpec {
         try {
             // Correctly decrypt a backup file and copy it to database file location
             ByteVector cipherbytes = ByteVector.view(Files.toByteArray(LocalBackup.getBackupFileUnsafe(chainHash, seed)));
-            ByteVector plainbytes = LocalBackup.decryptBackup(cipherbytes, seed).get();
+            ByteVector plainbytes = LocalBackup.decryptBackup(cipherbytes, seed.bytes()).get();
             Assert.assertArrayEquals(plainbytes.toArray(), fileContents.toArray());
             LocalBackup.restoreFromPlainBackup(WalletApp.app(), dbFileName, plainbytes);
         } catch (Exception e) {

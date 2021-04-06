@@ -45,9 +45,9 @@ object LocalBackup { me =>
     backup
   }
 
-  def encryptBackup(backup: ByteVector, seed: ByteVector32): ByteVector = Tools.chaChaEncrypt(Crypto.sha256(seed), randomBytes(12), backup)
+  def encryptBackup(backup: ByteVector, seed: ByteVector): ByteVector = Tools.chaChaEncrypt(Crypto.sha256(seed), randomBytes(12), backup)
 
-  def decryptBackup(backup: ByteVector, seed: ByteVector32): Try[ByteVector] = Tools.chaChaDecrypt(Crypto.sha256(seed), backup)
+  def decryptBackup(backup: ByteVector, seed: ByteVector): Try[ByteVector] = Tools.chaChaDecrypt(Crypto.sha256(seed), backup)
 
   // It is assumed that database file already exists at this point
   def encryptAndWritePlainBackup(context: Context, dbFileName: String, chainHash: ByteVector32, seed: ByteVector32): Unit = {

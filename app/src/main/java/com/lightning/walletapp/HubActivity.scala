@@ -21,7 +21,7 @@ class HubActivity extends BaseActivity with AHBottomNavigation.OnTabSelectedList
       bottomNavigation setOnTabSelectedListener me
     } else {
       WalletApp.freePossiblyUsedResouces
-      me exitTo classOf[MainActivity]
+      me exitTo ClassNames.mainActivityClass
     }
 
   def onTabSelected(position: Int, tag: String, wasSelected: Boolean): Boolean = true

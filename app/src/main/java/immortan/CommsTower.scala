@@ -25,7 +25,7 @@ object CommsTower {
   val listeners: mutable.Map[KeyPairAndPubKey, Listeners] = new ConcurrentHashMap[KeyPairAndPubKey, Listeners].asScala withDefaultValue Set.empty
 
   def listen(listeners1: Set[ConnectionListener], pair: KeyPairAndPubKey, info: RemoteNodeInfo): Unit = synchronized {
-    // Update and either insert a new worker or fire onOperational on new listeners if worker currently exists and online
+    // Update and either insert a new worker or fire onOperational on NEW listeners if worker currently exists and online
     // First add listeners, then try to add worker because we may already have a connected worker, but no listeners
     listeners(pair) ++= listeners1
 
@@ -118,10 +118,10 @@ object CommsTower {
     def handleTheirRemoteInitMessage(listeners1: Set[ConnectionListener] = Set.empty)(remoteInit: Init): Unit = {
       // Use a separate variable for listeners here because a set of listeners provided to this method may be different
       // Account for a case where they disconnect while we are deciding on their features (do nothing in this case)
+      // Important: always store their init once obtained, it may be used upstream (see sync listener)
       theirInit = Some(remoteInit)
 
       if (!thread.isCompleted) {
-        // TODO: propagate info that disconnect has happened because of incompatible features
         val areNetworksOK = remoteInit.networks.intersect(LNParams.ourInit.networks).nonEmpty
         val areFeaturesOK = Features.areCompatible(LNParams.ourInit.features, remoteInit.features)
         if (areNetworksOK && areFeaturesOK) for (lst <- listeners1) lst.onOperational(me, remoteInit)

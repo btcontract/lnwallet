@@ -141,6 +141,8 @@ object LNParams extends CanBeShutDown {
   def chainDisconnectedForTooLong: Boolean = lastDisconnect.exists(_ < System.currentTimeMillis - 60 * 60 * 1000L * 2)
 
   def incorrectDetails(amount: MilliSatoshi): FailureMessage = IncorrectOrUnknownPaymentDetails(amount, blockCount.get)
+
+  def peerSupportsExtQueries(theirInit: Init): Boolean = Features.canUseFeature(LNParams.ourInit.features, theirInit.features, ChannelRangeQueriesExtended)
 }
 
 class SyncParams {

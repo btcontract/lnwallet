@@ -4,6 +4,7 @@ import immortan.SyncMaster._
 import fr.acinq.eclair.wire._
 import immortan.crypto.Tools._
 import scala.concurrent.duration._
+import com.softwaremill.quicklens._
 import QueryShortChannelIdsTlv.QueryFlagType._
 import scala.concurrent.{ExecutionContext, ExecutionContextExecutor}
 import immortan.crypto.{CanBeRepliedTo, StateMachine, Tools}
@@ -50,12 +51,13 @@ case class SyncWorkerGossipData(syncMaster: SyncMaster,
 
 case class CMDShortIdsComplete(sync: SyncWorker, data: SyncWorkerShortIdsData)
 case class CMDChunkComplete(sync: SyncWorker, data: SyncWorkerGossipData)
+case class SyncDisconnected(sync: SyncWorker, removePeer: Boolean)
 case class CMDGossipComplete(sync: SyncWorker)
 
 // This entirely relies on fact that peer sends ChannelAnnouncement messages first, then ChannelUpdate messages
 
 case class SyncWorkerPHCData(phcMaster: PHCSyncMaster,
-                             updates: Set[ChannelUpdate] = Set.empty,
+                             updates: Set[ChannelUpdate],
                              nodeIdToShortIds: Map[PublicKey, ShortChanIdSet] = Map.empty,
                              expectedPositions: Map[ShortChannelId, PositionSet] = Map.empty,
                              announces: Map[ShortChannelId, ChannelAnnouncement] = Map.empty) extends SyncWorkerData {
@@ -97,8 +99,9 @@ case class SyncWorker(master: CanBeRepliedTo, keyPair: KeyPair, remoteInfo: Remo
     override def onDisconnect(worker: CommsTower.Worker): Unit = {
       // Remove this listener and remove an object itself from master
       // This disconnect is unexpected, normal shoutdown removes listener
+      val supportsExtQueries = worker.theirInit.forall(LNParams.peerSupportsExtQueries)
+      master process SyncDisconnected(me, removePeer = !supportsExtQueries)
       CommsTower.listeners(worker.pair) -= listener
-      master process me
     }
   }
 
@@ -166,26 +169,31 @@ case class SyncWorker(master: CanBeRepliedTo, keyPair: KeyPair, remoteInfo: Remo
   }
 }
 
-trait SyncMasterData extends {
+sealed trait SyncMasterData extends { me =>
+  def getNewSync(master: CanBeRepliedTo): SyncWorker = {
+    // This relies on (1) `baseSyncs` items are never removed AND (2) size of `baseSyncs` is >= `LNParams.maxNodesToSyncFrom`
+    val unusedSyncs = activeSyncs.foldLeft(baseSyncs ++ extSyncs) { case (nodes, sync) => nodes - sync.remoteInfo }
+    SyncWorker(master, randomKeyPair, shuffle(unusedSyncs.toList).head, LNParams.ourInit)
+  }
+
+  def withoutSync(sd: SyncDisconnected): SyncMasterData = me
+    .modify(_.extSyncs).usingIf(sd.removePeer)(_ - sd.sync.remoteInfo)
+    .modify(_.activeSyncs).using(_ - sd.sync)
+
+  def baseSyncs: Set[RemoteNodeInfo]
+  def extSyncs: Set[RemoteNodeInfo]
   def activeSyncs: Set[SyncWorker]
 }
 
-trait GetNewSyncMachine extends CanBeRepliedTo { me =>
-  def getNewSync(data1: SyncMasterData, allNodes: Set[RemoteNodeInfo] = Set.empty): SyncWorker = {
-    val goodAnnounces = data1.activeSyncs.foldLeft(allNodes) { case (nodes, sync) => nodes - sync.remoteInfo }
-    SyncWorker(me, randomKeyPair, shuffle(goodAnnounces.toList).head, LNParams.ourInit)
-  }
-}
-
 case class PureRoutingData(announces: Set[ChannelAnnouncement], updates: Set[ChannelUpdate], excluded: Set[UpdateCore] = Set.empty)
-case class SyncMasterShortIdData(activeSyncs: Set[SyncWorker], collectedRanges: Map[PublicKey, SyncWorkerShortIdsData] = Map.empty) extends SyncMasterData
-case class SyncMasterGossipData(activeSyncs: Set[SyncWorker], chunksLeft: Int) extends SyncMasterData
+case class SyncMasterShortIdData(baseSyncs: Set[RemoteNodeInfo], extSyncs: Set[RemoteNodeInfo], activeSyncs: Set[SyncWorker], ranges: Map[PublicKey, SyncWorkerShortIdsData] = Map.empty) extends SyncMasterData
+case class SyncMasterGossipData(baseSyncs: Set[RemoteNodeInfo], extSyncs: Set[RemoteNodeInfo], activeSyncs: Set[SyncWorker], chunksLeft: Int) extends SyncMasterData
 
 case class UpdateConifrmState(liteUpdOpt: Option[ChannelUpdate], confirmedBy: ConfirmedBySet) {
   def add(cu: ChannelUpdate, from: PublicKey): UpdateConifrmState = copy(liteUpdOpt = Some(cu), confirmedBy = confirmedBy + from)
 }
 
-abstract class SyncMaster(extraNodes: Set[RemoteNodeInfo], excluded: Set[Long], routerData: Data) extends StateMachine[SyncMasterData] with GetNewSyncMachine { me =>
+abstract class SyncMaster(excluded: Set[Long], routerData: Data) extends StateMachine[SyncMasterData] with CanBeRepliedTo { me =>
   val confirmedChanUpdates: mutable.Map[UpdateCore, UpdateConifrmState] = mutable.Map.empty withDefaultValue UpdateConifrmState(None, Set.empty)
   val confirmedChanAnnounces: mutable.Map[ChannelAnnouncement, ConfirmedBySet] = mutable.Map.empty withDefaultValue Set.empty
   var newExcludedChanUpdates: Set[UpdateCore] = Set.empty
@@ -200,55 +208,57 @@ abstract class SyncMaster(extraNodes: Set[RemoteNodeInfo], excluded: Set[Long], 
 
   implicit val context: ExecutionContextExecutor = ExecutionContext fromExecutor Executors.newSingleThreadExecutor
   def process(changeMessage: Any): Unit = scala.concurrent.Future(me doProcess changeMessage)
-
-  become(SyncMasterShortIdData(activeSyncs = Set.empty, collectedRanges = Map.empty), SHORT_ID_SYNC)
-  (0 until LNParams.syncParams.maxNodesToSyncFrom).foreach(_ => me process CMDAddSync)
+  become(null, SHORT_ID_SYNC)
 
   def doProcess(change: Any): Unit = (change, data, state) match {
+    case (setupData: SyncMasterShortIdData, null, SHORT_ID_SYNC) =>
+      val range = 0 until LNParams.syncParams.maxNodesToSyncFrom
+      become(freshData = setupData, SHORT_ID_SYNC)
+      range.foreach(_ => me process CMDAddSync)
+
     case (CMDAddSync, data1: SyncMasterShortIdData, SHORT_ID_SYNC) if data1.activeSyncs.size < LNParams.syncParams.maxNodesToSyncFrom =>
-      val newSyncWorker: SyncWorker = getNewSync(data1, LNParams.syncParams.syncNodes ++ extraNodes)
+      // We are asked to create a new worker AND we don't have enough workers yet: create a new one and instruct it to sync right away
+
+      val newSyncWorker = data.getNewSync(me)
       become(data1.copy(activeSyncs = data1.activeSyncs + newSyncWorker), SHORT_ID_SYNC)
       newSyncWorker process SyncWorkerShortIdsData(ranges = Nil, from = 0)
 
-    case (sync: SyncWorker, SyncMasterShortIdData(activeSyncs, ranges), SHORT_ID_SYNC) =>
-      // Sync has disconnected, stop tracking it and try to connect to another one with delay
-      val data1 = SyncMasterShortIdData(activeSyncs - sync, ranges - sync.pair.them)
+    case (sd: SyncDisconnected, data1: SyncMasterShortIdData, SHORT_ID_SYNC) =>
+      become(data1.copy(ranges = data1.ranges - sd.sync.pair.them).withoutSync(sd), SHORT_ID_SYNC)
       Rx.ioQueue.delay(3.seconds).foreach(_ => me process CMDAddSync)
-      become(data1, SHORT_ID_SYNC)
 
-    case (CMDShortIdsComplete(sync, ranges1), SyncMasterShortIdData(currentSyncs, ranges), SHORT_ID_SYNC) =>
-      val data1 = SyncMasterShortIdData(collectedRanges = ranges + (sync.pair.them -> ranges1), activeSyncs = currentSyncs)
-      val isEnoughEvidence = data1.collectedRanges.size == LNParams.syncParams.maxNodesToSyncFrom
+    case (CMDShortIdsComplete(sync, ranges1), SyncMasterShortIdData(baseSyncs, extSyncs, activeSyncs, ranges), SHORT_ID_SYNC) =>
+      val data1 = SyncMasterShortIdData(baseSyncs, extSyncs, ranges = ranges + (sync.pair.them -> ranges1), activeSyncs = activeSyncs)
+      val isEnoughEvidence = data1.ranges.size == LNParams.syncParams.maxNodesToSyncFrom
       become(data1, SHORT_ID_SYNC)
 
       if (isEnoughEvidence) {
-        // We have collected enough channel ranges to start gossip
-        val goodRanges = data1.collectedRanges.values.filter(_.isHolistic)
+        // Collected enough channel ranges to start gossip
+        val goodRanges = data1.ranges.values.filter(_.isHolistic)
         val accum = mutable.Map.empty[ShortChannelId, Int] withDefaultValue 0
         goodRanges.flatMap(_.allShortIds).foreach(shortId => accum(shortId) += 1)
         provenShortIds = accum.collect { case (shortId, confs) if confs > LNParams.syncParams.acceptThreshold => shortId }.toSet
         val queries: Seq[QueryShortChannelIds] = goodRanges.maxBy(_.allShortIds.size).ranges.par.flatMap(reply2Query).toList
 
         // Transfer every worker into gossip syncing state
-        become(SyncMasterGossipData(currentSyncs, chunksLeft = LNParams.syncParams.chunksToWait), GOSSIP_SYNC)
-        for (currentSync <- currentSyncs) currentSync process SyncWorkerGossipData(me, queries)
-        for (currentSync <- currentSyncs) currentSync process CMDGetGossip
+        become(SyncMasterGossipData(baseSyncs, extSyncs, activeSyncs, LNParams.syncParams.chunksToWait), GOSSIP_SYNC)
+        for (currentSync <- activeSyncs) currentSync process SyncWorkerGossipData(me, queries)
+        for (currentSync <- activeSyncs) currentSync process CMDGetGossip
       }
 
     // GOSSIP_SYNC
 
     case (workerData: SyncWorkerGossipData, data1: SyncMasterGossipData, GOSSIP_SYNC) if data1.activeSyncs.size < LNParams.syncParams.maxNodesToSyncFrom =>
       // Turns out one of the workers has disconnected while getting gossip, create one with unused remote nodeId and track its progress
-      val newSyncWorker: SyncWorker = getNewSync(data1, LNParams.syncParams.syncNodes ++ extraNodes)
+      // Important: we retain pending queries from previous sync worker, that's why we need worker data here
 
-      // Worker is connecting, tell it to get the rest of gossip once connection is there
+      val newSyncWorker = data1.getNewSync(me)
       become(data1.copy(activeSyncs = data1.activeSyncs + newSyncWorker), GOSSIP_SYNC)
       newSyncWorker process SyncWorkerGossipData(me, workerData.queries)
 
-    case (sync: SyncWorker, data1: SyncMasterGossipData, GOSSIP_SYNC) =>
-      become(data1.copy(activeSyncs = data1.activeSyncs - sync), GOSSIP_SYNC)
-      // Sync has disconnected, stop tracking it and try to connect to another one
-      Rx.ioQueue.delay(3.seconds).foreach(_ => me process sync.data)
+    case (sd: SyncDisconnected, data1: SyncMasterGossipData, GOSSIP_SYNC) =>
+      Rx.ioQueue.delay(3.seconds).foreach(_ => me process sd.sync.data)
+      become(data1.withoutSync(sd), GOSSIP_SYNC)
 
     case (CMDChunkComplete(sync, workerData), data1: SyncMasterGossipData, GOSSIP_SYNC) =>
       for (liteAnnounce <- workerData.announces) confirmedChanAnnounces(liteAnnounce) = confirmedChanAnnounces(liteAnnounce) + sync.pair.them
@@ -321,14 +331,14 @@ abstract class SyncMaster(extraNodes: Set[RemoteNodeInfo], excluded: Set[Long], 
 }
 
 case class CompleteHostedRoutingData(announces: Set[ChannelAnnouncement], updates: Set[ChannelUpdate] = Set.empty)
-case class SyncMasterPHCData(activeSyncs: Set[SyncWorker], attemptsLeft: Int) extends SyncMasterData { final val maxSyncs: Int = 1 }
+case class SyncMasterPHCData(baseSyncs: Set[RemoteNodeInfo], extSyncs: Set[RemoteNodeInfo], activeSyncs: Set[SyncWorker], attemptsLeft: Int = 12) extends SyncMasterData {
+  final val maxSyncs: Int = 1
+}
 
-abstract class PHCSyncMaster(extraNodes: Set[RemoteNodeInfo], routerData: Data) extends StateMachine[SyncMasterPHCData] with GetNewSyncMachine { me =>
+abstract class PHCSyncMaster(routerData: Data) extends StateMachine[SyncMasterData] with CanBeRepliedTo { me =>
   implicit val context: ExecutionContextExecutor = ExecutionContext fromExecutor Executors.newSingleThreadExecutor
   def process(changeMessage: Any): Unit = scala.concurrent.Future(me doProcess changeMessage)
-
-  become(SyncMasterPHCData(Set.empty, attemptsLeft = 12), PHC_SYNC)
-  me process CMDAddSync
+  become(null, PHC_SYNC)
 
   // These checks require graph
   def isAcceptable(ann: ChannelAnnouncement): Boolean = {
@@ -339,22 +349,27 @@ abstract class PHCSyncMaster(extraNodes: Set[RemoteNodeInfo], routerData: Data) 
 
   def onSyncComplete(pure: CompleteHostedRoutingData): Unit
 
-  def doProcess(change: Any): Unit = (change, state) match {
-    case (CMDAddSync, PHC_SYNC) if data.activeSyncs.size < data.maxSyncs =>
-      val newSyncWorker = getNewSync(data, LNParams.syncParams.hostedSyncNodes ++ extraNodes)
-      become(data.copy(activeSyncs = data.activeSyncs + newSyncWorker), PHC_SYNC)
-      newSyncWorker process SyncWorkerPHCData(me)
+  def doProcess(change: Any): Unit = (change, data, state) match {
+    case (setupData: SyncMasterPHCData, null, PHC_SYNC) =>
+      become(freshData = setupData, PHC_SYNC)
+      me process CMDAddSync
 
-    case (sync: SyncWorker, PHC_SYNC) if data.attemptsLeft > 0 =>
-      // Sync has disconnected, stop tracking it and try to connect to another one with delay
-      become(data.copy(data.activeSyncs - sync, attemptsLeft = data.attemptsLeft - 1), PHC_SYNC)
+    case (CMDAddSync, data1: SyncMasterPHCData, PHC_SYNC) if data1.activeSyncs.size < data1.maxSyncs =>
+      // We are asked to create a new worker AND we don't have enough workers yet: create a new one
+
+      val newSyncWorker = data1.getNewSync(me)
+      become(data1.copy(activeSyncs = data1.activeSyncs + newSyncWorker), PHC_SYNC)
+      newSyncWorker process SyncWorkerPHCData(me, updates = Set.empty)
+
+    case (sd: SyncDisconnected, data1: SyncMasterPHCData, PHC_SYNC) if data1.attemptsLeft > 0 =>
+      become(data1.copy(attemptsLeft = data1.attemptsLeft - 1).withoutSync(sd), PHC_SYNC)
       Rx.ioQueue.delay(3.seconds).foreach(_ => me process CMDAddSync)
 
-    case (_: SyncWorker, PHC_SYNC) =>
+    case (_: SyncWorker, _, PHC_SYNC) =>
       // No more reconnect attempts left
       become(null, SHUT_DOWN)
 
-    case (d1: SyncWorkerPHCData, PHC_SYNC) =>
+    case (d1: SyncWorkerPHCData, _, PHC_SYNC) =>
       // Worker has informed us that PHC sync is complete, shut down
       val pure = CompleteHostedRoutingData(d1.announces.values.toSet, d1.updates)
       become(null, SHUT_DOWN)

@@ -95,17 +95,20 @@ abstract class PathFinder(val normalBag: NetworkBag, val hostedBag: NetworkBag) 
 
     case (CMDResync, OPERATIONAL) if System.currentTimeMillis - getLastNormalResyncStamp > RESYNC_PERIOD =>
       // Last normal sync has happened too long ago, start with normal sync, then proceed with PHC sync
-      new SyncMaster(getExtraNodes, normalBag.listExcludedChannels, data) { self =>
+      val setupData = SyncMasterShortIdData(LNParams.syncParams.syncNodes, getExtraNodes, Set.empty)
+
+      new SyncMaster(normalBag.listExcludedChannels, data) { self =>
         def onChunkSyncComplete(pure: PureRoutingData): Unit = me process pure
         def onTotalSyncComplete: Unit = me process self
-      }
+      } process setupData
 
     case (CMDResync, OPERATIONAL) =>
-      new PHCSyncMaster(getPHCExtraNodes, data) {
+
+      new PHCSyncMaster(data) {
+        def onSyncComplete(pure: CompleteHostedRoutingData): Unit = me process pure
         // Normal resync has happened recently, but PHC resync is outdated (PHC failed last time due to running out of attempts)
         // in this case we skip normal sync and start directly with PHC sync to save time and increase PHC sync success chances
-        def onSyncComplete(pure: CompleteHostedRoutingData): Unit = me process pure
-      }
+      } process SyncMasterPHCData(LNParams.syncParams.hostedSyncNodes, getPHCExtraNodes, Set.empty)
 
     case (pure: CompleteHostedRoutingData, OPERATIONAL) =>
       // First, completely replace PHC data with obtained one
@@ -133,10 +136,10 @@ abstract class PathFinder(val normalBag: NetworkBag, val hostedBag: NetworkBag) 
       val searchGraph1 = DirectedGraph.makeGraph(normalShortIdToPubChan1 ++ data.hostedChannels)
       val searchGraph2 = searchGraph1.addEdges(extraEdgesMap.values)
 
-      new PHCSyncMaster(getPHCExtraNodes, data) {
+      new PHCSyncMaster(data) {
         // Normal resync has just finished, we have everything to start PHC sync
         def onSyncComplete(pure: CompleteHostedRoutingData): Unit = me process pure
-      }
+      } process SyncMasterPHCData(LNParams.syncParams.hostedSyncNodes, getPHCExtraNodes, Set.empty)
 
       become(Data(normalShortIdToPubChan1, data.hostedChannels, searchGraph2), OPERATIONAL)
       // Perform database cleaning in a different thread since it's slow and we are operational now

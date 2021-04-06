@@ -88,8 +88,8 @@ object WalletApp { me =>
 
   def makeOperational(format: MnemonicExtStorageFormat): Unit = {
     require(isAlive, "Application is not alive, hence can not become operational")
-    val essentialInterface = new DBInterfaceSQLiteAndroidMisc(app, dbFileNameEssential)
-    val graphInterface = new DBInterfaceSQLiteAndroidMisc(app, dbFileNameGraph)
+    val essentialInterface = new DBInterfaceSQLiteAndroidEssential(app, dbFileNameEssential)
+    val graphInterface = new DBInterfaceSQLiteAndroidGraph(app, dbFileNameGraph)
 
     val normalBag = new SQLiteNetwork(graphInterface, NormalChannelUpdateTable, NormalChannelAnnouncementTable, NormalExcludedChannelTable)
     val hostedBag = new SQLiteNetwork(graphInterface, HostedChannelUpdateTable, HostedChannelAnnouncementTable, HostedExcludedChannelTable)
@@ -107,14 +107,14 @@ object WalletApp { me =>
     LNParams.syncParams = new SyncParams
 
     extDataBag.db txWrap {
-      LNParams.fiatRatesInfo = extDataBag.tryGetFiatRatesInfo getOrElse FiatRatesInfo(Map.empty, Map.empty, stamp = Long.MaxValue) // TODO: set to 0L
-      LNParams.feeRatesInfo = extDataBag.tryGetFeeRatesInfo getOrElse FeeRatesInfo(FeeRates.defaultFeerates, stamp = Long.MaxValue) // TODO: set to 0L
+      LNParams.fiatRatesInfo = extDataBag.tryGetFiatRatesInfo getOrElse FiatRatesInfo(Map.empty, Map.empty, stamp = System.currentTimeMillis) // TODO: set to 0L
+      LNParams.feeRatesInfo = extDataBag.tryGetFeeRatesInfo getOrElse FeeRatesInfo(FeeRates.defaultFeerates, stamp = System.currentTimeMillis) // TODO: set to 0L
       LNParams.trampoline = extDataBag.tryGetTrampolineOn getOrElse TrampolineOn.default(LNParams.minPayment, LNParams.routingCltvExpiryDelta)
     }
 
     val pf = new PathFinder(normalBag, hostedBag) {
-      override def getLastTotalResyncStamp: Long = app.prefs.getLong(LAST_TOTAL_GOSSIP_SYNC, Long.MaxValue) // TODO: set to 0L
-      override def getLastNormalResyncStamp: Long = app.prefs.getLong(LAST_NORMAL_GOSSIP_SYNC, Long.MaxValue) // TODO: set to 0L
+      override def getLastTotalResyncStamp: Long = app.prefs.getLong(LAST_TOTAL_GOSSIP_SYNC, System.currentTimeMillis) // TODO: set to 0L
+      override def getLastNormalResyncStamp: Long = app.prefs.getLong(LAST_NORMAL_GOSSIP_SYNC, System.currentTimeMillis) // TODO: set to 0L
       override def updateLastTotalResyncStamp(stamp: Long): Unit = app.prefs.edit.putLong(LAST_TOTAL_GOSSIP_SYNC, stamp).commit
       override def updateLastNormalResyncStamp(stamp: Long): Unit = app.prefs.edit.putLong(LAST_NORMAL_GOSSIP_SYNC, stamp).commit
       override def getExtraNodes: Set[RemoteNodeInfo] = LNParams.cm.all.values.flatMap(Channel.chanAndCommitsOpt).map(_.commits.remoteInfo).toSet
@@ -236,7 +236,7 @@ class WalletApp extends Application { me =>
   }
 
   def quickToast(code: Int): Unit = quickToast(me getString code)
-  def quickToast(msg: CharSequence): Unit = Toast.makeText(me, msg, Toast.LENGTH_SHORT).show
+  def quickToast(msg: CharSequence): Unit = Toast.makeText(me, msg, Toast.LENGTH_LONG).show
   def plur1OrZero(opts: Array[String], num: Long): String = if (num > 0) plur(opts, num).format(num) else opts(0)
   def clipboardManager: ClipboardManager = getSystemService(Context.CLIPBOARD_SERVICE).asInstanceOf[ClipboardManager]
   def getBufferUnsafe: String = clipboardManager.getPrimaryClip.getItemAt(0).getText.toString

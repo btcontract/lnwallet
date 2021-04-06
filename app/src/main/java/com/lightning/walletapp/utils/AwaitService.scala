@@ -1,10 +1,9 @@
 package com.lightning.walletapp.utils
 
 import android.content.{Context, Intent}
+import com.lightning.walletapp.{ClassNames, R}
 import android.app.{NotificationManager, PendingIntent, Service}
 import androidx.core.app.NotificationCompat
-import com.lightning.walletapp.MainActivity
-import com.lightning.walletapp.R
 
 
 object AwaitService {
@@ -39,7 +38,7 @@ class AwaitService extends Service { me =>
       val awaitedBodyText = intent.getStringExtra(AwaitService.BODY_TO_DISPLAY)
       val awaitedTitleText = intent.getStringExtra(AwaitService.TITLE_TO_DISPLAY)
 
-      val disaplyIntent = PendingIntent.getActivity(me, 0, new Intent(me, MainActivity.mainActivityClass), 0)
+      val disaplyIntent = PendingIntent.getActivity(me, 0, new Intent(me, ClassNames.mainActivityClass), 0)
       val cancelIntent = PendingIntent.getService(me, 0, new Intent(me, AwaitService.awaitServiceClass).setAction(AwaitService.ACTION_CANCEL), 0)
 
       val notification =

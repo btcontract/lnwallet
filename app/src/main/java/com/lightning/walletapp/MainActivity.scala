@@ -17,8 +17,9 @@ import android.os.Bundle
 import android.view.View
 
 
-object MainActivity {
+object ClassNames {
   val mainActivityClass: Class[MainActivity] = classOf[MainActivity]
+  val hubActivityClass: Class[HubActivity] = classOf[HubActivity]
 }
 
 class MainActivity extends NfcReaderActivity with BaseActivity { me =>
@@ -54,7 +55,7 @@ class MainActivity extends NfcReaderActivity with BaseActivity { me =>
   def proceed(disregard: Any): Unit =
     WalletApp.isAlive match {
       case false => runAnd(WalletApp.makeAlive)(me proceed null)
-      case true if LNParams.isOperational => me exitTo classOf[HubActivity]
+      case true if LNParams.isOperational => me exitTo ClassNames.hubActivityClass
 
       case true =>
         val step3 = new EnsureSeed
@@ -73,8 +74,10 @@ class MainActivity extends NfcReaderActivity with BaseActivity { me =>
     def makeAttempt: Unit = WalletApp.extDataBag.tryGetFormat match {
       case Success(formatWithSeedPresent: MnemonicExtStorageFormat) =>
         // For now we specifically need a seed to initialize chain wallet
+        val a = System.currentTimeMillis()
         WalletApp.makeOperational(formatWithSeedPresent)
-        me exitTo classOf[HubActivity]
+        println(s"-- ${System.currentTimeMillis() - a}")
+        me exitTo ClassNames.hubActivityClass
 
       case _ =>
         // No seed present, wallet is new
