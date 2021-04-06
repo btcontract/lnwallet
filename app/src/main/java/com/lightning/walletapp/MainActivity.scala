@@ -60,7 +60,7 @@ class MainActivity extends NfcReaderActivity with BaseActivity { me =>
       case true =>
         val step3 = new EnsureSeed
         val step2 = if (WalletApp.ensureTor) new EnsureTor(step3) else step3
-        val step1 = if (WalletApp.useAuth) new EnsureAuth(step2) else step2
+        val step1 = if (!WalletApp.useAuth) new EnsureAuth(step2) else step2
         step1.makeAttempt
     }
 
