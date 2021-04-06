@@ -274,8 +274,8 @@ class TrampolinePaymentRelayer(val fullTag: FullPaymentTag, cm: ChannelMaster) e
 
         // It makes no sense to try to route out a payment through channels used by peer to route it in
         // Also, if routing is undesired by user BUT peer does want to route then we exclude HCs to reduce risk
-        val excludeHostedChanIds: Set[ByteVector32] = if (LNParams.isRoutingDesired) Set.empty else cm.allHosted.keySet
-        val allowedChans = cm.all -- adds.map(_.add.channelId) -- excludeHostedChanIds
+        val excludeHostedChans = if (LNParams.isRoutingDesired.get) Set.empty else cm.allHosted.keySet
+        val allowedChans = cm.all -- adds.map(_.add.channelId) -- excludeHostedChans
 
         val send = SendMultiPart(fullTag, routerConf, innerPayload.outgoingNodeId,
           onionTotal = innerPayload.amountToForward, actualTotal = innerPayload.amountToForward,

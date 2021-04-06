@@ -58,13 +58,11 @@ object WalletApp { me =>
     WebsocketBus.workers.keys.foreach(WebsocketBus.forget)
     CommsTower.workers.values.map(_.pair).foreach(CommsTower.forget)
 
-    try FiatRates.subscription.unsubscribe catch none
-    try FeeRates.subscription.unsubscribe catch none
-
     // Clear listeners
     try LNParams.cm.becomeShutDown catch none
     try LNParams.chainWallet.becomeShutDown catch none
-    try LNParams.becomeShutDown catch none
+    try FiatRates.subscription.unsubscribe catch none
+    try FeeRates.subscription.unsubscribe catch none
 
     extDataBag = null
     lastWalletReady = null
@@ -98,7 +96,7 @@ object WalletApp { me =>
 
     val defaultRouterConf: RouterConf =
       RouterConf(maxCltvDelta = CltvExpiryDelta(2016), routeHopDistance = 6,
-        mppMinPartAmount = MilliSatoshi(10000000L), maxRemoteAttempts = 12,
+        mppMinPartAmount = MilliSatoshi(10000000L), maxRemoteAttempts = 6,
         maxChannelFailures = 6, maxStrangeNodeFailures = 12)
 
     LNParams.format = format
@@ -122,9 +120,9 @@ object WalletApp { me =>
     }
 
     ElectrumClientPool.loadFromChainHash = {
-      case Block.LivenetGenesisBlock.hash => ElectrumClientPool.readServerAddresses(app.getAssets open "servers_mainnet.json", sslEnabled = false)
-      case Block.TestnetGenesisBlock.hash => ElectrumClientPool.readServerAddresses(app.getAssets open "servers_testnet.json", sslEnabled = false)
-      case Block.RegtestGenesisBlock.hash => ElectrumClientPool.readServerAddresses(app.getAssets open "servers_regtest.json", sslEnabled = false)
+      case Block.LivenetGenesisBlock.hash => ElectrumClientPool.readServerAddresses(app.getAssets open "servers_mainnet.json", sslEnabled = true)
+      case Block.TestnetGenesisBlock.hash => ElectrumClientPool.readServerAddresses(app.getAssets open "servers_testnet.json", sslEnabled = true)
+      case Block.RegtestGenesisBlock.hash => ElectrumClientPool.readServerAddresses(app.getAssets open "servers_regtest.json", sslEnabled = true)
       case _ => throw new RuntimeException
     }
 
@@ -137,7 +135,7 @@ object WalletApp { me =>
 
     LNParams.cm = new ChannelMaster(payBag, chanBag, extDataBag, pf)
     LNParams.chainWallet = LNParams.createWallet(extDataBag, format.seed)
-    LNParams.isRoutingDesired = app.prefs.getBoolean(ROUTING_DESIRED, false)
+    LNParams.isRoutingDesired set app.prefs.getBoolean(ROUTING_DESIRED, false)
 
     // Take care of essential listeners
     LNParams.chainWallet.eventsCatcher ! LNParams.cm.chainChannelListener

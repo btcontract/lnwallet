@@ -27,12 +27,6 @@
         "t": "50001",
         "version": "1.4"
     },
-    "e8.keff.org": {
-        "pruning": "-",
-        "s": "50002",
-        "t": "50001",
-        "version": "1.4"
-    },
     "electrum-server.ninja": {
         "pruning": "-",
         "s": "50002",
@@ -97,6 +91,53 @@
     "electrum6.hodlister.co": {
         "pruning": "-",
         "s": "50002",
+        "version": "1.4"
+    },
+    "blockstream.info": {
+        "pruning": "-",
+        "s": "700",
+        "t": "110",
+        "version": "1.4"
+    },
+    "b.ooze.cc": {
+        "pruning": "-",
+        "s": "50002",
+        "t": "50001",
+        "version": "1.4"
+    },
+    "electrum.emzy.de": {
+        "pruning": "-",
+        "s": "50002",
+        "t": "50001",
+        "version": "1.4"
+    },
+    "electrum.hsmiths.com": {
+        "pruning": "-",
+        "s": "50002",
+        "t": "50001",
+        "version": "1.4"
+    },
+    "electrumx.erbium.eu": {
+        "pruning": "-",
+        "s": "50002",
+        "t": "50001",
+        "version": "1.4"
+    },
+    "electrumx.electricnewyear.net": {
+        "pruning": "-",
+        "s": "50002",
+        "version": "1.4"
+    },
+    "btc.cihar.com": {
+        "pruning": "-",
+        "s": "50002",
+        "t": "50001",
+        "version": "1.4"
+    },
+    "tardis.bauerj.eu": {
+        "pruning": "-",
+        "s": "50002",
+        "t": "50001",
         "version": "1.4"
     }
 }

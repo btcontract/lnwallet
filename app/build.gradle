@@ -75,4 +75,9 @@ dependencies {
     androidTestImplementation 'androidx.test.ext:junit:1.1.2'
     androidTestImplementation 'androidx.test.espresso:espresso-core:3.3.0'
     androidTestImplementation 'com.android.support.test:rules:1.0.2'
+
+    // Uncomment to enable logging
+//    implementation ('eu.lp0.slf4j:slf4j-android:1.7.25-0') {
+//        exclude module: 'slf4j-api'
+//    }
 }

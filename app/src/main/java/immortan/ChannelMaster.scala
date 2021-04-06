@@ -44,7 +44,7 @@ object ChannelMaster {
   final val NO_PREIMAGE = ByteVector32.One
 
   def initResolve(ext: UpdateAddHtlcExt): IncomingResolution = IncomingPacket.decrypt(ext.theirAdd, ext.remoteInfo.nodeSpecificPrivKey) match {
-    case _ if LNParams.chainDisconnectedForTooLong => CMD_FAIL_HTLC(Right(TemporaryNodeFailure), ext.remoteInfo.nodeSpecificPrivKey, ext.theirAdd)
+    case _ if LNParams.isChainDisconnectedTooLong => CMD_FAIL_HTLC(Right(TemporaryNodeFailure), ext.remoteInfo.nodeSpecificPrivKey, ext.theirAdd)
     case Left(_: BadOnion) => fallbackResolve(secret = LNParams.format.keys.fakeInvoiceKey(ext.theirAdd.paymentHash), ext.theirAdd)
     case Left(onionFailure) => CMD_FAIL_HTLC(Right(onionFailure), ext.remoteInfo.nodeSpecificPrivKey, ext.theirAdd)
     case Right(packet: IncomingPacket) => defineResolution(ext.remoteInfo.nodeSpecificPrivKey, packet)
@@ -85,15 +85,15 @@ class ChannelMaster(val payBag: PaymentBag, val chanBag: ChannelBag, val dataBag
 
     override def onWalletReady(event: WalletReady): Unit = {
       // Invalidate last disconnect stamp since we're up again
+      LNParams.lastDisconnect.set(Long.MaxValue)
       LNParams.blockCount.set(event.height)
-      LNParams.lastDisconnect = None
       // Connect sockets now
       initConnect
     }
 
     override def onElectrumDisconnected: Unit = {
-      // Remember when disconnect happened to eventually stop accepting payments
-      LNParams.lastDisconnect = System.currentTimeMillis.toSome
+      // Remember to eventually stop accepting payments
+      LNParams.lastDisconnect.set(System.currentTimeMillis)
     }
   }
 
@@ -204,7 +204,7 @@ class ChannelMaster(val payBag: PaymentBag, val chanBag: ChannelBag, val dataBag
     case Some(outgoingFSM) if PENDING == outgoingFSM.state || INIT == outgoingFSM.state => PaymentInfo.NOT_SENDABLE_IN_FLIGHT // This payment is pending in FSM
     case Some(outgoingFSM) if SUCCEEDED == outgoingFSM.state => PaymentInfo.NOT_SENDABLE_SUCCESS // This payment has just been fulfilled at runtime
     case _ if getPreimageMemo.get(tag.paymentHash).isSuccess => PaymentInfo.NOT_SENDABLE_SUCCESS // Preimage has already been revealed
-    case _ if LNParams.chainDisconnectedForTooLong => PaymentInfo.NOT_SENDABLE_CHAIN_DISCONNECT // Chain wallet is lagging
+    case _ if LNParams.isChainDisconnectedTooLong => PaymentInfo.NOT_SENDABLE_CHAIN_DISCONNECT // Chain wallet is lagging
     case _ if amount > maxSendable => PaymentInfo.NOT_SENDABLE_LOW_FUNDS // Not enough funds in a wallet
     case _ => PaymentInfo.SENDABLE // Has never been sent or ABORTED by now
   }
