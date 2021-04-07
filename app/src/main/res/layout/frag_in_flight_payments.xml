@@ -1,0 +1,21 @@
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:orientation="horizontal"
+    style="@style/BoundedView">
+
+    <TextView
+        style="@style/InFlightView"
+        android:id="@+id/inFlightIncoming"
+        android:drawableStart="@drawable/baseline_arrow_downward_18"/>
+
+    <TextView
+        style="@style/InFlightView"
+        android:id="@+id/inFlightOutgoing"
+        android:drawableStart="@drawable/baseline_arrow_upward_18"/>
+
+    <TextView
+        style="@style/InFlightView"
+        android:id="@+id/inFlightRouted"
+        android:drawableStart="@drawable/baseline_swap_horiz_18"/>
+
+</LinearLayout>

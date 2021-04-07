@@ -4,12 +4,14 @@
     style="@style/StandardXYMarginLinearLayout"
     android:id="@+id/contentWindow">
 
+    <include
+        android:id="@+id/inFlightPayments"
+        layout="@layout/frag_in_flight_payments"/>
+
     <androidx.appcompat.widget.SwitchCompat
         android:layout_alignParentEnd="true"
         android:text="@string/dialog_routing"
-        android:id="@+id/switch_compat"
-        style="@style/BoundedView"
-        android:checked="false"/>
+        style="@style/BoundedView"/>
 
     <LinearLayout
         android:baselineAligned="true"
