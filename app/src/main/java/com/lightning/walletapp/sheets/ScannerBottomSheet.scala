@@ -5,14 +5,12 @@ import com.lightning.walletapp.{BaseActivity, ExternalDataChecker, R, WalletApp}
 import com.journeyapps.barcodescanner.{BarcodeCallback, BarcodeResult, BarcodeView}
 import com.google.android.material.bottomsheet.BottomSheetDialogFragment
 import android.widget.ImageButton
+import immortan.utils.InputParser
 import immortan.crypto.Tools
 import android.os.Bundle
-import immortan.utils.InputParser
 
 
-class ScannerBottomSheet(host: BaseActivity, checker: ExternalDataChecker)
-  extends BottomSheetDialogFragment with BarcodeCallback { me =>
-
+class ScannerBottomSheet(host: BaseActivity, checker: ExternalDataChecker) extends BottomSheetDialogFragment with BarcodeCallback { me =>
   var lastAttempt: Long = System.currentTimeMillis
   var barcodeReader: BarcodeView = _
   var flashlight: ImageButton = _

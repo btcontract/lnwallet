@@ -19,7 +19,7 @@
 
     <!-- item styles -->
 
-    <style name="ActionButton">
+    <style name="BlueButton">
         <item name="nb_focusColor">@color/ln</item>
         <item name="nb_textColor">@color/colorAccent</item>
         <item name="nb_borderColor">@color/buttonBlueBorder</item>
@@ -34,19 +34,19 @@
         <item name="nb_radius">6dp</item>
     </style>
 
-    <style name="GreenButton" parent="ActionButton">
+    <style name="GreenButton" parent="BlueButton">
         <item name="nb_focusColor">@color/buttonGreenRipple</item>
         <item name="nb_borderColor">@color/buttonGreenBorder</item>
         <item name="nb_backgroundColor">@color/buttonGreen</item>
     </style>
 
-    <style name="RedButton" parent="ActionButton">
+    <style name="RedButton" parent="BlueButton">
         <item name="nb_focusColor">@color/buttonRedRipple</item>
         <item name="nb_borderColor">@color/buttonRedBorder</item>
         <item name="nb_backgroundColor">@color/buttonRed</item>
     </style>
 
-    <style name="GrayButton" parent="ActionButton">
+    <style name="GrayButton" parent="BlueButton">
         <item name="nb_focusColor">@color/buttonGrayRipple</item>
         <item name="nb_borderColor">@color/buttonGrayBorder</item>
         <item name="nb_backgroundColor">@color/bg</item>
@@ -114,6 +114,15 @@
     <style name="XYSmallMarginFillingView" parent="YMarginFillingView">
         <item name="android:layout_marginRight">12dp</item>
         <item name="android:layout_marginLeft">12dp</item>
+    </style>
+
+    <style name="GrayDividerListView">
+        <item name="android:drawSelectorOnTop">true</item>
+        <item name="android:background">@color/buttonGrayBorder</item>
+        <item name="android:layout_height">match_parent</item>
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:dividerHeight">1dp</item>
+        <item name="android:divider">#33999999</item>
     </style>
 
     <!-- chip text -->

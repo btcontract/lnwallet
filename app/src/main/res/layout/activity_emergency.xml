@@ -13,6 +13,6 @@
         android:layout_marginTop="@dimen/square_button_size"
         app:nb_text="@string/emergency_share"
         android:onClick="shareErrorReport"
-        style="@style/ActionButton"/>
+        style="@style/BlueButton"/>
 
 </LinearLayout>

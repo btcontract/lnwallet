@@ -46,6 +46,7 @@
 
         <com.ornach.nobobutton.NoboButton
             android:layout_margin="@dimen/chip_default_padding_edge"
+            android:onClick="bringReceiveOptions"
             app:nb_text="@string/dialog_receive"
             android:layout_width="110dp"
             style="@style/GrayButton"/>

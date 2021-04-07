@@ -1,25 +1,26 @@
 package com.lightning.walletapp
 
-import immortan.utils._
-import immortan.crypto.Tools._
 import com.lightning.walletapp.R.string._
+import com.lightning.walletapp.BaseActivity.StringOps
 import android.widget.RelativeLayout
-import android.content.ClipData
 import android.os.Bundle
 import android.view.View
 import immortan.LNParams
-import scala.util.Try
 
 
-class HubActivity extends BaseActivity with ExternalDataChecker { me =>
+class HubActivity extends BaseActivity with ExternalDataChecker with ChoiceReceiver { me =>
   private[this] lazy val contentWindow = findViewById(R.id.contentWindow).asInstanceOf[RelativeLayout]
+  private val CHOICE_RECEIVE_TAG = "choiceReceiveTag"
 
   override def onResume: Unit = {
-    checkCurrentClipboard
     super.onResume
   }
 
-  def checkExternalData: Unit = {
+  override def checkExternalData: Unit = {
+
+  }
+
+  override def onChoiceMade(tag: String, pos: Int): Unit = {
 
   }
 
@@ -31,34 +32,12 @@ class HubActivity extends BaseActivity with ExternalDataChecker { me =>
       me exitTo ClassNames.mainActivityClass
     }
 
-  def checkCurrentClipboard: Unit =
-    Try(WalletApp.app.getBufferUnsafe) foreach { content =>
-      runInFutureProcessOnUI(InputParser.parse(content), none) {
-
-        case _: PaymentRequestExt =>
-          val message = getString(buffer_invoice_found)
-          snack(contentWindow, message, dialog_view, _.dismiss)
-          clearClipboard
-
-        case _: BitcoinUri =>
-          val message = getString(buffer_address_found)
-          snack(contentWindow, message, dialog_view, _.dismiss)
-          clearClipboard
-
-        case _: LNUrl =>
-          val message = getString(buffer_link_found)
-          snack(contentWindow, message, dialog_view, _.dismiss)
-          clearClipboard
-
-        case _ =>
-        // Do nothing
-      }
-    }
-
-  def clearClipboard: Unit = {
-    val nothing = ClipData.newPlainText(null, new String)
-    WalletApp.app.clipboardManager.setPrimaryClip(nothing)
-  }
-
   def bringUpScanner(view: View): Unit = callScanner(me)
+
+  def bringReceiveOptions(view: View): Unit = {
+    val options = Array(dialog_receive_btc, dialog_receive_ln).map(res => getString(res).html)
+    val list = makeChoiceList(options, android.R.layout.simple_expandable_list_item_1)
+    val sheet = new sheets.ChoiceBottomSheet(list, CHOICE_RECEIVE_TAG, me)
+    sheet.show(getSupportFragmentManager, CHOICE_RECEIVE_TAG)
+  }
 }

@@ -9,9 +9,9 @@ import android.graphics.Color.{BLACK, WHITE}
 import android.content.{DialogInterface, Intent}
 import immortan.utils.{Denomination, InputParser}
 import immortan.crypto.Tools.{Fiat2Btc, none, runAnd}
-import android.widget.{EditText, LinearLayout, TextView}
 import android.text.{Editable, Html, Spanned, TextWatcher}
 import com.google.android.material.snackbar.{BaseTransientBottomBar, Snackbar}
+import android.widget.{ArrayAdapter, EditText, LinearLayout, ListView, TextView}
 import com.cottacush.android.currencyedittext.CurrencyEditText
 import com.google.android.material.textfield.TextInputLayout
 import com.lightning.walletapp.BaseActivity.StringOps
@@ -42,6 +42,10 @@ object BaseActivity {
 
 trait ExternalDataChecker {
   def checkExternalData: Unit
+}
+
+trait ChoiceReceiver {
+  def onChoiceMade(tag: String, pos: Int): Unit
 }
 
 trait BaseActivity extends AppCompatActivity { me =>
@@ -106,6 +110,12 @@ trait BaseActivity extends AppCompatActivity { me =>
   }
 
   // Builders
+
+  def makeChoiceList[T <: Object](actions: Array[T], itemId: Int = android.R.layout.simple_list_item_1): ListView = {
+    val list = getLayoutInflater.inflate(R.layout.frag_list, null).asInstanceOf[ListView]
+    list setAdapter new ArrayAdapter(me, itemId, actions)
+    list
+  }
 
   def removeAndProceedWithTimeout(prev: Dialog)(exe: => Unit): Unit = {
     // Add some delay between dismissing previous popup and doing something next

@@ -44,7 +44,7 @@
                 android:layout_marginTop="@dimen/square_button_size"
                 app:nb_text="@string/setup_backup_file"
                 android:onClick="useBackupFile"
-                style="@style/ActionButton"/>
+                style="@style/BlueButton"/>
 
             <TextView
                 android:text="@string/setup_backup_file_hint"
@@ -57,7 +57,7 @@
                 android:layout_marginTop="@dimen/square_button_size"
                 app:nb_text="@string/setup_recovery_phrase"
                 android:onClick="useRecoveryPhrase"
-                style="@style/ActionButton"/>
+                style="@style/BlueButton"/>
 
             <TextView
                 android:text="@string/setup_recovery_phrase_hint"
