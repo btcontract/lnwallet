@@ -2,16 +2,14 @@ package com.lightning.walletapp
 
 import immortan.crypto.Tools._
 import com.lightning.walletapp.R.string._
-import com.lightning.walletapp.BaseActivity.StringOps
-import android.widget.RelativeLayout
-import android.os.Bundle
-import android.view.View
 import immortan.{LNParams, RemoteNodeInfo}
 import immortan.utils.{BitcoinUri, InputParser, LNUrl, PaymentRequestExt}
-import org.ndeftools.Message
+import com.lightning.walletapp.BaseActivity.StringOps
 import org.ndeftools.util.activity.NfcReaderActivity
-
-import scala.util.Try
+import android.widget.RelativeLayout
+import org.ndeftools.Message
+import android.os.Bundle
+import android.view.View
 
 
 class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataChecker with ChoiceReceiver { me =>

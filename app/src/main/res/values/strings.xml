@@ -55,7 +55,7 @@
     <string name="error_nothing_useful">Nothing useful is found</string>
 
     <string name="error_nothing_in_clipboard"><![CDATA[
-        <strong>Nothing useful is found in clipboard</strong>, please copy something first and then paste it here.
+        <strong>Nothing useful is found in clipboard</strong>, please copy something first.
         <br><br>A complete list of stuff which can be pasted into or shared with this wallet:<br><br>
         - <strong>Bitcoin addresses</strong><br>
         - <strong>Lightning invoices</strong><br>
