@@ -35,13 +35,14 @@
 
         <com.ornach.nobobutton.NoboButton
             android:layout_margin="@dimen/chip_default_padding_edge"
+            android:onClick="attemptSendFromClipboard"
             app:nb_text="@string/dialog_send"
             android:layout_width="110dp"
             style="@style/GrayButton"/>
 
         <com.ornach.nobobutton.NoboButton
             app:nb_drawableResource="@drawable/outline_qr_code_scanner_24"
-            android:onClick="bringUpScanner"
+            android:onClick="bringScanner"
             style="@style/GrayButton"/>
 
         <com.ornach.nobobutton.NoboButton

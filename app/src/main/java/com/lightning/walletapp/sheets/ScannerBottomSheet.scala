@@ -36,7 +36,7 @@ class ScannerBottomSheet(host: BaseActivity, checker: ExternalDataChecker) exten
   }
 
   def tryParseQR(scannedText: String): Unit = {
-    def successfulDecode: Unit = Tools.runAnd(dismiss)(checker.checkExternalData)
+    def successfulDecode: Unit = Tools.runAnd(dismiss)(checker checkExternalData checker.noneRunnable)
     def fail(err: Throwable): Unit = Tools.runAnd(WalletApp.app quickToast err.getMessage)(barcodeReader.resume)
     host.runInFutureProcessOnUI(InputParser recordValue scannedText, fail)(_ => successfulDecode)
     lastAttempt = System.currentTimeMillis

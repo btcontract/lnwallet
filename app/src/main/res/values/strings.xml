@@ -41,25 +41,29 @@
     <string name="dialog_cancel">Cancel</string>
     <string name="dialog_routing">Routing</string>
     <string name="dialog_receive">Receive</string>
+    <string name="dialog_split">Split</string>
     <string name="dialog_send">Send</string>
 
-    <string name="dialog_receive_btc"><![CDATA[Receive to <strong>Bitcoin</strong> address]]></string>
-    <string name="dialog_receive_ln"><![CDATA[Receive to <strong>Lightning</strong> invoice]]></string>
+    <string name="dialog_receive_btc"><![CDATA[Receive to <strong>Bitcoin</strong> Address]]></string>
+    <string name="dialog_receive_ln"><![CDATA[Receive to <strong>Lightning</strong> Invoice]]></string>
+    <string name="dialog_receive_ln_title">Lightning Invoice Amount</string>
 
     <!-- errors -->
 
     <string name="error_could_not_decrypt"><![CDATA[<strong>Backup decryption failed</strong>.<br><br>Make sure that both backup file and recovery phrase are correct.<br><br>Error details:<br><br>%1$s]]></string>
     <string name="error_wrong_phrase"><![CDATA[<strong>A phrase must be 12 words long</strong>.<br><br><strong>All words must be different</strong>.]]></string>
+    <string name="error_nothing_useful">Nothing useful is found</string>
+
+    <string name="error_nothing_in_clipboard"><![CDATA[
+        <strong>Nothing useful is found in clipboard</strong>, please copy something first and then paste it here.
+        <br><br>A complete list of stuff which can be pasted into or shared with this wallet:<br><br>
+        - <strong>Bitcoin addresses</strong><br>
+        - <strong>Lightning invoices</strong><br>
+        - <strong>Lightning node keys</strong><br>
+        - <strong>LNURL links</strong>
+    ]]></string>
 
     <!-- /errors -->
-
-    <!-- items -->
-
-    <string name="item_shopping">Shopping</string>
-    <string name="item_wallet">Wallet</string>
-    <string name="item_addons">Addons</string>
-
-    <!-- /items -->
 
     <!-- MPP -->
 

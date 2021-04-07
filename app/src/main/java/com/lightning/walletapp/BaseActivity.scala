@@ -41,7 +41,8 @@ object BaseActivity {
 }
 
 trait ExternalDataChecker {
-  def checkExternalData: Unit
+  val noneRunnable: Runnable = new Runnable { override def run: Unit = none }
+  def checkExternalData(onNothing: Runnable): Unit
 }
 
 trait ChoiceReceiver {
@@ -88,7 +89,7 @@ trait BaseActivity extends AppCompatActivity { me =>
   def snack(parent: View, msg: CharSequence, actionRes: Int, onTap: Snackbar => Unit): Unit = try {
     val bottomSnackbar: Snackbar = Snackbar.make(parent, msg, BaseTransientBottomBar.LENGTH_INDEFINITE)
     bottomSnackbar.getView.findViewById(com.google.android.material.R.id.snackbar_text).asInstanceOf[TextView].setMaxLines(15)
-    val actionListener: OnClickListener = me onButtonTap onTap(bottomSnackbar)
+    val actionListener = me onButtonTap onTap(bottomSnackbar)
     bottomSnackbar.setAction(actionRes, actionListener).show
   } catch none
 
@@ -100,9 +101,11 @@ trait BaseActivity extends AppCompatActivity { me =>
     override def afterTextChanged(e: Editable): Unit = none
   }
 
-  def runInFutureProcessOnUI[T](fun: => T, no: Throwable => Unit)(ok: T => Unit): Unit = Future(fun) onComplete {
-    case Success(result) => UITask(ok apply result).run case Failure(error) => UITask(no apply error).run
-  }
+  def runInFutureProcessOnUI[T](fun: => T, no: Throwable => Unit)(ok: T => Unit): Unit =
+    Future(fun) onComplete {
+      case Success(result) => UITask(ok apply result).run
+      case Failure(error) => UITask(no apply error).run
+    }
 
   implicit def UITask(exec: => Any): TimerTask = {
     val runnableExec = new Runnable { override def run: Unit = exec }
@@ -165,9 +168,7 @@ trait BaseActivity extends AppCompatActivity { me =>
     alert
   }
 
-  def mkCheckFormNeutral(ok: AlertDialog => Unit, no: => Unit, neutral: AlertDialog => Unit,
-                         bld: AlertDialog.Builder, okRes: Int, noRes: Int, neutralRes: Int): AlertDialog = {
-
+  def mkCheckFormNeutral(ok: AlertDialog => Unit, no: => Unit, neutral: AlertDialog => Unit, bld: AlertDialog.Builder, okRes: Int, noRes: Int, neutralRes: Int): AlertDialog = {
     if (-1 != neutralRes) bld.setNeutralButton(neutralRes, null)
     val alert = mkCheckForm(ok, no, bld, okRes, noRes)
     val neutralAct = me onButtonTap neutral(alert)
