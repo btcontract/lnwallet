@@ -11,7 +11,11 @@
     <androidx.appcompat.widget.SwitchCompat
         android:layout_alignParentEnd="true"
         android:text="@string/dialog_routing"
-        style="@style/BoundedView"/>
+        android:textColor="@color/text"
+        style="@style/BoundedView"
+        android:textSize="16sp"/>
+
+    <!-- activity list -->
 
     <LinearLayout
         android:baselineAligned="true"
@@ -25,10 +29,12 @@
 
     </LinearLayout>
 
+    <!-- bottom menu -->
+
     <LinearLayout
         android:background="@drawable/linear_layout_rounded_corners"
-        android:layout_centerHorizontal="true"
         android:layout_alignParentBottom="true"
+        android:layout_centerHorizontal="true"
         android:layout_height="wrap_content"
         android:layout_width="wrap_content"
         android:orientation="horizontal"

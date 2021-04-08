@@ -7,8 +7,8 @@ import fr.acinq.bitcoin.{Block, Crypto, SatoshiLong}
 import fr.acinq.eclair.{CltvExpiryDelta, MilliSatoshi}
 import immortan.crypto.Tools.{Bytes, Fiat2Btc, none, runAnd}
 import android.app.{Application, NotificationChannel, NotificationManager}
+import fr.acinq.eclair.blockchain.electrum.{CheckPoint, ElectrumClientPool}
 import android.content.{ClipboardManager, Context, Intent, SharedPreferences}
-import fr.acinq.eclair.blockchain.electrum.{CheckPoint, ElectrumClientPool, ElectrumWallet}
 import com.lightning.walletapp.utils.{AwaitService, DelayedNotification, UsedAddons, WebsocketBus}
 import immortan.utils.{BtcDenomination, FeeRates, FeeRatesInfo, FiatRates, FiatRatesInfo, SatDenomination}
 import immortan.{Channel, ChannelMaster, CommsTower, LNParams, MnemonicExtStorageFormat, PathFinder, RemoteNodeInfo, SyncParams}
@@ -76,11 +76,8 @@ object WalletApp { me =>
     miscInterface txWrap {
       extDataBag = new SQLiteDataExtended(miscInterface)
       usedAddons = extDataBag.tryGetAddons getOrElse UsedAddons(List.empty)
-
-      lastWalletReady = extDataBag.tryGetLastWalletReady getOrElse {
-        // We need to show something to user so use this until wallet is done
-        ElectrumWallet.WalletReady(0L.sat, 0L.sat, 0L, System.currentTimeMillis)
-      }
+      val emptyReady = WalletReady(0L.sat, 0L.sat, 0L, System.currentTimeMillis)
+      lastWalletReady = extDataBag.tryGetLastWalletReady getOrElse emptyReady
     }
   }
 
@@ -105,8 +102,8 @@ object WalletApp { me =>
     LNParams.syncParams = new SyncParams
 
     extDataBag.db txWrap {
-      LNParams.fiatRatesInfo = extDataBag.tryGetFiatRatesInfo getOrElse FiatRatesInfo(Map.empty, Map.empty, stamp = System.currentTimeMillis) // TODO: set to 0L
-      LNParams.feeRatesInfo = extDataBag.tryGetFeeRatesInfo getOrElse FeeRatesInfo(FeeRates.defaultFeerates, stamp = System.currentTimeMillis) // TODO: set to 0L
+      LNParams.fiatRatesInfo = extDataBag.tryGetFiatRatesInfo getOrElse FiatRatesInfo(Map.empty, Map.empty, stamp = 0L)
+      LNParams.feeRatesInfo = extDataBag.tryGetFeeRatesInfo getOrElse FeeRatesInfo(FeeRates.defaultFeerates, stamp = 0L)
       LNParams.trampoline = extDataBag.tryGetTrampolineOn getOrElse TrampolineOn.default(LNParams.minPayment, LNParams.routingCltvExpiryDelta)
     }
 
@@ -158,9 +155,19 @@ object WalletApp { me =>
   // Fiat conversion
 
   def currentRate(rates: Fiat2Btc, code: String): Try[Double] = Try(rates apply code)
-  def msatInFiat(rates: Fiat2Btc, code: String)(msat: MilliSatoshi): Try[Double] = currentRate(rates, code).map(ratePerOneBtc => msat.toLong * ratePerOneBtc / BtcDenomination.factor)
-  def msatInFiatHuman(rates: Fiat2Btc, code: String, msat: MilliSatoshi): String = msatInFiat(rates, code)(msat).map(amt => s"≈ ${formatFiat format amt} $code").getOrElse(s"≈ ? $code")
-  val currentMsatInFiatHuman: MilliSatoshi => String = msat => msatInFiatHuman(LNParams.fiatRatesInfo.rates, fiatCode, msat)
+
+  def msatInFiat(rates: Fiat2Btc, code: String)(msat: MilliSatoshi): Try[Double] =
+    currentRate(rates, code).map(perBtc => msat.toLong * perBtc / BtcDenomination.factor)
+
+  def msatInFiatHuman(rates: Fiat2Btc, code: String, msat: MilliSatoshi): String = {
+    val fiatAmount = msatInFiat(rates, code)(msat).map(formatFiat.format).getOrElse("?")
+    FiatRates.customFiatSymbols.get(code).map(sign => s"$sign$fiatAmount").getOrElse(s"$fiatAmount $code")
+  }
+
+  val currentMsatInFiatHuman: MilliSatoshi => String = msat =>
+    msatInFiatHuman(LNParams.fiatRatesInfo.rates, fiatCode, msat)
+
+  // Other utils
 
   def scryptDerive(email: String, pass: String): Bytes = {
     // An intentionally expensive key-stretching method

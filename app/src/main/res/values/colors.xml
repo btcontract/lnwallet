@@ -1,6 +1,7 @@
 <resources>
     <color name="bg">#282B30</color>
     <color name="bgalpha">#99282B30</color>
+    <color name="text">#CFDAE6</color>
 
     <color name="ln">#0099FE</color>
     <color name="btc">#E68A00</color>

@@ -12,6 +12,10 @@ object FiatRates {
   type CoinGeckoItemMap = Map[String, CoinGeckoItem]
   type BlockchainInfoItemMap = Map[String, BlockchainInfoItem]
 
+  val customFiatSymbols: Map[String, String] =
+    Map("rub" -> "\u20BD", "usd" -> "$", "inr" -> "₹", "gbp" -> "£",
+      "cny" -> "CN¥", "jpy" -> "¥", "brl" -> "R$", "eur" -> "€", "krw" -> "₩")
+
   def reloadData: Fiat2Btc = fr.acinq.eclair.secureRandom nextInt 3 match {
     case 0 => to[CoinGecko](get("https://api.coingecko.com/api/v3/exchange_rates").body).rates.map { case (code, item) => code.toLowerCase -> item.value }
     case 1 => to[BlockchainInfoItemMap](get("https://blockchain.info/ticker").body).map { case (code, item) => code.toLowerCase -> item.last }
