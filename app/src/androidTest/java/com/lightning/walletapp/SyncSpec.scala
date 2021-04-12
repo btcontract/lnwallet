@@ -17,8 +17,12 @@ class SyncSpec {
 
   @Test
   def syncAndPackGraph: Unit = {
-    val dbName = DBSpec.randomDBName
-    val (normalStore, _) = DBSpec.getRandomNetworkStores(dbName)
+    run(dbName = DBSpec.randomDBName)
+    this synchronized wait(6000000L)
+  }
+
+  def run(dbName: String): Unit = {
+    val (normalStore, _) = DBSpec.getNetworkStores(dbName)
 
     LNParams.syncParams = new SyncParams {
       override val maxNodesToSyncFrom = 1
@@ -68,10 +72,10 @@ class SyncSpec {
         println(s"Size of decompressed graph db is ${decompressedPlainBytes.size}")
         assert(plainBytes == decompressedPlainBytes)
         println("Done")
+        run(dbName)
       }
     }
 
     syncMaster process setupData
-    this synchronized wait(2000000L)
   }
 }
