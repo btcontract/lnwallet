@@ -130,15 +130,14 @@ case class SyncWorker(master: CanBeRepliedTo, keyPair: KeyPair, remoteInfo: Remo
       // Remote peer is connected, (re-)start remaining gossip sync
       me process CMDGetGossip
 
+    case (CMDGetGossip, data1: SyncWorkerGossipData, GOSSIP_SYNC) if data1.queries.isEmpty =>
+      // We have no more queries left, inform master
+      master process CMDGossipComplete(me)
+      me process CMDShutdown
+
     case (CMDGetGossip, data1: SyncWorkerGossipData, GOSSIP_SYNC) =>
-      if (data1.queries.isEmpty) {
-        // We have no more queries left
-        master process CMDGossipComplete(me)
-        me process CMDShutdown
-      } else {
-        // We still have queries left, send another one to peer
-        CommsTower.sendMany(data1.queries.headOption, pair)
-      }
+      // We still have queries left, send another one to peer
+      CommsTower.sendMany(data1.queries.take(1), pair)
 
     case (update: ChannelUpdate, d1: SyncWorkerGossipData, GOSSIP_SYNC) if d1.syncMaster.provenButShouldBeExcluded(update) => become(d1.copy(excluded = d1.excluded + update.core), GOSSIP_SYNC)
     case (update: ChannelUpdate, d1: SyncWorkerGossipData, GOSSIP_SYNC) if d1.syncMaster.provenAndNotExcluded(update.shortChannelId) => become(d1.copy(updates = d1.updates + update.lite), GOSSIP_SYNC)

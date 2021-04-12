@@ -71,7 +71,7 @@ class SQLitePayment(db: DBInterface, preimageDb: DBInterface) extends PaymentBag
   }
 
   def toPaymentInfo(rc: RichCursor): PaymentInfo =
-    PaymentInfo(rc string PaymentTable.pr, ByteVector32.fromValidHex(rc string PaymentTable.preimage), rc string PaymentTable.status, rc long PaymentTable.stamp,
+    PaymentInfo(rc string PaymentTable.pr, ByteVector32.fromValidHex(rc string PaymentTable.preimage), rc string PaymentTable.status, rc long PaymentTable.seenAt,
       rc string PaymentTable.description, rc string PaymentTable.action, ByteVector32.fromValidHex(rc string PaymentTable.hash), ByteVector32.fromValidHex(rc string PaymentTable.secret),
       MilliSatoshi(rc long PaymentTable.receivedMsat), MilliSatoshi(rc long PaymentTable.sentMsat), MilliSatoshi(rc long PaymentTable.feeMsat), MilliSatoshi(rc long PaymentTable.balanceMsat),
       rc string PaymentTable.fiatRates, MilliSatoshi(rc long PaymentTable.chainFee), rc long PaymentTable.incoming)
@@ -79,5 +79,5 @@ class SQLitePayment(db: DBInterface, preimageDb: DBInterface) extends PaymentBag
   def toRelayedPreimageInfo(rc: RichCursor): RelayedPreimageInfo =
     RelayedPreimageInfo(rc string RelayTable.hash, rc string RelayTable.preimage,
       MilliSatoshi(rc long RelayTable.relayed), MilliSatoshi(rc long RelayTable.earned),
-      rc long RelayTable.stamp)
+      rc long RelayTable.seenAt)
 }

@@ -1,12 +1,15 @@
 package immortan.sqlite
 
+import java.util.concurrent.atomic.AtomicInteger
+
+
 trait Table {
   val (id, fts) = "_id" -> "fts4"
   def createStatements: Seq[String]
 }
 
 object Table {
-  val DEFAULT_LIMIT = 3
+  val DEFAULT_LIMIT = new AtomicInteger(10)
 }
 
 // Database #1, essential data, exportable to backup
@@ -147,15 +150,15 @@ object HostedExcludedChannelTable extends ExcludedChannelTable("hosted_excluded_
 // Database #3, unrecoverable, but not critically important data, will not go to backup
 
 object RelayTable extends Table {
-  val (table, hash, secret, preimage, stamp, relayed, earned) = ("relay", "hash", "secret", "preimage", "stamp", "relayed", "earned")
-  val newSql = s"INSERT OR IGNORE INTO $table ($hash, $secret, $preimage, $stamp, $relayed, $earned) VALUES (?, ?, ?, ?, ?, ?)"
+  val (table, hash, secret, preimage, seenAt, relayed, earned) = ("relay", "hash", "secret", "preimage", "seen", "relayed", "earned")
+  val newSql = s"INSERT OR IGNORE INTO $table ($hash, $secret, $preimage, $seenAt, $relayed, $earned) VALUES (?, ?, ?, ?, ?, ?)"
   val selectSummarySql = s"SELECT SUM($relayed), SUM($earned), COUNT($id) FROM $table"
   val selectRecentSql = s"SELECT * FROM $table ORDER BY $id DESC LIMIT ?"
 
   def createStatements: Seq[String] = {
     val createTable = s"""CREATE TABLE IF NOT EXISTS $table(
       $id INTEGER PRIMARY KEY AUTOINCREMENT, $hash TEXT NOT NULL, $secret TEXT NOT NULL,
-      $preimage TEXT NOT NULL, $stamp INTEGER NOT NULL, $relayed INTEGER NOT NULL,
+      $preimage TEXT NOT NULL, $seenAt INTEGER NOT NULL, $relayed INTEGER NOT NULL,
       $earned INTEGER NOT NULL
     )"""
 
@@ -170,9 +173,9 @@ object PaymentTable extends Table {
   private val ESCAPED_SUCCEEDED = s"'$SUCCEEDED'"
   private val ESCAPED_ABORTED = s"'$ABORTED'"
 
-  private val paymentTableFields = ("search", "payment", "pr", "preimage", "status", "stamp", "desc", "action", "hash", "secret", "received", "sent", "fee", "balance", "fiatrates", "chainfee", "incoming")
-  val (search, table, pr, preimage, status, stamp, description, action, hash, secret, receivedMsat, sentMsat, feeMsat, balanceMsat, fiatRates, chainFee, incoming) = paymentTableFields
-  val inserts = s"$pr, $preimage, $status, $stamp, $description, $action, $hash, $secret, $receivedMsat, $sentMsat, $feeMsat, $balanceMsat, $fiatRates, $chainFee, $incoming"
+  private val paymentTableFields = ("search", "payment", "pr", "preimage", "status", "seenAt", "desc", "action", "hash", "secret", "received", "sent", "fee", "balance", "fiatrates", "chainfee", "incoming")
+  val (search, table, pr, preimage, status, seenAt, description, action, hash, secret, receivedMsat, sentMsat, feeMsat, balanceMsat, fiatRates, chainFee, incoming) = paymentTableFields
+  val inserts = s"$pr, $preimage, $status, $seenAt, $description, $action, $hash, $secret, $receivedMsat, $sentMsat, $feeMsat, $balanceMsat, $fiatRates, $chainFee, $incoming"
   val newSql = s"INSERT OR IGNORE INTO $table ($inserts) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
   val newVirtualSql = s"INSERT INTO $fts$table ($search, $hash) VALUES (?, ?)"
   val deleteSql = s"DELETE FROM $table WHERE $hash = ?"
@@ -180,26 +183,26 @@ object PaymentTable extends Table {
   // Selecting
   val selectByHashSql = s"SELECT * FROM $table WHERE $hash = ?"
   // Select payments which have been aborted within a given timespan OR all non-aborted payments (the idea is to reduce payment list cluttering with failed payments)
-  val selectRecentSql = s"SELECT * FROM $table WHERE ($stamp > ? AND $status = $ESCAPED_ABORTED) OR ($stamp > 0 AND $status <> $ESCAPED_ABORTED) ORDER BY $id DESC LIMIT ?"
+  val selectRecentSql = s"SELECT * FROM $table WHERE ($seenAt > ? AND $status = $ESCAPED_ABORTED) OR ($seenAt > 0 AND $status <> $ESCAPED_ABORTED) ORDER BY $id DESC LIMIT ?"
   val selectSummarySql = s"SELECT SUM($feeMsat), SUM($receivedMsat), SUM($sentMsat), COUNT($id) FROM $table WHERE $status = $ESCAPED_SUCCEEDED"
   val searchSql = s"SELECT * FROM $table WHERE $hash IN (SELECT $hash FROM $fts$table WHERE $search MATCH ? LIMIT 50)"
 
   // Updating
-  val updOkOutgoingSql = s"UPDATE $table SET $status = $ESCAPED_SUCCEEDED, $preimage = ?, $feeMsat = ? WHERE $hash = ? AND ($stamp > 0 AND status <> $ESCAPED_SUCCEEDED) AND $incoming = 0"
-  val updOkIncomingSql = s"UPDATE $table SET $status = $ESCAPED_SUCCEEDED, $receivedMsat = ?, $stamp = ? WHERE $hash = ? AND ($stamp > 0 AND status <> $ESCAPED_SUCCEEDED) AND $incoming = 1"
-  val updStatusSql = s"UPDATE $table SET $status = ? WHERE $hash = ? AND ($stamp > 0 AND status <> $ESCAPED_SUCCEEDED)"
+  val updOkOutgoingSql = s"UPDATE $table SET $status = $ESCAPED_SUCCEEDED, $preimage = ?, $feeMsat = ? WHERE $hash = ? AND ($seenAt > 0 AND status <> $ESCAPED_SUCCEEDED) AND $incoming = 0"
+  val updOkIncomingSql = s"UPDATE $table SET $status = $ESCAPED_SUCCEEDED, $receivedMsat = ?, $seenAt = ? WHERE $hash = ? AND ($seenAt > 0 AND status <> $ESCAPED_SUCCEEDED) AND $incoming = 1"
+  val updStatusSql = s"UPDATE $table SET $status = ? WHERE $hash = ? AND ($seenAt > 0 AND status <> $ESCAPED_SUCCEEDED)"
 
   def createStatements: Seq[String] = {
     val createTable = s"""CREATE TABLE IF NOT EXISTS $table(
       $id INTEGER PRIMARY KEY AUTOINCREMENT, $pr TEXT NOT NULL, $preimage TEXT NOT NULL, $status TEXT NOT NULL,
-      $stamp INTEGER NOT NULL, $description TEXT NOT NULL, $action TEXT NOT NULL, $hash TEXT NOT NULL UNIQUE, $secret TEXT NOT NULL,
+      $seenAt INTEGER NOT NULL, $description TEXT NOT NULL, $action TEXT NOT NULL, $hash TEXT NOT NULL UNIQUE, $secret TEXT NOT NULL,
       $receivedMsat INTEGER NOT NULL, $sentMsat INTEGER NOT NULL, $feeMsat INTEGER NOT NULL, $balanceMsat INTEGER NOT NULL,
       $fiatRates TEXT NOT NULL, $chainFee INTEGER NOT NULL, $incoming INTEGER NOT NULL
     )"""
 
     // Once incoming or outgoing payment is settled we can search it by various metadata
     val addIndex1 = s"CREATE VIRTUAL TABLE IF NOT EXISTS $fts$table USING $fts($search, $hash)"
-    val addIndex2 = s"CREATE INDEX IF NOT EXISTS idx2$table ON $table ($stamp, $status)"
+    val addIndex2 = s"CREATE INDEX IF NOT EXISTS idx2$table ON $table ($seenAt, $status)"
     createTable :: addIndex1 :: addIndex2 :: Nil
   }
 }

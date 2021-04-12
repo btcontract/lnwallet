@@ -15,8 +15,8 @@ object DBSpec {
     List.fill(12)(secureRandom nextInt alphabet.length).map(alphabet).mkString
   }
 
-  def getRandomNetworkStores: (SQLiteNetwork, SQLiteNetwork) = {
-    def db = new DBInterfaceSQLiteAndroidGraph(WalletApp.app, randomDBName)
+  def getRandomNetworkStores(dbName: String): (SQLiteNetwork, SQLiteNetwork) = {
+    def db = new DBInterfaceSQLiteAndroidGraph(WalletApp.app, dbName)
     val normal = new SQLiteNetwork(db, NormalChannelUpdateTable, NormalChannelAnnouncementTable, NormalExcludedChannelTable)
     val hosted = new SQLiteNetwork(db, HostedChannelUpdateTable, HostedChannelAnnouncementTable, HostedExcludedChannelTable)
     (normal, hosted)

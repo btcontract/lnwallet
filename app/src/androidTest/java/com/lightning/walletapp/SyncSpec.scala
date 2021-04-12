@@ -1,0 +1,77 @@
+package com.lightning.walletapp
+
+import immortan.{LNParams, PureRoutingData, SyncMaster, SyncMasterShortIdData, SyncParams}
+import fr.acinq.eclair.router.Graph.GraphStructure.DirectedGraph
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import fr.acinq.eclair.router.Router.Data
+import com.google.common.io.Files
+import org.junit.runner.RunWith
+import immortan.wire.ExtCodecs
+import scodec.bits.ByteVector
+import org.junit.Test
+import java.io.File
+
+
+@RunWith(classOf[AndroidJUnit4])
+class SyncSpec {
+
+  @Test
+  def syncAndPackGraph: Unit = {
+    val dbName = DBSpec.randomDBName
+    val (normalStore, _) = DBSpec.getRandomNetworkStores(dbName)
+
+    LNParams.syncParams = new SyncParams {
+      override val maxNodesToSyncFrom = 1
+      override val acceptThreshold = 0
+    }
+
+    val channelMap0 = normalStore.getRoutingData
+    val data0 = Data(channelMap0, hostedChannels = Map.empty, graph = DirectedGraph makeGraph channelMap0)
+    val setupData = SyncMasterShortIdData(Set(LNParams.syncParams.acinq), extSyncs = Set.empty, activeSyncs = Set.empty)
+
+    val syncMaster = new SyncMaster(normalStore.listExcludedChannels, data0) {
+      def onChunkSyncComplete(pure: PureRoutingData): Unit = {
+        println(s"Chunk complete, announces=${pure.announces.size}, updates=${pure.updates.size}, excluded=${pure.excluded.size}")
+        val a = System.currentTimeMillis
+        normalStore.processPureData(pure)
+        println(s"DB chunk processing took ${System.currentTimeMillis - a} msec")
+      }
+
+      def onTotalSyncComplete: Unit = {
+        val data1 = normalStore.getRoutingData
+        println(s"Total sync complete, we have ${data1.keys.size} channels")
+
+        val a1 = System.currentTimeMillis
+        val oneSidedShortIds = normalStore.listChannelsWithOneUpdate
+        normalStore.removeGhostChannels(data1.keySet.diff(provenShortIds), oneSidedShortIds)
+        println(s"Removing of ghost channels took ${System.currentTimeMillis - a1} msec")
+
+        val a2 = System.currentTimeMillis
+        val data2 = normalStore.getRoutingData
+        println(s"Post-processing data took ${System.currentTimeMillis - a2} msec")
+        println(s"Total sync complete, we have ${data2.keys.size} purified channels")
+
+        val a3 = System.currentTimeMillis
+        val graph = DirectedGraph.makeGraph(data2)
+        assert(graph.vertices.forall { case (nodeId, incomingEdges) => incomingEdges.forall(_.desc.to == nodeId) })
+        println(s"Making graph took ${System.currentTimeMillis - a3} msec")
+        assert(data2.nonEmpty)
+
+        val dataBaseFile = new File(WalletApp.app.getDatabasePath(dbName).getPath)
+        val plainBytes = ByteVector(Files toByteArray dataBaseFile)
+        println(s"Size of graph db is ${plainBytes.size}")
+
+        val compressedPlainBytes = ExtCodecs.compressedByteVecCodec.encode(plainBytes).require.toByteVector
+        println(s"Size of compressed graph db is ${compressedPlainBytes.size}")
+
+        val decompressedPlainBytes = ExtCodecs.compressedByteVecCodec.decode(compressedPlainBytes.toBitVector).require.value
+        println(s"Size of decompressed graph db is ${decompressedPlainBytes.size}")
+        assert(plainBytes == decompressedPlainBytes)
+        println("Done")
+      }
+    }
+
+    syncMaster process setupData
+    this synchronized wait(2000000L)
+  }
+}

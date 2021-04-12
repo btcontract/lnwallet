@@ -14,6 +14,11 @@ import scodec.Codec
 case class HostedState(nodeId1: PublicKey, nodeId2: PublicKey, lastCrossSignedState: LastCrossSignedState)
 
 object ExtCodecs {
+  val compressedByteVecCodec = {
+    val plain = variableSizeBytes(uint24, bytes)
+    zlib(plain)
+  }
+
   val hostedStateCodec = {
     (publicKey withContext "nodeId1") ::
       (publicKey withContext "nodeId2") ::

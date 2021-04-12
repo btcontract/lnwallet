@@ -27,9 +27,14 @@ object PaymentStatus {
   final val SUCCEEDED = "state-succeeded"
 }
 
-case class PaymentInfo(prString: String, preimage: ByteVector32, status: String, stamp: Long, descriptionString: String, actionString: String,
-                       paymentHash: ByteVector32, paymentSecret: ByteVector32, received: MilliSatoshi, sent: MilliSatoshi, fee: MilliSatoshi,
-                       balanceSnapshot: MilliSatoshi, fiatRatesString: String, chainFee: MilliSatoshi, incoming: Long) {
+sealed trait TransactionDetails {
+  val seenAt: Long
+}
+
+case class PaymentInfo(prString: String, preimage: ByteVector32, status: String, seenAt: Long, descriptionString: String,
+                       actionString: String, paymentHash: ByteVector32, paymentSecret: ByteVector32, received: MilliSatoshi,
+                       sent: MilliSatoshi, fee: MilliSatoshi, balanceSnapshot: MilliSatoshi, fiatRatesString: String,
+                       chainFee: MilliSatoshi, incoming: Long) extends TransactionDetails {
 
   val isIncoming: Boolean = 1 == incoming
   val tag: Int = if (isIncoming) PaymentTagTlv.FINAL_INCOMING else PaymentTagTlv.LOCALLY_SENT
@@ -89,7 +94,9 @@ case class SwapOutDescription(invoiceText: String, btcAddress: String, chainFee:
 
 // Relayed preimages
 
-case class RelayedPreimageInfo(paymentHashString: String, preimageString: String, relayed: MilliSatoshi, earned: MilliSatoshi, stamp: Long) {
+case class RelayedPreimageInfo(paymentHashString: String, preimageString: String, relayed: MilliSatoshi,
+                               earned: MilliSatoshi, seenAt: Long) extends TransactionDetails {
+
   lazy val paymentHash: ByteVector32 = ByteVector32.fromValidHex(paymentHashString)
   lazy val preimage: ByteVector32 = ByteVector32.fromValidHex(preimageString)
 }
@@ -97,8 +104,8 @@ case class RelayedPreimageInfo(paymentHashString: String, preimageString: String
 // Tx descriptions
 
 case class TxInfo(txidString: String, depth: Long, receivedMsat: MilliSatoshi, sentMsat: MilliSatoshi, feeMsat: MilliSatoshi,
-                  seenAt: Long, completedAt: Long, descriptionString: String, balanceSnapshot: MilliSatoshi,
-                  fiatRatesString: String, incoming: Long, doubleSpent: Long) {
+                  seenAt: Long, completedAt: Long, descriptionString: String, balanceSnapshot: MilliSatoshi, fiatRatesString: String,
+                  incoming: Long, doubleSpent: Long) extends TransactionDetails {
 
   val isIncoming: Boolean = 1L == incoming
   val isDoubleSpent: Boolean = 1L == doubleSpent

@@ -77,6 +77,7 @@ object WalletApp { me =>
     miscInterface txWrap {
       extDataBag = new SQLiteDataExtended(miscInterface)
       usedAddons = extDataBag.tryGetAddons getOrElse UsedAddons(List.empty)
+      if (app.isTablet) Table.DEFAULT_LIMIT.set(10) else Table.DEFAULT_LIMIT.set(20)
       val emptyReady = WalletReady(0L.sat, 0L.sat, 0L, System.currentTimeMillis)
       lastWalletReady = extDataBag.tryGetLastWalletReady getOrElse emptyReady
     }
