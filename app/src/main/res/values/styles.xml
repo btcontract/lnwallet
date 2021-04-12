@@ -88,7 +88,7 @@
 
     <style name="FillingView">
         <item name="android:layout_height">wrap_content</item>
-        <item name="android:layout_width">fill_parent</item>
+        <item name="android:layout_width">match_parent</item>
     </style>
 
     <style name="YMarginFillingView" parent="FillingView">
@@ -126,39 +126,46 @@
     </style>
 
     <style name="InFlightView">
-        <item name="android:layout_marginStart">@dimen/search_bar_left_icon_left_margin</item>
+        <item name="android:layout_marginStart">@dimen/bottom_navigation_small_selected_width_difference</item>
         <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_width">wrap_content</item>
         <item name="android:layout_gravity">center</item>
-        <item name="android:layout_width">40sp</item>
-        <item name="android:maxWidth">40sp</item>
         <item name="android:textStyle">bold</item>
         <item name="android:textSize">16sp</item>
         <item name="android:maxLines">1</item>
     </style>
 
+    <!-- Card and payment list -->
+
+    <style name="Card" parent="FillingView">
+        <item name="android:foreground">?android:attr/selectableItemBackground</item>
+        <item name="android:clickable">true</item>
+        <item name="android:focusable">true</item>
+    </style>
+
+    <style name="Tag">
+        <item name="android:visibility">gone</item>
+        <item name="android:layout_width">64dp</item>
+        <item name="android:layout_height">50dp</item>
+    </style>
+
+    <style name="Amount" parent="BoundedView">
+        <item name="android:textColor">@color/colorAccent</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:textSize">20sp</item>
+    </style>
+
     <!-- chip text -->
 
-    <style name="ChipTextWhite">
-        <item name="android:paddingTop">4sp</item>
-        <item name="android:paddingLeft">8sp</item>
-        <item name="android:paddingRight">8sp</item>
-        <item name="android:paddingBottom">6sp</item>
-        <item name="android:textColor">@color/colorAccent</item>
+    <style name="ChipTextGray">
+        <item name="android:paddingTop">3sp</item>
+        <item name="android:paddingLeft">7sp</item>
+        <item name="android:paddingRight">7sp</item>
+        <item name="android:paddingBottom">4sp</item>
         <item name="android:background">@drawable/border_accent</item>
         <item name="android:layout_height">wrap_content</item>
         <item name="android:layout_width">wrap_content</item>
-        <item name="android:layout_marginRight">6sp</item>
-        <item name="android:layout_marginTop">6sp</item>
-    </style>
-
-    <style name="ChipTextGreen" parent="ChipTextWhite">
-        <item name="android:textColor">@color/buttonGreenRipple</item>
-        <item name="android:background">@drawable/border_green</item>
-    </style>
-
-    <style name="ChipTextBlue" parent="ChipTextWhite">
-        <item name="android:textColor">@color/colorBlue</item>
-        <item name="android:background">@drawable/border_blue</item>
+        <item name="android:textSize">16sp</item>
     </style>
 
     <!-- nachos -->

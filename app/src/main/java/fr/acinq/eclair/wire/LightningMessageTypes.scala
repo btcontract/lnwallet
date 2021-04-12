@@ -335,13 +335,13 @@ case class ReplyPublicHostedChannelsEnd(chainHash: ByteVector32) extends Routing
 
 sealed trait ChainSwapMessage extends LightningMessage
 
-sealed trait SwapIn
+sealed trait SwapIn // Chain -> LN
 
-case object SwapInRequest extends SwapIn with ChainSwapMessage
+case object SwapInRequest extends SwapIn with ChainSwapMessage // (1) User notifies provider it wants to start swap-in
 
-case class SwapInResponse(btcAddress: String, minChainDeposit: Satoshi) extends SwapIn with ChainSwapMessage
+case class SwapInResponse(btcAddress: String, minChainDeposit: Satoshi) extends SwapIn with ChainSwapMessage // (2) Provider replies with chain address
 
-case class SwapInPaymentRequest(paymentRequest: String, id: Long) extends SwapIn with ChainSwapMessage
+case class SwapInPaymentRequest(paymentRequest: String, id: Long) extends SwapIn with ChainSwapMessage // (4) Once deposit is confirmed user can issue a withdraw invoice
 
 object SwapInPaymentDenied {
   final val WITHDRAWAL_ALREADY_IN_FLIGHT = 1L
@@ -352,11 +352,11 @@ object SwapInPaymentDenied {
 
 case class SwapInPaymentDenied(id: Long, reason: Long) extends SwapIn with ChainSwapMessage
 
-case class ChainDeposit(id: Long, lnPaymentId: Option[String], lnStatus: Long, btcAddress: String, outIndex: Long, txid: String, amountSat: Long, depth: Long, stamp: Long)
+case class ChainDeposit(id: Long, lnPaymentId: Option[String], lnStatus: Long, btcAddress: String, outIndex: Long, txid: String, amountSat: Long, depth: Long, stamp: Long) // (3) Periodic notifications
 
-case class SwapInState(pending: List[ChainDeposit], ready: List[ChainDeposit], processing: List[ChainDeposit] = Nil) extends SwapIn with ChainSwapMessage
+case class SwapInState(pending: List[ChainDeposit], ready: List[ChainDeposit], processing: List[ChainDeposit] = Nil) extends SwapIn with ChainSwapMessage // (3) Periodic notifications
 
-sealed trait SwapOut
+sealed trait SwapOut // LN -> Chain
 
 case object SwapOutRequest extends SwapOut with ChainSwapMessage
 
@@ -386,10 +386,10 @@ sealed trait TrampolineStatus extends LightningMessage
 case object TrampolineUndesired extends TrampolineStatus
 
 object TrampolineOn {
-  def default(minimumMsat: MilliSatoshi, cltvExpiryDelta: CltvExpiryDelta): TrampolineOn = {
-    // A relatively high and linear defaults in case if peer still wants to route while routing is undesired by us
-    TrampolineOn(minimumMsat, 10000000000L.msat, 10000L.msat, 1000L, exponent = 1.0, logExponent = 0.0, cltvExpiryDelta)
-  }
+  def default(minimumMsat: MilliSatoshi, cltvExpiryDelta: CltvExpiryDelta): TrampolineOn =
+  // A relatively high (10 sat + 0.1%) and linear defaults in case if peer still wants to route while routing is undesired by us
+    TrampolineOn(minimumMsat, maximumMsat = 1000000000L.msat, feeBaseMsat = 10000L.msat, feeProportionalMillionths = 1000L,
+      exponent = 1.0, logExponent = 0.0, cltvExpiryDelta)
 }
 
 case class TrampolineOn(minimumMsat: MilliSatoshi, maximumMsat: MilliSatoshi, feeBaseMsat: MilliSatoshi,

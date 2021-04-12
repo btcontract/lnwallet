@@ -1,51 +1,101 @@
 <RelativeLayout
+    style="@style/StandardLinearLayout"
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
-    style="@style/StandardXYMarginLinearLayout"
     android:id="@+id/contentWindow">
 
-    <include
-        android:id="@+id/inFlightPayments"
-        layout="@layout/frag_in_flight_payments"/>
+    <!-- Payment list + header -->
 
-    <androidx.appcompat.widget.SwitchCompat
-        android:layout_alignParentEnd="true"
-        android:text="@string/dialog_routing"
-        android:textColor="@color/text"
-        style="@style/BoundedView"
-        android:textSize="16sp"/>
+    <ListView
+        android:paddingEnd="15dp"
+        android:paddingStart="15dp"
+        android:id="@+id/itemsList"
+        style="@style/StandardLinearLayout"/>
 
-    <!-- activity list -->
+    <!-- Top info -->
+
+    <com.github.mmin18.widget.RealtimeBlurView
+        app:realtimeOverlayColor="@color/bgalpha"
+        android:layout_width="match_parent"
+        android:id="@+id/topBlurringArea"
+        app:realtimeBlurRadius="10dp"
+        android:layout_height="0dp"/>
 
     <LinearLayout
-        android:baselineAligned="true"
-        style="@style/StandardLinearLayout">
+        android:padding="15dp"
+        android:clickable="true"
+        android:focusable="true"
+        android:id="@+id/topInfoLayout"
+        android:orientation="vertical"
+        style="@style/FillingView">
 
-        <ListView
-            android:layout_weight="1"
-            android:id="@+id/itemsList"
-            android:layout_height="wrap_content"
-            android:layout_width="0dp"/>
+        <RelativeLayout style="@style/FillingView">
 
+            <TextView
+                android:text="@string/total_balance"
+                android:layout_centerVertical="true"
+                style="@style/FillingView"/>
+
+            <ImageButton
+                android:padding="6dp"
+                android:onClick="bringSettings"
+                android:layout_alignParentEnd="true"
+                android:src="@drawable/baseline_settings_24"
+                android:background="?android:selectableItemBackground"
+                style="@style/BoundedView"/>
+
+        </RelativeLayout>
+
+        <RelativeLayout
+            android:layout_marginTop="6dp"
+            style="@style/FillingView">
+
+            <TextView
+                android:id="@+id/totalBalance"
+                style="@style/Amount"/>
+
+            <TextView
+                android:textStyle="bold"
+                android:layout_marginTop="6dp"
+                android:layout_below="@id/totalBalance"
+                android:id="@+id/totalFiatBalance"
+                style="@style/BoundedView"/>
+
+            <TextView
+                android:id="@+id/fiatUnitPriceAndChange"
+                android:layout_alignParentEnd="true"
+                android:layout_centerVertical="true"
+                style="@style/ChipTextGray"/>
+
+        </RelativeLayout>
     </LinearLayout>
 
-    <!-- bottom menu -->
+    <!-- Bottom menu -->
+
+    <com.github.mmin18.widget.RealtimeBlurView
+        app:realtimeOverlayColor="@color/bgalpha"
+        android:layout_alignParentBottom="true"
+        android:id="@+id/bottomBlurringArea"
+        android:layout_width="match_parent"
+        app:realtimeBlurRadius="10dp"
+        android:layout_height="0dp"/>
 
     <LinearLayout
-        android:background="@drawable/linear_layout_rounded_corners"
+        android:clickable="true"
+        android:focusable="true"
+        android:paddingTop="10dp"
+        android:paddingBottom="10dp"
         android:layout_alignParentBottom="true"
-        android:layout_centerHorizontal="true"
-        android:layout_height="wrap_content"
-        android:layout_width="wrap_content"
+        android:id="@+id/bottomActionBar"
         android:orientation="horizontal"
-        android:id="@+id/actionBar"
+        style="@style/FillingView"
         android:gravity="center">
 
         <com.ornach.nobobutton.NoboButton
             android:layout_margin="@dimen/chip_default_padding_edge"
-            android:onClick="attemptSendFromClipboard"
+            android:onClick="bringSendFromClipboard"
             app:nb_text="@string/dialog_send"
-            android:layout_width="110dp"
+            android:layout_width="115dp"
             style="@style/GrayButton"/>
 
         <com.ornach.nobobutton.NoboButton
@@ -57,7 +107,7 @@
             android:layout_margin="@dimen/chip_default_padding_edge"
             android:onClick="bringReceiveOptions"
             app:nb_text="@string/dialog_receive"
-            android:layout_width="110dp"
+            android:layout_width="115dp"
             style="@style/GrayButton"/>
 
     </LinearLayout>

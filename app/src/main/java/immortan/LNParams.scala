@@ -10,7 +10,6 @@ import fr.acinq.eclair.blockchain.electrum._
 import fr.acinq.bitcoin.DeterministicWallet._
 import scodec.bits.{ByteVector, HexStringSyntax}
 import fr.acinq.bitcoin.Crypto.{PrivateKey, PublicKey}
-import java.util.concurrent.atomic.{AtomicBoolean, AtomicLong}
 import immortan.sqlite.{DBInterface, PreparedQuery, RichCursor}
 import fr.acinq.eclair.router.Router.{PublicChannel, RouterConf}
 import fr.acinq.eclair.channel.{LocalParams, PersistentChannelData}
@@ -20,6 +19,7 @@ import immortan.utils.{Denomination, FeeRatesInfo, FiatRatesInfo, PaymentRequest
 import fr.acinq.eclair.blockchain.electrum.db.WalletDb
 import scala.concurrent.ExecutionContextExecutor
 import fr.acinq.eclair.router.ChannelUpdateExt
+import java.util.concurrent.atomic.AtomicLong
 import immortan.SyncMaster.ShortChanIdSet
 import fr.acinq.eclair.crypto.Generators
 import immortan.crypto.Noise.KeyPair
@@ -95,10 +95,6 @@ object LNParams {
   // Chain wallet has lost connection this long time ago
   // can only happen if wallet has connected, then disconnected
   val lastDisconnect: AtomicLong = new AtomicLong(Long.MaxValue)
-
-  // A peer may always attempt to route something since the choice there might be between routing or force-closing
-  // but if undesired we should exclude HCs from routing since their trust assumtions are different from NCs
-  val isRoutingDesired: AtomicBoolean = new AtomicBoolean(true)
 
   def isOperational: Boolean =
     null != format && null != chainWallet && null != syncParams && null != trampoline &&

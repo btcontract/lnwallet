@@ -9,8 +9,8 @@ import immortan.crypto.Tools.{Bytes, Fiat2Btc, none, runAnd}
 import android.app.{Application, NotificationChannel, NotificationManager}
 import fr.acinq.eclair.blockchain.electrum.{CheckPoint, ElectrumClientPool}
 import android.content.{ClipboardManager, Context, Intent, SharedPreferences}
+import immortan.utils.{BtcDenomination, FeeRates, FeeRatesInfo, FiatRates, FiatRatesInfo}
 import com.lightning.walletapp.utils.{AwaitService, DelayedNotification, UsedAddons, WebsocketBus}
-import immortan.utils.{BtcDenomination, FeeRates, FeeRatesInfo, FiatRates, FiatRatesInfo, SatDenomination}
 import immortan.{Channel, ChannelMaster, CommsTower, LNParams, MnemonicExtStorageFormat, PathFinder, RemoteNodeInfo, SyncParams}
 import fr.acinq.eclair.blockchain.electrum.ElectrumWallet.WalletReady
 import fr.acinq.eclair.router.Router.RouterConf
@@ -38,7 +38,6 @@ object WalletApp { me =>
   final val USE_AUTH = "useAuth"
   final val FIAT_CODE = "fiatCode"
   final val ENSURE_TOR = "ensureTor"
-  final val ROUTING_DESIRED = "routingDesired"
   final val MAKE_CHAN_BACKUP = "makeChanBackup"
   final val CAP_LN_FEE_TO_CHAIN = "capLNFeeToChain"
   final val LAST_TOTAL_GOSSIP_SYNC = "lastTotalGossipSync"
@@ -48,7 +47,7 @@ object WalletApp { me =>
   def fiatCode: String = app.prefs.getString(FIAT_CODE, "usd")
   def ensureTor: Boolean = app.prefs.getBoolean(ENSURE_TOR, false)
   def makeChanBackup: Boolean = app.prefs.getBoolean(MAKE_CHAN_BACKUP, true)
-  def canLNFeeToChain: Boolean = app.prefs.getBoolean(CAP_LN_FEE_TO_CHAIN, false)
+  def capLNFeeToChain: Boolean = app.prefs.getBoolean(CAP_LN_FEE_TO_CHAIN, false)
 
   // Due to Android specifics any of these may be nullified at runtime, must check for liveness on every entry
   def isAlive: Boolean = null != extDataBag && null != lastWalletReady && null != usedAddons && null != app
@@ -98,7 +97,7 @@ object WalletApp { me =>
 
     LNParams.format = format
     LNParams.routerConf = defaultRouterConf
-    LNParams.denomination = SatDenomination
+    LNParams.denomination = BtcDenomination
     LNParams.syncParams = new SyncParams
 
     extDataBag.db txWrap {
@@ -132,7 +131,6 @@ object WalletApp { me =>
 
     LNParams.cm = new ChannelMaster(payBag, chanBag, extDataBag, pf)
     LNParams.chainWallet = LNParams.createWallet(extDataBag, format.seed)
-    LNParams.isRoutingDesired set app.prefs.getBoolean(ROUTING_DESIRED, false)
 
     // Take care of essential listeners
     LNParams.chainWallet.eventsCatcher ! LNParams.cm.chainChannelListener
@@ -234,8 +232,8 @@ class WalletApp extends Application { me =>
   }
 
   def showStickyNotification(titleRes: Int, amount: MilliSatoshi): Unit = {
-    val bodyText = getString(incoming_notify_body).format(LNParams.denomination parsedWithSign amount)
     val withTitle = foregroundServiceIntent.putExtra(AwaitService.TITLE_TO_DISPLAY, me getString titleRes)
+    val bodyText = getString(incoming_notify_body).format(LNParams.denomination.asString(amount) + "\u00A0" + LNParams.denomination.sign)
     val withBodyAction = withTitle.putExtra(AwaitService.BODY_TO_DISPLAY, bodyText).setAction(AwaitService.ACTION_SHOW)
     androidx.core.content.ContextCompat.startForegroundService(me, withBodyAction)
   }

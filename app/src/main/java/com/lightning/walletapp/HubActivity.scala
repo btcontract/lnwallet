@@ -3,10 +3,11 @@ package com.lightning.walletapp
 import immortan.crypto.Tools._
 import com.lightning.walletapp.R.string._
 import immortan.{LNParams, RemoteNodeInfo}
+import android.widget.{LinearLayout, ListView, RelativeLayout, TextView}
 import immortan.utils.{BitcoinUri, InputParser, LNUrl, PaymentRequestExt}
 import com.lightning.walletapp.BaseActivity.StringOps
 import org.ndeftools.util.activity.NfcReaderActivity
-import android.widget.RelativeLayout
+import com.github.mmin18.widget.RealtimeBlurView
 import org.ndeftools.Message
 import android.os.Bundle
 import android.view.View
@@ -14,6 +15,17 @@ import android.view.View
 
 class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataChecker with ChoiceReceiver { me =>
   private[this] lazy val contentWindow = findViewById(R.id.contentWindow).asInstanceOf[RelativeLayout]
+
+  private[this] lazy val topInfoLayout = findViewById(R.id.topInfoLayout).asInstanceOf[LinearLayout]
+  private[this] lazy val topBlurringArea = findViewById(R.id.topBlurringArea).asInstanceOf[RealtimeBlurView]
+
+  private[this] lazy val bottomBlurringArea = findViewById(R.id.bottomBlurringArea).asInstanceOf[RealtimeBlurView]
+  private[this] lazy val bottomActionBar = findViewById(R.id.bottomActionBar).asInstanceOf[LinearLayout]
+
+  private[this] lazy val itemsList = findViewById(R.id.itemsList).asInstanceOf[ListView]
+  private[this] lazy val totalBalance = findViewById(R.id.totalBalance).asInstanceOf[TextView]
+  private[this] lazy val totalFiatBalance = findViewById(R.id.totalFiatBalance).asInstanceOf[TextView]
+  private[this] lazy val fiatUnitPriceAndChange = findViewById(R.id.fiatUnitPriceAndChange).asInstanceOf[TextView]
   private val CHOICE_RECEIVE_TAG = "choiceReceiveTag"
 
   // NFC
@@ -55,6 +67,8 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
   def INIT(state: Bundle): Unit =
     if (WalletApp.isAlive && LNParams.isOperational) {
       setContentView(com.lightning.walletapp.R.layout.activity_hub)
+      topInfoLayout post UITask(topBlurringArea setHeightTo topInfoLayout)
+      bottomActionBar post UITask(bottomBlurringArea setHeightTo bottomActionBar)
     } else {
       WalletApp.freePossiblyUsedResouces
       me exitTo ClassNames.mainActivityClass
@@ -62,7 +76,11 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
 
   // VIEW HANDLERS
 
-  def attemptSendFromClipboard(view: View): Unit = {
+  def bringSettings(view: View): Unit = {
+
+  }
+
+  def bringSendFromClipboard(view: View): Unit = {
     def explain: Unit = snack(contentWindow, getString(error_nothing_in_clipboard).html, dialog_ok, _.dismiss)
     runInFutureProcessOnUI(InputParser.parse(WalletApp.app.getBufferUnsafe), _ => explain)(_ => me checkExternalData explain)
   }

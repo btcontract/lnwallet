@@ -271,11 +271,8 @@ class TrampolinePaymentRelayer(val fullTag: FullPaymentTag, cm: ChannelMaster) e
         val totalFeeReserve = amountIn(adds) - innerPayload.amountToForward - relayFee(innerPayload, LNParams.trampoline)
         val routerConf = LNParams.routerConf.copy(maxCltvDelta = expiryIn(adds) - innerPayload.outgoingCltv - LNParams.trampoline.cltvExpiryDelta)
         val extraEdges = RouteCalculation.makeExtraEdges(innerPayload.invoiceRoutingInfo.map(_.map(_.toList).toList).getOrElse(Nil), innerPayload.outgoingNodeId)
-
         // It makes no sense to try to route out a payment through channels used by peer to route it in
-        // Also, if routing is undesired by user BUT peer does want to route then we exclude HCs to reduce risk
-        val excludeHostedChans = if (LNParams.isRoutingDesired.get) Set.empty else cm.allHosted.keySet
-        val allowedChans = cm.all -- adds.map(_.add.channelId) -- excludeHostedChans
+        val allowedChans = cm.all -- adds.map(_.add.channelId)
 
         val send = SendMultiPart(fullTag, routerConf, innerPayload.outgoingNodeId,
           onionTotal = innerPayload.amountToForward, actualTotal = innerPayload.amountToForward,

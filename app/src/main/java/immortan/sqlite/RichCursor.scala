@@ -43,9 +43,9 @@ case class RichCursorSQLiteGeneral(rs: ResultSet) extends RichCursor { me =>
 
   def int(key: String): Int = rs.getInt(key)
 
-  // Important: this can only be iterated over ONCE
-  def iterator: Iterator[RichCursor] = new Iterator[RichCursor] {
-    def hasNext: Boolean = rs.next
-    def next: RichCursor = me
-  }
+  def iterator: Iterator[RichCursor] =
+    new Iterator[RichCursor] {
+      def hasNext: Boolean = rs.next
+      def next: RichCursor = me
+    }
 }

@@ -15,11 +15,8 @@ object Denomination {
 
 trait Denomination { me =>
   def asString(msat: MilliSatoshi): String = fmt.format(BigDecimal(msat.toLong) / factor)
-  def parsedWithSign(msat: MilliSatoshi): String = parsed(msat) + "\u00A0" + sign
-  protected def parsed(msat: MilliSatoshi): String
-
-  def coloredOut(msat: MilliSatoshi, suffix: String) = s"<font color=#E35646><tt>-</tt>${me parsed msat}</font>$suffix"
-  def coloredIn(msat: MilliSatoshi, suffix: String) = s"<font color=#6AAB38><tt>+</tt>${me parsed msat}</font>$suffix"
+  def parsedWithSign(msat: MilliSatoshi, zeroColor: String): String = parsed(msat, zeroColor) + "\u00A0" + sign
+  protected def parsed(msat: MilliSatoshi, zeroColor: String): String
 
   val fmt: DecimalFormat
   val factor: Long
@@ -32,8 +29,9 @@ object SatDenomination extends Denomination {
   val sign = "sat"
 
   fmt setDecimalFormatSymbols Denomination.symbols
+  def parsed(msat: MilliSatoshi, zeroColor: String): String = {
+    // Zero color is not used in SAT denomination
 
-  def parsed(msat: MilliSatoshi): String = {
     val basicFormattedMsatSum = asString(msat)
     val dotIndex = basicFormattedMsatSum.indexOf(".")
     val (whole, decimal) = basicFormattedMsatSum.splitAt(dotIndex)
@@ -43,10 +41,29 @@ object SatDenomination extends Denomination {
 }
 
 object BtcDenomination extends Denomination {
-  val fmt: DecimalFormat = new DecimalFormat("##0.00000000###")
+  val fmt: DecimalFormat = new DecimalFormat("##0.00000000000")
   val factor = 100000000000L
   val sign = "btc"
 
   fmt setDecimalFormatSymbols Denomination.symbols
-  def parsed(msat: MilliSatoshi): String = asString(msat) take 10
+
+  def parsed(msat: MilliSatoshi, zeroColor: String): String = {
+    // Alpha channel does not work on Android when set as HTML attribute
+    // hence zero color is supplied to match different backgrounds well
+
+    val basicFormattedMsatSum = asString(msat)
+    val dotIndex = basicFormattedMsatSum.indexOf(".")
+    val (whole, decimal) = basicFormattedMsatSum.splitAt(dotIndex)
+    val (decSat, decMsat) = decimal.splitAt(9)
+
+    val bld = new StringBuilder(decSat).insert(3, ",").insert(7, ",").insert(0, whole)
+    if ("000" != decMsat) bld.append("<small>.").append(decMsat).append("</small>")
+
+    val splitIndex = bld.indexWhere(char => char != '0' && char != '.' && char != ',')
+    val finalSplitIndex = if (".00000000" == decSat) splitIndex - 1 else splitIndex
+    val (finalWhole, finalDecimal) = bld.splitAt(finalSplitIndex)
+
+    new StringBuilder("<font color=").append(zeroColor).append('>').append(finalWhole).append("</font>")
+      .append("<font color=#FFFFFF>").append(finalDecimal).append("</font>").toString
+  }
 }

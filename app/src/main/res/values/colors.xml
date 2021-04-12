@@ -1,12 +1,21 @@
 <resources>
     <color name="bg">#282B30</color>
-    <color name="bgalpha">#99282B30</color>
+    <color name="colorAccent">#FAFAFA</color>
+    <color name="bgalpha">#AA282B30</color>
     <color name="text">#CFDAE6</color>
 
-    <color name="ln">#0099FE</color>
-    <color name="btc">#E68A00</color>
-    <color name="colorBlue">#8FDCFF</color>
-    <color name="colorAccent">#FAFAFA</color>
+    <color name="paymentAwait">#E08f04</color>
+    <color name="paymentDone">#99CC00</color>
+
+    <color name="ln">#6EABFA</color>
+    <color name="btc">#E08f04</color>
+    <color name="chanIndicator">#8FDCFF</color>
+
+    <color name="paymentPassiveBorder">#555555</color>
+    <color name="paymentActiveBorder">#6EABFA</color>
+
+    <color name="cardLightning">#4F5B8F</color>
+    <color name="cardBitcoin">#876319</color>
 
     <color name="buttonBlueBorder">#576DB8</color>
     <color name="buttonBlue">#3B5998</color>
@@ -20,7 +29,7 @@
     <color name="buttonRed">#AF1212</color>
 
     <color name="buttonGrayRipple">#868899</color>
-    <color name="buttonGrayBorder">#393939</color>
+    <color name="buttonGrayBorder">#494949</color>
 
     <!-- nachos -->
 

@@ -36,7 +36,7 @@ object DelayedNotification {
       val notificationId = secureRandom.nextInt(1000000)
 
       NotificationManagerCompat.from(context).notify(notificationId, notificationBuilder
-        .setSmallIcon(com.lightning.walletapp.R.drawable.ic_alert_triangle_white_24dp)
+        .setSmallIcon(com.lightning.walletapp.R.drawable.baseline_feedback_24)
         .setPriority(NotificationCompat.PRIORITY_HIGH)
         .setDefaults(Notification.DEFAULT_ALL)
         .setContentTitle(notificationTitle)

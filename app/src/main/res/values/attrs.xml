@@ -149,4 +149,12 @@
         <attr name="layout_weight" format="float"/>
         <attr name="android:layout_gravity"/>
     </declare-styleable>
+
+    <!-- blur view -->
+
+    <declare-styleable name="RealtimeBlurView">
+        <attr name="realtimeBlurRadius" format="dimension"/>
+        <attr name="realtimeDownsampleFactor" format="float"/>
+        <attr name="realtimeOverlayColor" format="color"/>
+    </declare-styleable>
 </resources>

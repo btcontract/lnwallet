@@ -110,8 +110,8 @@ object ImplicitJsonFormats extends DefaultJsonProtocol {
   implicit val plainMetaDescriptionFmt: JsonFormat[PlainMetaDescription] = taggedJsonFmt(jsonFormat[String, String,
     PlainMetaDescription](PlainMetaDescription.apply, "invoiceText", "meta"), tag = "PlainMetaDescription")
 
-  implicit val swapInDescriptionFmt: JsonFormat[SwapInDescription] = taggedJsonFmt(jsonFormat[String, String, Long, PublicKey,
-    SwapInDescription](SwapInDescription.apply, "invoiceText", "txid", "internalId", "nodeId"), tag = "SwapInDescription")
+  implicit val swapInDescriptionFmt: JsonFormat[SwapInDescription] = taggedJsonFmt(jsonFormat[String, String, PublicKey,
+    SwapInDescription](SwapInDescription.apply, "invoiceText", "txid", "nodeId"), tag = "SwapInDescription")
 
   implicit val swapOutDescriptionFmt: JsonFormat[SwapOutDescription] = taggedJsonFmt(jsonFormat[String, String, Satoshi, PublicKey,
     SwapOutDescription](SwapOutDescription.apply, "invoiceText", "btcAddress", "chainFee", "nodeId"), tag = "SwapOutDescription")

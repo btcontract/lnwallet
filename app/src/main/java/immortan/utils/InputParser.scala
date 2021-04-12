@@ -63,6 +63,7 @@ object PaymentRequestExt {
 
 case class PaymentRequestExt(uri: Try[Uri], pr: PaymentRequest, raw: String) {
   val splits: List[MilliSatoshi] = uri.map(_.getQueryParameter("splits").split(',').toList.map(_.toLong) map MilliSatoshi.apply).getOrElse(Nil)
+  def withNewSplit(newSplit: MilliSatoshi): String = s"$lightning$raw?splits=" + (newSplit :: splits).mkString(",")
 }
 
 object BitcoinUri {

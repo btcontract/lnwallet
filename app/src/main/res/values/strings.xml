@@ -1,6 +1,9 @@
 <resources>
     <string name="lang">eng</string>
     <string name="app_name">BLW</string>
+    <string name="bitcoin_wallet">Bitcoin</string>
+    <string name="lightning_wallet">Lightning</string>
+    <string name="total_balance">Total balance</string>
 
     <string name="emergency_mode">Something went wrong</string>
     <string name="emergency_share">Share error report</string>
@@ -72,6 +75,19 @@
     <string name="incoming_notify_body">Keep wallet running to get %1$s</string>
 
     <!-- /MPP -->
+
+    <!-- special tx/payment descriptions -->
+
+    <string name="payment_incoming">Incoming payment</string>
+    <string name="payment_outgoing">Outgoing payment</string>
+
+    <string name="tx_description_chan_funding">New channel funding</string>
+    <string name="tx_description_op_return">Payment proof timestamping</string>
+    <string name="tx_description_commit_claim">Channel refunding</string>
+    <string name="tx_description_htlc_claim">Payment refunding</string>
+    <string name="tx_description_penalty">Breach refunding</string>
+
+    <!-- /special tx/payment descriptions -->
 
     <!-- auth -->
 

@@ -1,0 +1,95 @@
+<LinearLayout
+    xmlns:card_view="http://schemas.android.com/apk/res-auto"
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    style="@style/StandardLinearLayout">
+
+    <androidx.cardview.widget.CardView
+        card_view:cardCornerRadius="@dimen/search_view_corner_radius"
+        style="@style/Card">
+
+        <RelativeLayout
+            android:padding="15dp"
+            android:background="@drawable/panel_bitcoin_bg"
+            style="@style/FillingView">
+
+            <TextView
+                android:textColor="@color/colorAccent"
+                android:text="@string/bitcoin_wallet"
+                style="@style/BoundedView"/>
+
+            <TextView
+                android:id="@+id/totalBitcoinBalance"
+                android:layout_alignParentEnd="true"
+                style="@style/Amount"/>
+
+        </RelativeLayout>
+    </androidx.cardview.widget.CardView>
+
+    <androidx.cardview.widget.CardView
+        card_view:cardCornerRadius="@dimen/search_view_corner_radius"
+        android:layout_marginTop="5dp"
+        style="@style/Card">
+
+        <RelativeLayout
+            android:padding="15dp"
+            android:background="@drawable/panel_lightning_bg"
+            style="@style/FillingView">
+
+            <TextView
+                android:textColor="@color/colorAccent"
+                android:text="@string/lightning_wallet"
+                style="@style/BoundedView"/>
+
+            <TextView
+                android:id="@+id/totalLightningBalance"
+                android:layout_alignParentEnd="true"
+                style="@style/Amount"/>
+
+            <!-- Channel state and in-flight payment indicators -->
+
+            <LinearLayout
+                android:gravity="center"
+                android:paddingTop="10dp"
+                android:layout_below="@+id/totalLightningBalance"
+                android:orientation="horizontal"
+                style="@style/FillingView">
+
+                <com.indicator.ChannelIndicatorLine
+                    android:id="@+id/channelIndicator"
+                    android:layout_height="wrap_content"
+                    android:layout_width="0dp"
+                    android:layout_weight="1"/>
+
+                <LinearLayout
+                    android:orientation="horizontal"
+                    style="@style/BoundedView">
+
+                    <TextView
+                        style="@style/InFlightView"
+                        android:id="@+id/inFlightIncoming"
+                        android:drawableStart="@drawable/baseline_arrow_downward_18"/>
+
+                    <TextView
+                        style="@style/InFlightView"
+                        android:id="@+id/inFlightOutgoing"
+                        android:drawableStart="@drawable/baseline_arrow_upward_18"/>
+
+                    <TextView
+                        style="@style/InFlightView"
+                        android:id="@+id/inFlightRouted"
+                        android:drawableStart="@drawable/baseline_swap_horiz_18"/>
+
+                </LinearLayout>
+            </LinearLayout>
+
+            <!-- No channels present -->
+
+            <ImageView
+                style="@style/BoundedView"
+                android:id="@+id/addLnChannelTip"
+                android:layout_alignParentEnd="true"
+                android:background="@drawable/baseline_add_24"/>
+
+        </RelativeLayout>
+    </androidx.cardview.widget.CardView>
+</LinearLayout>

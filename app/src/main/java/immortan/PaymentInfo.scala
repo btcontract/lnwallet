@@ -4,9 +4,9 @@ import immortan.utils.ImplicitJsonFormats._
 import immortan.crypto.Tools.{Bytes, Fiat2Btc}
 import fr.acinq.bitcoin.{ByteVector32, Satoshi}
 import fr.acinq.eclair.wire.{FullPaymentTag, PaymentTagTlv}
-import fr.acinq.eclair.{MilliSatoshi, ShortChannelId}
 import fr.acinq.eclair.payment.PaymentRequest
 import fr.acinq.bitcoin.Crypto.PublicKey
+import fr.acinq.eclair.MilliSatoshi
 import scodec.bits.ByteVector
 import immortan.utils.uri.Uri
 import immortan.utils.LNUrl
@@ -71,13 +71,21 @@ sealed trait PaymentDescription {
   val queryText: String
 }
 
-case class PlainDescription(invoiceText: String) extends PaymentDescription { val queryText: String = invoiceText }
+case class PlainDescription(invoiceText: String) extends PaymentDescription {
+  val queryText: String = invoiceText
+}
 
-case class PlainMetaDescription(invoiceText: String, meta: String) extends PaymentDescription { val queryText: String = s"$invoiceText $meta" }
+case class PlainMetaDescription(invoiceText: String, meta: String) extends PaymentDescription {
+  val queryText: String = s"$invoiceText $meta"
+}
 
-case class SwapInDescription(invoiceText: String, txid: String, internalId: Long, nodeId: PublicKey) extends PaymentDescription { val queryText: String = s"$invoiceText $txid ${nodeId.toString}" }
+case class SwapInDescription(invoiceText: String, txid: String, nodeId: PublicKey) extends PaymentDescription {
+  val queryText: String = s"$invoiceText $txid ${nodeId.toString}"
+}
 
-case class SwapOutDescription(invoiceText: String, btcAddress: String, chainFee: Satoshi, nodeId: PublicKey) extends PaymentDescription { val queryText: String = s"$invoiceText $btcAddress ${nodeId.toString}" }
+case class SwapOutDescription(invoiceText: String, btcAddress: String, chainFee: Satoshi, nodeId: PublicKey) extends PaymentDescription {
+  val queryText: String = s"$invoiceText $btcAddress ${nodeId.toString}"
+}
 
 // Relayed preimages
 
