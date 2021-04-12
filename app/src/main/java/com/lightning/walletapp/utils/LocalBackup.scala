@@ -19,11 +19,9 @@ import java.io.File
 object LocalBackup { me =>
   final val BACKUP_DIR = "BLW"
   final val LOCAL_BACKUP_REQUEST_NUMBER = 105
-
   final val BACKUP_NAME = "encrypted.channels"
-  final val BACKUP_EXTENSION = ".bkp"
-
   final val GRAPH_NAME = "graph.snapshot"
+  final val BACKUP_EXTENSION = ".bkp"
   final val GRAPH_EXTENSION = ".zlib"
 
   def isExternalStorageWritable: Boolean = MEDIA_MOUNTED.equals(getExternalStorageState) && getExternalStorageDirectory.canWrite

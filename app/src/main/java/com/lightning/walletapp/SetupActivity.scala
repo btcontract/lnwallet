@@ -39,13 +39,16 @@ class SetupActivity extends BaseActivity { me =>
     // Create and persist new keys from given seed
     val keys = LightningNodeKeys.makeFromSeed(seed.toArray)
     val format = MnemonicExtStorageFormat(Set.empty, keys, seed)
-    WalletApp.extDataBag.putFormat(format)
 
-    // Implant graph into db file from resources
-    val snapshotName = LocalBackup.getGraphResourceName(LNParams.chainHash)
-    val compressedPlainBytes = ByteStreams.toByteArray(getAssets open snapshotName)
-    val plainBytes = ExtCodecs.compressedByteVecCodec.decode(BitVector view compressedPlainBytes)
-    LocalBackup.copyPlainDataToDbLocation(me, WalletApp.dbFileNameGraph, plainBytes.require.value)
+    try {
+      // Implant graph into db file from resources
+      val snapshotName = LocalBackup.getGraphResourceName(LNParams.chainHash)
+      val compressedPlainBytes = ByteStreams.toByteArray(getAssets open snapshotName)
+      val plainBytes = ExtCodecs.compressedByteVecCodec.decode(BitVector view compressedPlainBytes)
+      LocalBackup.copyPlainDataToDbLocation(me, WalletApp.dbFileNameGraph, plainBytes.require.value)
+    } catch none
+
+    WalletApp.extDataBag.putFormat(format)
     WalletApp.makeOperational(format)
   }
 

@@ -317,7 +317,7 @@ abstract class SyncMaster(excluded: Set[Long], routerData: Data) extends StateMa
 
   private def computeFlag(shortlId: ShortChannelId, theirTimestamps: ReplyChannelRangeTlv.Timestamps, theirChecksums: ReplyChannelRangeTlv.Checksums) =
     if (routerData.channels contains shortlId) {
-      val (stamps: ReplyChannelRangeTlv.Timestamps, checksums: ReplyChannelRangeTlv.Checksums) = Sync.getChannelDigestInfo(routerData.channels)(shortlId)
+      val (stamps, checksums) = Sync.getChannelDigestInfo(routerData.channels)(shortlId)
       val shouldRequestUpdate1 = Sync.shouldRequestUpdate(stamps.timestamp1, checksums.checksum1, theirTimestamps.timestamp1, theirChecksums.checksum1)
       val shouldRequestUpdate2 = Sync.shouldRequestUpdate(stamps.timestamp2, checksums.checksum2, theirTimestamps.timestamp2, theirChecksums.checksum2)
 
@@ -367,7 +367,7 @@ abstract class PHCSyncMaster(routerData: Data) extends StateMachine[SyncMasterDa
       become(null, SHUT_DOWN)
 
     case (d1: SyncWorkerPHCData, _, PHC_SYNC) =>
-      // Worker has informed us that PHC sync is complete, shut down
+      // Worker has informed us that PHC sync is complete, shut everything down
       val pure = CompleteHostedRoutingData(d1.announces.values.toSet, d1.updates)
       become(null, SHUT_DOWN)
       onSyncComplete(pure)
