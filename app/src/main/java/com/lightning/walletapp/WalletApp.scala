@@ -9,8 +9,8 @@ import immortan.crypto.Tools.{Bytes, Fiat2Btc, none, runAnd}
 import android.app.{Application, NotificationChannel, NotificationManager}
 import fr.acinq.eclair.blockchain.electrum.{CheckPoint, ElectrumClientPool}
 import android.content.{ClipboardManager, Context, Intent, SharedPreferences}
-import immortan.utils.{BtcDenomination, FeeRates, FeeRatesInfo, FiatRates, FiatRatesInfo}
 import com.lightning.walletapp.utils.{AwaitService, DelayedNotification, UsedAddons, WebsocketBus}
+import immortan.utils.{BtcDenomination, FeeRates, FeeRatesInfo, FiatRates, FiatRatesInfo, SatDenomination}
 import immortan.{Channel, ChannelMaster, CommsTower, LNParams, MnemonicExtStorageFormat, PathFinder, RemoteNodeInfo, SyncParams}
 import fr.acinq.eclair.blockchain.electrum.ElectrumWallet.WalletReady
 import fr.acinq.eclair.router.Router.RouterConf
@@ -38,6 +38,7 @@ object WalletApp { me =>
   final val USE_AUTH = "useAuth"
   final val FIAT_CODE = "fiatCode"
   final val ENSURE_TOR = "ensureTor"
+  final val USE_SAT_DENOM = "useSatDenom"
   final val MAKE_CHAN_BACKUP = "makeChanBackup"
   final val CAP_LN_FEE_TO_CHAIN = "capLNFeeToChain"
   final val LAST_TOTAL_GOSSIP_SYNC = "lastTotalGossipSync"
@@ -46,6 +47,7 @@ object WalletApp { me =>
   def useAuth: Boolean = app.prefs.getBoolean(USE_AUTH, false)
   def fiatCode: String = app.prefs.getString(FIAT_CODE, "usd")
   def ensureTor: Boolean = app.prefs.getBoolean(ENSURE_TOR, false)
+  def useSatDenom: Boolean = app.prefs.getBoolean(USE_SAT_DENOM, true)
   def makeChanBackup: Boolean = app.prefs.getBoolean(MAKE_CHAN_BACKUP, true)
   def capLNFeeToChain: Boolean = app.prefs.getBoolean(CAP_LN_FEE_TO_CHAIN, false)
 
@@ -90,14 +92,9 @@ object WalletApp { me =>
     val payBag = new SQLitePayment(extDataBag.db, essentialInterface)
     val chanBag = new SQLiteChannel(essentialInterface)
 
-    val defaultRouterConf: RouterConf =
-      RouterConf(maxCltvDelta = CltvExpiryDelta(2016), routeHopDistance = 6,
-        mppMinPartAmount = MilliSatoshi(10000000L), maxRemoteAttempts = 6,
-        maxChannelFailures = 6, maxStrangeNodeFailures = 12)
-
     LNParams.format = format
-    LNParams.routerConf = defaultRouterConf
-    LNParams.denomination = BtcDenomination
+    LNParams.routerConf = RouterConf(maxCltvDelta = CltvExpiryDelta(2016), mppMinPartAmount = MilliSatoshi(10000000L), routeHopDistance = 6)
+    LNParams.denomination = if (useSatDenom) SatDenomination else BtcDenomination
     LNParams.syncParams = new SyncParams
 
     extDataBag.db txWrap {
