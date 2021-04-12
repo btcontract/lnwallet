@@ -144,6 +144,24 @@
 
         </LinearLayout>
 
+        <!-- LN routed -->
+
+        <LinearLayout
+            style="@style/Tag"
+            android:gravity="center"
+            android:orientation="horizontal"
+            android:id="@+id/lnRouted">
+
+            <ImageView
+                style="@style/BoundedView"
+                android:background="@drawable/baseline_swap_horiz_18"/>
+
+            <ImageView
+                style="@style/BoundedView"
+                android:background="@drawable/ic_logo_lightning_24dp"/>
+
+        </LinearLayout>
+
         <!-- Content -->
 
         <LinearLayout
