@@ -131,7 +131,7 @@ class SyncParams {
   val acinq: RemoteNodeInfo = RemoteNodeInfo(PublicKey(hex"03864ef025fde8fb587d989186ce6a4a186895ee44a926bfc370e2c366597a3f8f"), NodeAddress.unresolved(9735, host = 34, 239, 230, 56), "ACINQ")
 
   val hostedChanNodes: Set[RemoteNodeInfo] = Set(blw, lightning, acinq) // Trusted nodes which are shown as default ones when user chooses providers
-  val hostedSyncNodes: Set[RemoteNodeInfo] = Set(blw, lightning, acinq) // Semi-trusted PHC-enabled nodes which can be used as seeds for PHC sync
+  val hostedSyncNodes: Set[RemoteNodeInfo] = Set.empty // Set(blw, lightning, acinq) // Semi-trusted PHC-enabled nodes which can be used as seeds for PHC sync
   val syncNodes: Set[RemoteNodeInfo] = Set(lightning, acinq, conductor) // Nodes with extended queries support used as seeds for normal sync
 
   val maxPHCCapacity: MilliSatoshi = MilliSatoshi(1000000000000000L) // PHC can not be larger than 10 000 BTC

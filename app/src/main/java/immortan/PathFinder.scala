@@ -103,12 +103,9 @@ abstract class PathFinder(val normalBag: NetworkBag, val hostedBag: NetworkBag) 
       } process setupData
 
     case (CMDResync, OPERATIONAL) =>
-
-      new PHCSyncMaster(data) {
-        def onSyncComplete(pure: CompleteHostedRoutingData): Unit = me process pure
-        // Normal resync has happened recently, but PHC resync is outdated (PHC failed last time due to running out of attempts)
-        // in this case we skip normal sync and start directly with PHC sync to save time and increase PHC sync success chances
-      } process SyncMasterPHCData(LNParams.syncParams.hostedSyncNodes, getPHCExtraNodes, Set.empty)
+      // Normal resync has happened recently, but PHC resync is outdated (PHC failed last time due to running out of attempts)
+      // in this case we skip normal sync and start directly with PHC sync to save time and increase PHC sync success chances
+      startPHCSync
 
     case (pure: CompleteHostedRoutingData, OPERATIONAL) =>
       // First, completely replace PHC data with obtained one
@@ -136,17 +133,14 @@ abstract class PathFinder(val normalBag: NetworkBag, val hostedBag: NetworkBag) 
       val searchGraph1 = DirectedGraph.makeGraph(normalShortIdToPubChan1 ++ data.hostedChannels)
       val searchGraph2 = searchGraph1.addEdges(extraEdgesMap.values)
 
-      new PHCSyncMaster(data) {
-        // Normal resync has just finished, we have everything to start PHC sync
-        def onSyncComplete(pure: CompleteHostedRoutingData): Unit = me process pure
-      } process SyncMasterPHCData(LNParams.syncParams.hostedSyncNodes, getPHCExtraNodes, Set.empty)
-
       become(Data(normalShortIdToPubChan1, data.hostedChannels, searchGraph2), OPERATIONAL)
       // Perform database cleaning in a different thread since it's slow and we are operational now
       Rx.ioQueue.foreach(_ => normalBag.removeGhostChannels(ghostIds, oneSideShortIds), none)
       // Update normal checkpoint, if PHC sync fails this time we'll jump to it next time
       updateLastNormalResyncStamp(System.currentTimeMillis)
       listeners.foreach(_ process NotifyOperational)
+      // Notify ASAP, then start PHC sync
+      startPHCSync
 
     // We always accept and store disabled channels:
     // - to reduce subsequent sync traffic if channel remains disabled
@@ -225,6 +219,11 @@ abstract class PathFinder(val normalBag: NetworkBag, val hostedBag: NetworkBag) 
         // Disabled private/unknown-public update, remove from graph
         data.copy(graph = data.graph removeEdge edge.desc)
     }
+  }
+
+  def startPHCSync: Unit = {
+    val phcSync = new PHCSyncMaster(data) { def onSyncComplete(pure: CompleteHostedRoutingData): Unit = me process pure }
+    phcSync process SyncMasterPHCData(LNParams.syncParams.hostedSyncNodes, getPHCExtraNodes, activeSyncs = Set.empty)
   }
 
   def getAvgHopParams: AvgHopParams = {

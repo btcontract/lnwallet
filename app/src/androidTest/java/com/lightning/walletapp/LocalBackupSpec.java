@@ -8,6 +8,7 @@ import com.google.common.io.Files;
 import org.junit.runner.RunWith;
 import fr.acinq.eclair.package$;
 import fr.acinq.bitcoin.Block;
+import immortan.LNParams;
 import scodec.bits.ByteVector;
 import org.junit.Assert;
 import org.junit.Rule;
@@ -45,9 +46,23 @@ public class LocalBackupSpec {
             ByteVector cipherbytes = ByteVector.view(Files.toByteArray(LocalBackup.getBackupFileUnsafe(chainHash, seed)));
             ByteVector plainbytes = LocalBackup.decryptBackup(cipherbytes, seed.bytes()).get();
             Assert.assertArrayEquals(plainbytes.toArray(), fileContents.toArray());
-            LocalBackup.restoreFromPlainBackup(WalletApp.app(), dbFileName, plainbytes);
+            LocalBackup.copyPlainDataToDbLocation(WalletApp.app(), dbFileName, plainbytes);
         } catch (Exception e) {
             Assert.fail();
         }
+    }
+
+    // Called from here because this class has write permissions
+
+    public void writeGraphSnapshot(ByteVector snapshot) {
+        File graphFile = LocalBackup.getGraphFileUnsafe(LNParams.chainHash());
+
+        try {
+            Files.write(snapshot.toArray(), graphFile);
+        } catch (Exception e) {
+            Assert.fail();
+        }
+
+        System.out.println("Saved a snapshot");
     }
 }

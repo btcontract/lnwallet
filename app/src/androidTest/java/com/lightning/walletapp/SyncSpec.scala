@@ -1,5 +1,6 @@
 package com.lightning.walletapp
 
+import org.junit.{Ignore, Test}
 import immortan.{LNParams, PureRoutingData, SyncMaster, SyncMasterShortIdData, SyncParams}
 import fr.acinq.eclair.router.Graph.GraphStructure.DirectedGraph
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -8,20 +9,20 @@ import com.google.common.io.Files
 import org.junit.runner.RunWith
 import immortan.wire.ExtCodecs
 import scodec.bits.ByteVector
-import org.junit.Test
 import java.io.File
 
 
+//@Ignore
 @RunWith(classOf[AndroidJUnit4])
 class SyncSpec {
 
   @Test
   def syncAndPackGraph: Unit = {
-    run(dbName = DBSpec.randomDBName)
+    run(DBSpec.randomDBName, makeSnapshot = true)
     this synchronized wait(6000000L)
   }
 
-  def run(dbName: String): Unit = {
+  def run(dbName: String, makeSnapshot: Boolean): Unit = {
     val (normalStore, _) = DBSpec.getNetworkStores(dbName)
 
     LNParams.syncParams = new SyncParams {
@@ -72,7 +73,13 @@ class SyncSpec {
         println(s"Size of decompressed graph db is ${decompressedPlainBytes.size}")
         assert(plainBytes == decompressedPlainBytes)
         println("Done")
-        run(dbName)
+
+        if (makeSnapshot) {
+          val backupSpec = new LocalBackupSpec
+          backupSpec.writeGraphSnapshot(compressedPlainBytes)
+        }
+
+        run(dbName, makeSnapshot = false)
       }
     }
 

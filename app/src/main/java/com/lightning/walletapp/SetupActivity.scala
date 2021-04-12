@@ -2,8 +2,9 @@ package com.lightning.walletapp
 
 import fr.acinq.eclair._
 import scala.util.{Failure, Success}
+import scodec.bits.{BitVector, ByteVector}
 import android.widget.{ArrayAdapter, LinearLayout}
-import immortan.{LightningNodeKeys, MnemonicExtStorageFormat}
+import immortan.{LNParams, LightningNodeKeys, MnemonicExtStorageFormat}
 import com.lightning.walletapp.BaseActivity.StringOps
 import com.lightning.walletapp.utils.LocalBackup
 import androidx.transition.TransitionManager
@@ -12,8 +13,8 @@ import com.google.common.io.ByteStreams
 import com.ornach.nobobutton.NoboButton
 import fr.acinq.bitcoin.MnemonicCode
 import immortan.crypto.Tools.none
+import immortan.wire.ExtCodecs
 import android.content.Intent
-import scodec.bits.ByteVector
 import android.app.Activity
 import android.os.Bundle
 import android.view.View
@@ -35,9 +36,16 @@ class SetupActivity extends BaseActivity { me =>
   }
 
   def makeFromSeed(seed: ByteVector): Unit = {
+    // Create and persist new keys from given seed
     val keys = LightningNodeKeys.makeFromSeed(seed.toArray)
     val format = MnemonicExtStorageFormat(Set.empty, keys, seed)
     WalletApp.extDataBag.putFormat(format)
+
+    // Implant graph into db file from resources
+    val snapshotName = LocalBackup.getGraphResourceName(LNParams.chainHash)
+    val compressedPlainBytes = ByteStreams.toByteArray(getAssets open snapshotName)
+    val plainBytes = ExtCodecs.compressedByteVecCodec.decode(BitVector view compressedPlainBytes)
+    LocalBackup.copyPlainDataToDbLocation(me, WalletApp.dbFileNameGraph, plainBytes.require.value)
     WalletApp.makeOperational(format)
   }
 
@@ -58,7 +66,7 @@ class SetupActivity extends BaseActivity { me =>
 
           case Success(plainBytes) =>
             // We were able to decrypt a file, implant it into db location and proceed
-            LocalBackup.restoreFromPlainBackup(me, WalletApp.dbFileNameEssential, plainBytes)
+            LocalBackup.copyPlainDataToDbLocation(me, WalletApp.dbFileNameEssential, plainBytes)
             proceedWithSeed(plainBytes)
 
           case Failure(exception) =>

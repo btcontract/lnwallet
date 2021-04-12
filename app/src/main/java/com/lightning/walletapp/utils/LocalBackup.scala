@@ -19,8 +19,12 @@ import java.io.File
 object LocalBackup { me =>
   final val BACKUP_DIR = "BLW"
   final val LOCAL_BACKUP_REQUEST_NUMBER = 105
-  final val FILE_NAME = "encrypted.channels"
-  final val FILE_EXTENSION = ".bkp"
+
+  final val BACKUP_NAME = "encrypted.channels"
+  final val BACKUP_EXTENSION = ".bkp"
+
+  final val GRAPH_NAME = "graph.snapshot"
+  final val GRAPH_EXTENSION = ".zlib"
 
   def isExternalStorageWritable: Boolean = MEDIA_MOUNTED.equals(getExternalStorageState) && getExternalStorageDirectory.canWrite
 
@@ -38,9 +42,18 @@ object LocalBackup { me =>
   }
 
   def getBackupFileUnsafe(chainHash: ByteVector32, seed: ByteVector32): File = {
-    val fileName = s"$FILE_NAME-${me getNetwork chainHash}-${me getSuffix seed}$FILE_EXTENSION"
+    val fileName = s"$BACKUP_NAME-${me getNetwork chainHash}-${me getSuffix seed}$BACKUP_EXTENSION"
     val directory = new File(getExternalStorageDirectory, BACKUP_DIR)
     val backup = new File(directory, fileName)
+    if (!backup.isFile) directory.mkdirs
+    backup
+  }
+
+  def getGraphResourceName(chainHash: ByteVector32): String = s"$GRAPH_NAME-${me getNetwork chainHash}$GRAPH_EXTENSION"
+
+  def getGraphFileUnsafe(chainHash: ByteVector32): File = {
+    val directory = new File(getExternalStorageDirectory, BACKUP_DIR)
+    val backup = new File(directory, me getGraphResourceName chainHash)
     if (!backup.isFile) directory.mkdirs
     backup
   }
@@ -59,7 +72,7 @@ object LocalBackup { me =>
   }
 
   // It is assumed that we try to decrypt a backup before running this and only proceed on success
-  def restoreFromPlainBackup(context: Context, dbFileName: String, plainBytes: ByteVector): Unit = {
+  def copyPlainDataToDbLocation(context: Context, dbFileName: String, plainBytes: ByteVector): Unit = {
     val dataBaseFile = new File(context.getDatabasePath(dbFileName).getPath)
     if (!dataBaseFile.exists) dataBaseFile.getParentFile.mkdirs
     Files.write(plainBytes.toArray, dataBaseFile)
