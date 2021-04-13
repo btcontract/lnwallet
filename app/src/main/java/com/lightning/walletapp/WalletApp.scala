@@ -22,10 +22,12 @@ import androidx.multidex.MultiDex
 import scodec.bits.ByteVector
 import android.widget.Toast
 import android.os.Build
+import android.net.Uri
 import scala.util.Try
 
 
 object WalletApp { me =>
+  var txDataBag: SQLiteTxExtended = _
   var extDataBag: SQLiteDataExtended = _
   var lastWalletReady: WalletReady = _
   var usedAddons: UsedAddons = _
@@ -52,7 +54,7 @@ object WalletApp { me =>
   def capLNFeeToChain: Boolean = app.prefs.getBoolean(CAP_LN_FEE_TO_CHAIN, false)
 
   // Due to Android specifics any of these may be nullified at runtime, must check for liveness on every entry
-  def isAlive: Boolean = null != extDataBag && null != lastWalletReady && null != usedAddons && null != app
+  def isAlive: Boolean = null != extDataBag && null != txDataBag && null != lastWalletReady && null != usedAddons && null != app
 
   def freePossiblyUsedResouces: Unit = {
     // Drop whatever network connections we still have
@@ -65,6 +67,7 @@ object WalletApp { me =>
     try FiatRates.subscription.unsubscribe catch none
     try FeeRates.subscription.unsubscribe catch none
 
+    txDataBag = null
     extDataBag = null
     lastWalletReady = null
     usedAddons = null
@@ -76,6 +79,7 @@ object WalletApp { me =>
 
     miscInterface txWrap {
       extDataBag = new SQLiteDataExtended(miscInterface)
+      txDataBag = new SQLiteTxExtended(app, miscInterface)
       usedAddons = extDataBag.tryGetAddons getOrElse UsedAddons(List.empty)
       if (app.isTablet) Table.DEFAULT_LIMIT.set(10) else Table.DEFAULT_LIMIT.set(20)
       val emptyReady = WalletReady(0L.sat, 0L.sat, 0L, System.currentTimeMillis)
@@ -90,7 +94,7 @@ object WalletApp { me =>
 
     val normalBag = new SQLiteNetwork(graphInterface, NormalChannelUpdateTable, NormalChannelAnnouncementTable, NormalExcludedChannelTable)
     val hostedBag = new SQLiteNetwork(graphInterface, HostedChannelUpdateTable, HostedChannelAnnouncementTable, HostedExcludedChannelTable)
-    val payBag = new SQLitePayment(extDataBag.db, essentialInterface)
+    val payBag = new SQLitePaymentExtended(app, extDataBag.db, essentialInterface)
     val chanBag = new SQLiteChannel(essentialInterface)
 
     LNParams.format = format
@@ -241,6 +245,9 @@ class WalletApp extends Application { me =>
   def plur1OrZero(opts: Array[String], num: Long): String = if (num > 0) plur(opts, num).format(num) else opts(0)
   def clipboardManager: ClipboardManager = getSystemService(Context.CLIPBOARD_SERVICE).asInstanceOf[ClipboardManager]
   def getBufferUnsafe: String = clipboardManager.getPrimaryClip.getItemAt(0).getText.toString
+
+  def sqlPath(targetTable: String): Uri = Uri.parse(s"sqlite://com.lightning.walletapp/table/$targetTable")
+  def sqlNotify(targetTable: String): Unit = getContentResolver.notifyChange(sqlPath(targetTable), null)
 
   def englishWordList: Array[String] = {
     val raw = getAssets.open("bip39_english_wordlist.txt")

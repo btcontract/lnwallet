@@ -9,6 +9,7 @@ import immortan.PaymentStatus._
 import immortan.ChannelMaster._
 import fr.acinq.eclair.channel._
 import scala.concurrent.duration._
+
 import fr.acinq.bitcoin.Crypto.{PrivateKey, PublicKey}
 import immortan.ChannelListener.{Malfunction, Transition}
 import fr.acinq.eclair.transactions.{RemoteFulfill, RemoteReject}
@@ -16,9 +17,11 @@ import immortan.crypto.{CanBeRepliedTo, CanBeShutDown, StateMachine}
 import immortan.utils.{FeeRatesInfo, FeeRatesListener, Rx, WalletEventsListener}
 import fr.acinq.eclair.blockchain.electrum.ElectrumWallet.WalletReady
 import fr.acinq.eclair.blockchain.CurrentBlockCount
+import java.util.concurrent.atomic.AtomicLong
 import fr.acinq.eclair.payment.IncomingPacket
 import com.google.common.cache.LoadingCache
 import fr.acinq.bitcoin.ByteVector32
+import rx.lang.scala.Subject
 import scala.util.Try
 
 
@@ -38,6 +41,12 @@ object ChannelMaster {
       def process(change: Any): Unit = doProcess(change)
       def doProcess(change: Any): Unit = none
     }
+
+  final val updateCounter = new AtomicLong(0)
+
+  final val stateUpdateStream: Subject[Long] = Subject[Long]
+
+  final val statusUpdateStream: Subject[ChannelData] = Subject[ChannelData]
 
   final val NO_SECRET = ByteVector32.Zeroes
 
@@ -229,13 +238,29 @@ class ChannelMaster(val payBag: PaymentBag, val chanBag: ChannelBag, val dataBag
 
   // These are executed in Channel context
 
-  override def onException: PartialFunction[Malfunction, Unit] = { case (_, error: CMDException) => opm process error }
-
-  override def onBecome: PartialFunction[Transition, Unit] = { case (_, _, _, SLEEPING | SUSPENDED, OPEN) => opm process OutgoingPaymentMaster.CMDChanGotOnline }
-
-  override def stateUpdated(rejects: Seq[RemoteReject] = Nil): Unit = notifyFSMs(allInChannelOutgoing, allIncomingResolutions, rejects, makeMissingOutgoingFSM = false)
-
   override def fulfillReceived(fulfill: RemoteFulfill): Unit = opm process fulfill
+
+  override def onException: PartialFunction[Malfunction, Unit] = {
+    case (_, error: CMDException) =>
+      opm process error
+  }
+
+  override def onBecome: PartialFunction[Transition, Unit] = {
+    case (_, _, data1, OPEN, SLEEPING | SUSPENDED | CLOSING) =>
+      statusUpdateStream.onNext(data1)
+
+    case (_: ChannelNormal, _, data1, SLEEPING, CLOSING) =>
+      statusUpdateStream.onNext(data1)
+
+    case (_, _, data1, SLEEPING | SUSPENDED, OPEN) =>
+      opm process OutgoingPaymentMaster.CMDChanGotOnline
+      statusUpdateStream.onNext(data1)
+  }
+
+  override def stateUpdated(rejects: Seq[RemoteReject] = Nil): Unit = {
+    notifyFSMs(allInChannelOutgoing, allIncomingResolutions, rejects, makeMissingOutgoingFSM = false)
+    stateUpdateStream.onNext(updateCounter.incrementAndGet)
+  }
 
   // Mainly to prolong timeouts
   override def addReceived(add: UpdateAddHtlcExt): Unit = initResolveMemo.get(add) match {

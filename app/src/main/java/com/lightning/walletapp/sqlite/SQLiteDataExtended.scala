@@ -4,10 +4,10 @@ import spray.json._
 import immortan.utils.ImplicitJsonFormats._
 import com.lightning.walletapp.sqlite.SQLiteDataExtended._
 
-import immortan.sqlite.{DBInterface, SQLiteData}
 import immortan.utils.{FeeRatesInfo, FiatRatesInfo}
 import com.lightning.walletapp.utils.{AddonData, BasicAddon, UsedAddons}
 import fr.acinq.eclair.blockchain.electrum.ElectrumWallet.WalletReady
+import immortan.sqlite.SQLiteData
 import fr.acinq.bitcoin.Satoshi
 import scala.util.Try
 
@@ -44,7 +44,7 @@ object SQLiteDataExtended {
     jsonFormat[List[AddonData], UsedAddons](UsedAddons.apply, "addons")
 }
 
-class SQLiteDataExtended(override val db: DBInterface) extends SQLiteData(db) {
+class SQLiteDataExtended(override val db: DBInterfaceSQLiteAndroidMisc) extends SQLiteData(db) {
   def putAddons(addons: UsedAddons): Unit = put(LABEL_ADDONS, addons.toJson.compactPrint getBytes "UTF-8")
 
   def tryGetAddons: Try[UsedAddons] = tryGet(LABEL_ADDONS).map(SQLiteData.byteVecToString) map to[UsedAddons]

@@ -2,14 +2,9 @@ package com.lightning.walletapp.sqlite
 
 import immortan.sqlite.{DBInterface, PreparedQuery, RichCursor}
 import android.database.sqlite.SQLiteDatabase
-import immortan.utils.uri.Uri
 
 
 trait DBInterfaceSQLiteAndroid extends DBInterface {
-  def sqlPath(targetTable: String): Uri = Uri.parse(s"sqlite://com.lightning.walletapp/table/$targetTable")
-
-  val base: SQLiteDatabase
-
   def change(sql: String, params: Object*): Unit = base.execSQL(sql, params.toArray)
 
   def change(prepared: PreparedQuery, params: Object*): Unit = prepared.bound(params:_*).executeUpdate
@@ -21,7 +16,8 @@ trait DBInterfaceSQLiteAndroid extends DBInterface {
     RichCursorSQLiteAndroid(cursor)
   }
 
-  def makePreparedQuery(sql: String): PreparedQuery = PreparedQuerySQLiteAndroid(base compileStatement sql)
+  def makePreparedQuery(sql: String): PreparedQuery =
+    PreparedQuerySQLiteAndroid(base compileStatement sql)
 
   def txWrap[T](run: => T): T =
     try {
@@ -32,4 +28,6 @@ trait DBInterfaceSQLiteAndroid extends DBInterface {
     } finally {
       base.endTransaction
     }
+
+  val base: SQLiteDatabase
 }

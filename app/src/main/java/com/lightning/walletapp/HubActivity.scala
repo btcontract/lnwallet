@@ -1,16 +1,24 @@
 package com.lightning.walletapp
 
+import java.util.concurrent.atomic.AtomicLong
+
+import android.database.ContentObserver
 import immortan.crypto.Tools._
 import com.lightning.walletapp.R.string._
-import immortan.{LNParams, RemoteNodeInfo}
+import immortan.{ChannelMaster, LNParams, RemoteNodeInfo}
 import android.widget.{LinearLayout, ListView, RelativeLayout, TextView}
 import immortan.utils.{BitcoinUri, InputParser, LNUrl, PaymentRequestExt}
 import com.lightning.walletapp.BaseActivity.StringOps
 import org.ndeftools.util.activity.NfcReaderActivity
 import com.github.mmin18.widget.RealtimeBlurView
 import org.ndeftools.Message
-import android.os.Bundle
+import android.os.{Bundle, Handler}
 import android.view.View
+import immortan.sqlite.{PaymentTable, RelayTable, TxTable}
+import rx.lang.scala.schedulers.{ComputationScheduler, IOScheduler}
+import rx.lang.scala.{Observable, Subject, Subscriber, Subscription}
+
+import scala.concurrent.{Await, Future}
 
 
 class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataChecker with ChoiceReceiver { me =>
@@ -69,6 +77,51 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
       setContentView(com.lightning.walletapp.R.layout.activity_hub)
       topInfoLayout post UITask(topBlurringArea setHeightTo topInfoLayout)
       bottomActionBar post UITask(bottomBlurringArea setHeightTo bottomActionBar)
+
+//      val paymentObserver = new ContentObserver(new Handler) {
+//        override def onChange(askedFromSelf: Boolean): Unit = println(s"-- paymentObserver, askedFromSelf: $askedFromSelf")
+//      }
+//
+//      val relayObserver = new ContentObserver(new Handler) {
+//        override def onChange(askedFromSelf: Boolean): Unit = println(s"-- relayObserver, askedFromSelf: $askedFromSelf")
+//      }
+//
+//      val txObserver = new ContentObserver(new Handler) {
+//        override def onChange(askedFromSelf: Boolean): Unit = println(s"-- txObserver, askedFromSelf: $askedFromSelf")
+//      }
+//
+//      getContentResolver.registerContentObserver(WalletApp.app.sqlPath(PaymentTable.table), true, paymentObserver)
+//      getContentResolver.registerContentObserver(WalletApp.app.sqlPath(RelayTable.table), true, relayObserver)
+//      getContentResolver.registerContentObserver(WalletApp.app.sqlPath(TxTable.table), true, txObserver)
+//
+//      WalletApp.app.getContentResolver.notifyChange(WalletApp.app.sqlPath(PaymentTable.table), null)
+//      WalletApp.app.getContentResolver.notifyChange(WalletApp.app.sqlPath(PaymentTable.table), null)
+//      WalletApp.app.getContentResolver.notifyChange(WalletApp.app.sqlPath(RelayTable.table), null)
+//      WalletApp.app.getContentResolver.notifyChange(WalletApp.app.sqlPath(TxTable.table), null)
+
+//      import scala.concurrent.duration._
+//
+//      val obs = Subject[Long]
+//
+//      val paymentObserver = new ContentObserver(new Handler) {
+//        override def onChange(askedFromSelf: Boolean): Unit = {
+//          obs.onNext(ChannelMaster.updateCounter.incrementAndGet)
+//        }
+//      }
+//
+//      getContentResolver.registerContentObserver(WalletApp.app.sqlPath(PaymentTable.table), true, paymentObserver)
+//
+//      val localCounter = new AtomicLong(0L)
+//
+//      val obs1 = obs.throttleFirst(1.second).merge(obs.debounce(1.second)).distinctUntilChanged.observeOn(IOScheduler.apply).doOnNext(_ => {
+//        println("-- !")
+//        Thread.sleep(1000)
+//        localCounter.incrementAndGet
+//      })
+//
+//      val obs2 = obs1.merge(ChannelMaster.stateUpdateStream.throttleFirst(1.second).merge(ChannelMaster.stateUpdateStream.debounce(1.second)))
+//      obs2.distinctUntilChanged.subscribe(x => println(s"-- $x, localCounter: ${localCounter.get}"))
+
     } else {
       WalletApp.freePossiblyUsedResouces
       me exitTo ClassNames.mainActivityClass
@@ -77,7 +130,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
   // VIEW HANDLERS
 
   def bringSettings(view: View): Unit = {
-
+    WalletApp.app.getContentResolver.notifyChange(WalletApp.app.sqlPath(PaymentTable.table), null)
   }
 
   def bringSendFromClipboard(view: View): Unit = {
@@ -85,7 +138,10 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
     runInFutureProcessOnUI(InputParser.parse(WalletApp.app.getBufferUnsafe), _ => explain)(_ => me checkExternalData explain)
   }
 
-  def bringScanner(view: View): Unit = callScanner(me)
+  def bringScanner(view: View): Unit = {
+    ChannelMaster.stateUpdateStream.onNext(ChannelMaster.updateCounter.incrementAndGet)
+    //callScanner(me)
+  }
 
   def bringReceiveOptions(view: View): Unit = {
     val options = Array(dialog_receive_btc, dialog_receive_ln).map(res => getString(res).html)

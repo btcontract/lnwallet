@@ -15,13 +15,12 @@ import scala.util.Try
 case class TxSummary(fees: MilliSatoshi, received: MilliSatoshi, sent: MilliSatoshi, count: Long)
 
 class SQLiteTx(db: DBInterface) {
-  def updDoubleSpent(txid: ByteVector32): Unit =
-    db.change(TxTable.updDoubleSpentSql, txid.toHex, 1L: JLong)
-
   def updConfidence(event: TransactionConfidenceChanged): Unit = db txWrap {
     db.change(TxTable.updCompletedAtSql, event.txid.toHex, event.msecs: JLong)
     db.change(TxTable.updDepthSql, event.txid.toHex, event.depth: JLong)
   }
+
+  def updDoubleSpent(txid: ByteVector32): Unit = db.change(TxTable.updDoubleSpentSql, txid.toHex, 1L: JLong)
 
   def listRecentTxs(limit: Int): RichCursor = db.select(TxTable.selectRecentSql, limit.toString)
 

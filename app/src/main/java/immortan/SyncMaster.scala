@@ -170,8 +170,9 @@ case class SyncWorker(master: CanBeRepliedTo, keyPair: KeyPair, remoteInfo: Remo
 
 sealed trait SyncMasterData extends { me =>
   def getNewSync(master: CanBeRepliedTo): SyncWorker = {
-    // This relies on (1) `baseSyncs` items are never removed AND (2) size of `baseSyncs` is >= `LNParams.maxNodesToSyncFrom`
-    val unusedSyncs = activeSyncs.foldLeft(baseSyncs ++ extSyncs) { case (nodes, sync) => nodes - sync.remoteInfo }
+    // This relies on (1) baseSyncs items are never removed
+    // AND (2) size of baseSyncs is >= LNParams.maxNodesToSyncFrom
+    val unusedSyncs = activeSyncs.foldLeft(baseSyncs ++ extSyncs)(_ - _.remoteInfo)
     SyncWorker(master, randomKeyPair, shuffle(unusedSyncs.toList).head, LNParams.ourInit)
   }
 

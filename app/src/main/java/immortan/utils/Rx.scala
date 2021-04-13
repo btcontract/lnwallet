@@ -6,6 +6,9 @@ import rx.lang.scala.Observable
 
 
 object Rx {
+  def uniqueFirstAndLastWithinWindow[T](obs: Observable[T], window: Duration): Observable[T] =
+    obs.throttleFirst(window).merge(obs debounce window).distinctUntilChanged.observeOn(IOScheduler.apply)
+
   def initDelay[T](next: Observable[T], startMillis: Long, timeoutMillis: Long): Observable[T] = {
     val adjustedTimeout = startMillis + timeoutMillis - System.currentTimeMillis
     val delayLeft = if (adjustedTimeout < 10L) 10L else adjustedTimeout

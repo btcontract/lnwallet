@@ -26,7 +26,7 @@ object PathFinder {
   val CMDLoadGraph = "cmd-load-graph"
   val CMDResync = "cmd-resync"
 
-  val RESYNC_PERIOD: Long = 1000L * 3600 * 24 * 3 // 3 days in msecs
+  val RESYNC_PERIOD: Long = 1000L * 3600 * 24 * 2 // days in msecs
 }
 
 case class AvgHopParams(cltvExpiryDelta: CltvExpiryDelta, feeProportionalMillionths: MilliSatoshi, feeBaseMsat: MilliSatoshi, sampleSize: Long)
@@ -43,7 +43,7 @@ abstract class PathFinder(val normalBag: NetworkBag, val hostedBag: NetworkBag) 
   // We don't load routing data on every startup but when user (or system) actually needs it
   become(Data(channels = Map.empty, hostedChannels = Map.empty, graph = DirectedGraph.apply), WAITING)
   // Init resync with persistent delay on startup, then periodically resync every RESYNC_PERIOD days + 1 hour to trigger a full, not just PHC sync
-  Rx.initDelay(Rx.repeat(Rx.ioQueue, Rx.incHour, 73 to Int.MaxValue by 73), getLastTotalResyncStamp, RESYNC_PERIOD).foreach(_ => me process CMDResync)
+  Rx.initDelay(Rx.repeat(Rx.ioQueue, Rx.incHour, 49 to Int.MaxValue by 49), getLastTotalResyncStamp, RESYNC_PERIOD).foreach(_ => me process CMDResync)
 
   def getLastTotalResyncStamp: Long
   def getLastNormalResyncStamp: Long
@@ -223,7 +223,7 @@ abstract class PathFinder(val normalBag: NetworkBag, val hostedBag: NetworkBag) 
 
   def startPHCSync: Unit = {
     val phcSync = new PHCSyncMaster(data) { def onSyncComplete(pure: CompleteHostedRoutingData): Unit = me process pure }
-    phcSync process SyncMasterPHCData(LNParams.syncParams.hostedSyncNodes, getPHCExtraNodes, activeSyncs = Set.empty)
+    phcSync process SyncMasterPHCData(LNParams.syncParams.phcSyncNodes, getPHCExtraNodes, Set.empty)
   }
 
   def getAvgHopParams: AvgHopParams = {
