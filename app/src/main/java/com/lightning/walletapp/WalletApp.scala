@@ -246,11 +246,8 @@ class WalletApp extends Application { me =>
   def clipboardManager: ClipboardManager = getSystemService(Context.CLIPBOARD_SERVICE).asInstanceOf[ClipboardManager]
   def getBufferUnsafe: String = clipboardManager.getPrimaryClip.getItemAt(0).getText.toString
 
+  def englishWordList: Array[String] = scala.io.Source.fromInputStream(getAssets.open("bip39_english_wordlist.txt"), "UTF-8").getLines.toArray
+
   def sqlPath(targetTable: String): Uri = Uri.parse(s"sqlite://com.lightning.walletapp/table/$targetTable")
   def sqlNotify(targetTable: String): Unit = getContentResolver.notifyChange(sqlPath(targetTable), null)
-
-  def englishWordList: Array[String] = {
-    val raw = getAssets.open("bip39_english_wordlist.txt")
-    scala.io.Source.fromInputStream(raw, "UTF-8").getLines.toArray
-  }
 }

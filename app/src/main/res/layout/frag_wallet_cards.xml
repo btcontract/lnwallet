@@ -92,4 +92,24 @@
 
         </RelativeLayout>
     </androidx.cardview.widget.CardView>
+
+    <RelativeLayout
+        android:id="@+id/listCaption"
+        style="@style/FillingView">
+
+        <TextView
+            android:text="@string/recent_activity"
+            android:layout_centerVertical="true"
+            style="@style/FillingView"/>
+
+        <ImageButton
+            android:padding="6dp"
+            android:onClick="bringSearch"
+            android:tint="@color/colorAccent"
+            android:layout_alignParentEnd="true"
+            android:src="@drawable/ic_search_black_24dp"
+            android:background="?android:selectableItemBackground"
+            style="@style/BoundedView"/>
+
+    </RelativeLayout>
 </LinearLayout>

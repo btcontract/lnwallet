@@ -1,7 +1,5 @@
 package immortan.sqlite
 
-import java.util.concurrent.atomic.AtomicInteger
-
 
 trait Table {
   val (id, fts) = "_id" -> "fts4"
@@ -9,7 +7,7 @@ trait Table {
 }
 
 object Table {
-  val DEFAULT_LIMIT = new AtomicInteger(10)
+  val DEFAULT_LIMIT = new java.util.concurrent.atomic.AtomicInteger(10)
 }
 
 // Database #1, essential data, exportable to backup

@@ -4,6 +4,7 @@
     <string name="bitcoin_wallet">Bitcoin</string>
     <string name="lightning_wallet">Lightning</string>
     <string name="total_balance">Total balance</string>
+    <string name="recent_activity">Recent activity</string>
 
     <string name="emergency_mode">Something went wrong</string>
     <string name="emergency_share">Share error report</string>

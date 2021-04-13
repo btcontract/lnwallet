@@ -78,26 +78,34 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
       topInfoLayout post UITask(topBlurringArea setHeightTo topInfoLayout)
       bottomActionBar post UITask(bottomBlurringArea setHeightTo bottomActionBar)
 
-//      val paymentObserver = new ContentObserver(new Handler) {
-//        override def onChange(askedFromSelf: Boolean): Unit = println(s"-- paymentObserver, askedFromSelf: $askedFromSelf")
-//      }
-//
-//      val relayObserver = new ContentObserver(new Handler) {
-//        override def onChange(askedFromSelf: Boolean): Unit = println(s"-- relayObserver, askedFromSelf: $askedFromSelf")
-//      }
-//
-//      val txObserver = new ContentObserver(new Handler) {
-//        override def onChange(askedFromSelf: Boolean): Unit = println(s"-- txObserver, askedFromSelf: $askedFromSelf")
-//      }
-//
+      val paymentObserver = new ContentObserver(new Handler) {
+        override def onChange(askedFromSelf: Boolean): Unit = println(s"-- paymentObserver, askedFromSelf: $askedFromSelf")
+      }
+
+      val relayObserver = new ContentObserver(new Handler) {
+        override def onChange(askedFromSelf: Boolean): Unit = println(s"-- relayObserver, askedFromSelf: $askedFromSelf")
+      }
+
+      val txObserver = new ContentObserver(new Handler) {
+        override def onChange(askedFromSelf: Boolean): Unit = println(s"-- txObserver, askedFromSelf: $askedFromSelf")
+      }
+
+      getContentResolver.registerContentObserver(WalletApp.app.sqlPath(PaymentTable.table), true, paymentObserver)
+      getContentResolver.registerContentObserver(WalletApp.app.sqlPath(RelayTable.table), true, relayObserver)
+      getContentResolver.registerContentObserver(WalletApp.app.sqlPath(TxTable.table), true, txObserver)
+
 //      getContentResolver.registerContentObserver(WalletApp.app.sqlPath(PaymentTable.table), true, paymentObserver)
 //      getContentResolver.registerContentObserver(WalletApp.app.sqlPath(RelayTable.table), true, relayObserver)
 //      getContentResolver.registerContentObserver(WalletApp.app.sqlPath(TxTable.table), true, txObserver)
 //
-//      WalletApp.app.getContentResolver.notifyChange(WalletApp.app.sqlPath(PaymentTable.table), null)
-//      WalletApp.app.getContentResolver.notifyChange(WalletApp.app.sqlPath(PaymentTable.table), null)
-//      WalletApp.app.getContentResolver.notifyChange(WalletApp.app.sqlPath(RelayTable.table), null)
-//      WalletApp.app.getContentResolver.notifyChange(WalletApp.app.sqlPath(TxTable.table), null)
+//      getContentResolver.registerContentObserver(WalletApp.app.sqlPath(PaymentTable.table), true, paymentObserver)
+//      getContentResolver.registerContentObserver(WalletApp.app.sqlPath(RelayTable.table), true, relayObserver)
+//      getContentResolver.registerContentObserver(WalletApp.app.sqlPath(TxTable.table), true, txObserver)
+
+      WalletApp.app.getContentResolver.notifyChange(WalletApp.app.sqlPath(PaymentTable.table), null)
+      WalletApp.app.getContentResolver.notifyChange(WalletApp.app.sqlPath(PaymentTable.table), null)
+      WalletApp.app.getContentResolver.notifyChange(WalletApp.app.sqlPath(RelayTable.table), null)
+      WalletApp.app.getContentResolver.notifyChange(WalletApp.app.sqlPath(TxTable.table), null)
 
 //      import scala.concurrent.duration._
 //
@@ -141,6 +149,10 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
   def bringScanner(view: View): Unit = {
     ChannelMaster.stateUpdateStream.onNext(ChannelMaster.updateCounter.incrementAndGet)
     //callScanner(me)
+  }
+
+  def bringSearch(view: View): Unit = {
+
   }
 
   def bringReceiveOptions(view: View): Unit = {
