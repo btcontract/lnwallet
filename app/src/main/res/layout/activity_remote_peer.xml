@@ -11,20 +11,17 @@
         <TextView
             style="@style/Emphasized"
             android:id="@+id/peerAlias"
-            android:layout_width="wrap_content"
             android:textSize="@dimen/header_size"/>
 
         <TextView
             style="@style/BoundedView"
             android:id="@+id/peerNodeKey"
-            android:textColor="@color/colorAccent"
-            android:layout_width="wrap_content"/>
+            android:textColor="@color/colorAccent"/>
 
         <TextView
             style="@style/BoundedView"
             android:id="@+id/peerIpAddress"
-            android:textColor="@color/colorAccent"
-            android:layout_width="wrap_content"/>
+            android:textColor="@color/colorAccent"/>
 
         <ProgressBar
             android:id="@+id/progressBar"
@@ -79,8 +76,7 @@
 
                 <TextView
                     style="@style/BoundedView"
-                    android:text="@string/rpa_request_channel"
-                    android:layout_width="wrap_content"/>
+                    android:text="@string/rpa_request_channel"/>
 
                 <com.ornach.nobobutton.NoboButton
                     android:layout_marginTop="@dimen/chip_default_padding_edge"

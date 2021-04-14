@@ -20,9 +20,7 @@ class RemotePeerActivity extends BaseActivity { me =>
   private[this] lazy val viewYesFeatureSupport = findViewById(R.id.viewYesFeatureSupport).asInstanceOf[LinearLayout]
   private[this] lazy val optionHostedChannel = findViewById(R.id.optionHostedChannel).asInstanceOf[NoboButton]
 
-  private[this] lazy val criticalFeatures =
-    Set(OptionDataLossProtect, BasicMultiPartPayment,
-      VariableLengthOnion, StaticRemoteKey)
+  private[this] lazy val criticalFeatures = Set(OptionDataLossProtect, BasicMultiPartPayment, VariableLengthOnion, StaticRemoteKey)
 
   private[this] lazy val featureTextViewMap = Map(
     ChannelRangeQueriesExtended -> findViewById(R.id.ChannelRangeQueriesExtended).asInstanceOf[TextView],
