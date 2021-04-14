@@ -172,22 +172,22 @@ sealed trait SyncMasterData extends { me =>
   def getNewSync(master: CanBeRepliedTo): SyncWorker = {
     // This relies on (1) baseSyncs items are never removed
     // AND (2) size of baseSyncs is >= LNParams.maxNodesToSyncFrom
-    val unusedSyncs = activeSyncs.foldLeft(baseSyncs ++ extSyncs)(_ - _.remoteInfo)
+    val unusedSyncs = activeSyncs.foldLeft(baseInfos ++ extInfos)(_ - _.remoteInfo)
     SyncWorker(master, randomKeyPair, shuffle(unusedSyncs.toList).head, LNParams.ourInit)
   }
 
   def withoutSync(sd: SyncDisconnected): SyncMasterData = me
-    .modify(_.extSyncs).usingIf(sd.removePeer)(_ - sd.sync.remoteInfo)
+    .modify(_.extInfos).usingIf(sd.removePeer)(_ - sd.sync.remoteInfo)
     .modify(_.activeSyncs).using(_ - sd.sync)
 
-  def baseSyncs: Set[RemoteNodeInfo]
-  def extSyncs: Set[RemoteNodeInfo]
+  def baseInfos: Set[RemoteNodeInfo]
+  def extInfos: Set[RemoteNodeInfo]
   def activeSyncs: Set[SyncWorker]
 }
 
 case class PureRoutingData(announces: Set[ChannelAnnouncement], updates: Set[ChannelUpdate], excluded: Set[UpdateCore] = Set.empty)
-case class SyncMasterShortIdData(baseSyncs: Set[RemoteNodeInfo], extSyncs: Set[RemoteNodeInfo], activeSyncs: Set[SyncWorker], ranges: Map[PublicKey, SyncWorkerShortIdsData] = Map.empty) extends SyncMasterData
-case class SyncMasterGossipData(baseSyncs: Set[RemoteNodeInfo], extSyncs: Set[RemoteNodeInfo], activeSyncs: Set[SyncWorker], chunksLeft: Int) extends SyncMasterData
+case class SyncMasterShortIdData(baseInfos: Set[RemoteNodeInfo], extInfos: Set[RemoteNodeInfo], activeSyncs: Set[SyncWorker], ranges: Map[PublicKey, SyncWorkerShortIdsData] = Map.empty) extends SyncMasterData
+case class SyncMasterGossipData(baseInfos: Set[RemoteNodeInfo], extInfos: Set[RemoteNodeInfo], activeSyncs: Set[SyncWorker], chunksLeft: Int) extends SyncMasterData
 
 case class UpdateConifrmState(liteUpdOpt: Option[ChannelUpdate], confirmedBy: ConfirmedBySet) {
   def add(cu: ChannelUpdate, from: PublicKey): UpdateConifrmState = copy(liteUpdOpt = Some(cu), confirmedBy = confirmedBy + from)
@@ -211,7 +211,7 @@ abstract class SyncMaster(excluded: Set[Long], routerData: Data) extends StateMa
   become(null, SHORT_ID_SYNC)
 
   def doProcess(change: Any): Unit = (change, data, state) match {
-    case (setupData: SyncMasterShortIdData, null, SHORT_ID_SYNC) if setupData.baseSyncs.nonEmpty =>
+    case (setupData: SyncMasterShortIdData, null, SHORT_ID_SYNC) if setupData.baseInfos.nonEmpty =>
       val rng = 0 until LNParams.syncParams.maxNodesToSyncFrom
       become(freshData = setupData, SHORT_ID_SYNC)
       rng.foreach(_ => me process CMDAddSync)
@@ -225,7 +225,7 @@ abstract class SyncMaster(excluded: Set[Long], routerData: Data) extends StateMa
 
     case (sd: SyncDisconnected, data1: SyncMasterShortIdData, SHORT_ID_SYNC) =>
       become(data1.copy(ranges = data1.ranges - sd.sync.pair.them).withoutSync(sd), SHORT_ID_SYNC)
-      Rx.ioQueue.delay(3.seconds).foreach(_ => me process CMDAddSync)
+      Rx.ioQueue.delay(5.seconds).foreach(_ => me process CMDAddSync)
 
     case (CMDShortIdsComplete(sync, ranges1), SyncMasterShortIdData(baseSyncs, extSyncs, activeSyncs, ranges), SHORT_ID_SYNC) =>
       val data1 = SyncMasterShortIdData(baseSyncs, extSyncs, ranges = ranges + (sync.pair.them -> ranges1), activeSyncs = activeSyncs)
@@ -257,7 +257,7 @@ abstract class SyncMaster(excluded: Set[Long], routerData: Data) extends StateMa
       newSyncWorker process SyncWorkerGossipData(me, workerData.queries)
 
     case (sd: SyncDisconnected, data1: SyncMasterGossipData, GOSSIP_SYNC) =>
-      Rx.ioQueue.delay(3.seconds).foreach(_ => me process sd.sync.data)
+      Rx.ioQueue.delay(5.seconds).foreach(_ => me process sd.sync.data)
       become(data1.withoutSync(sd), GOSSIP_SYNC)
 
     case (CMDChunkComplete(sync, workerData), data1: SyncMasterGossipData, GOSSIP_SYNC) =>
@@ -331,7 +331,7 @@ abstract class SyncMaster(excluded: Set[Long], routerData: Data) extends StateMa
 }
 
 case class CompleteHostedRoutingData(announces: Set[ChannelAnnouncement], updates: Set[ChannelUpdate] = Set.empty)
-case class SyncMasterPHCData(baseSyncs: Set[RemoteNodeInfo], extSyncs: Set[RemoteNodeInfo], activeSyncs: Set[SyncWorker], attemptsLeft: Int = 12) extends SyncMasterData
+case class SyncMasterPHCData(baseInfos: Set[RemoteNodeInfo], extInfos: Set[RemoteNodeInfo], activeSyncs: Set[SyncWorker], attemptsLeft: Int = 12) extends SyncMasterData
 
 abstract class PHCSyncMaster(routerData: Data) extends StateMachine[SyncMasterData] with CanBeRepliedTo { me =>
   implicit val context: ExecutionContextExecutor = ExecutionContext fromExecutor Executors.newSingleThreadExecutor
@@ -348,7 +348,7 @@ abstract class PHCSyncMaster(routerData: Data) extends StateMachine[SyncMasterDa
   def onSyncComplete(pure: CompleteHostedRoutingData): Unit
 
   def doProcess(change: Any): Unit = (change, data, state) match {
-    case (setupData: SyncMasterPHCData, null, PHC_SYNC) if setupData.baseSyncs.nonEmpty =>
+    case (setupData: SyncMasterPHCData, null, PHC_SYNC) if setupData.baseInfos.nonEmpty =>
       become(freshData = setupData, PHC_SYNC)
       me process CMDAddSync
 
@@ -361,7 +361,7 @@ abstract class PHCSyncMaster(routerData: Data) extends StateMachine[SyncMasterDa
 
     case (sd: SyncDisconnected, data1: SyncMasterPHCData, PHC_SYNC) if data1.attemptsLeft > 0 =>
       become(data1.copy(attemptsLeft = data1.attemptsLeft - 1).withoutSync(sd), PHC_SYNC)
-      Rx.ioQueue.delay(3.seconds).foreach(_ => me process CMDAddSync)
+      Rx.ioQueue.delay(5.seconds).foreach(_ => me process CMDAddSync)
 
     case (_: SyncWorker, _, PHC_SYNC) =>
       // No more reconnect attempts left

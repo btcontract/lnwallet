@@ -1,7 +1,7 @@
 package com.lightning.walletapp
 
 import org.junit.{Ignore, Test}
-import immortan.{LNParams, PureRoutingData, SyncMaster, SyncMasterShortIdData, SyncParams}
+import immortan.{LNParams, PureRoutingData, SyncMaster, SyncMasterShortIdData, TestNetSyncParams}
 import fr.acinq.eclair.router.Graph.GraphStructure.DirectedGraph
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import fr.acinq.eclair.router.Router.Data
@@ -9,6 +9,7 @@ import com.google.common.io.Files
 import org.junit.runner.RunWith
 import immortan.wire.ExtCodecs
 import scodec.bits.ByteVector
+import fr.acinq.bitcoin.Block
 import java.io.File
 
 
@@ -18,21 +19,23 @@ class SyncSpec {
 
   @Test
   def syncAndPackGraph: Unit = {
-    run(DBSpec.randomDBName, makeSnapshot = true)
+    run(DBSpec.randomDBName, makeSnapshot = false)
     this synchronized wait(6000000L)
   }
 
   def run(dbName: String, makeSnapshot: Boolean): Unit = {
     val (normalStore, _) = DBSpec.getNetworkStores(dbName)
 
-    LNParams.syncParams = new SyncParams {
+    LNParams.chainHash = Block.TestnetGenesisBlock.hash
+
+    LNParams.syncParams = new TestNetSyncParams {
       override val maxNodesToSyncFrom = 1
       override val acceptThreshold = 0
     }
 
     val channelMap0 = normalStore.getRoutingData
     val data0 = Data(channelMap0, hostedChannels = Map.empty, graph = DirectedGraph makeGraph channelMap0)
-    val setupData = SyncMasterShortIdData(Set(LNParams.syncParams.acinq), extSyncs = Set.empty, activeSyncs = Set.empty)
+    val setupData = SyncMasterShortIdData(LNParams.syncParams.syncNodes, extInfos = Set.empty, activeSyncs = Set.empty)
 
     val syncMaster = new SyncMaster(normalStore.listExcludedChannels, data0) {
       def onChunkSyncComplete(pure: PureRoutingData): Unit = {

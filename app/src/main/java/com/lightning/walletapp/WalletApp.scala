@@ -11,7 +11,7 @@ import fr.acinq.eclair.blockchain.electrum.{CheckPoint, ElectrumClientPool}
 import android.content.{ClipboardManager, Context, Intent, SharedPreferences}
 import com.lightning.walletapp.utils.{AwaitService, DelayedNotification, UsedAddons, WebsocketBus}
 import immortan.utils.{BtcDenomination, FeeRates, FeeRatesInfo, FiatRates, FiatRatesInfo, SatDenomination}
-import immortan.{Channel, ChannelMaster, CommsTower, LNParams, MnemonicExtStorageFormat, PathFinder, RemoteNodeInfo, SyncParams}
+import immortan.{Channel, ChannelMaster, CommsTower, LNParams, MnemonicExtStorageFormat, PathFinder, RemoteNodeInfo, TestNetSyncParams}
 import fr.acinq.eclair.blockchain.electrum.ElectrumWallet.WalletReady
 import fr.acinq.eclair.router.Router.RouterConf
 import androidx.appcompat.app.AppCompatDelegate
@@ -98,9 +98,10 @@ object WalletApp { me =>
     val chanBag = new SQLiteChannel(essentialInterface)
 
     LNParams.format = format
+    LNParams.syncParams = new TestNetSyncParams
+    LNParams.chainHash = Block.TestnetGenesisBlock.hash
     LNParams.routerConf = RouterConf(maxCltvDelta = CltvExpiryDelta(2016), mppMinPartAmount = MilliSatoshi(10000000L), routeHopDistance = 6)
     LNParams.denomination = if (useSatDenom) SatDenomination else BtcDenomination
-    LNParams.syncParams = new SyncParams
 
     extDataBag.db txWrap {
       LNParams.fiatRatesInfo = extDataBag.tryGetFiatRatesInfo getOrElse FiatRatesInfo(Map.empty, Map.empty, stamp = 0L)
@@ -120,14 +121,12 @@ object WalletApp { me =>
     ElectrumClientPool.loadFromChainHash = {
       case Block.LivenetGenesisBlock.hash => ElectrumClientPool.readServerAddresses(app.getAssets open "servers_mainnet.json", sslEnabled = true)
       case Block.TestnetGenesisBlock.hash => ElectrumClientPool.readServerAddresses(app.getAssets open "servers_testnet.json", sslEnabled = true)
-      case Block.RegtestGenesisBlock.hash => ElectrumClientPool.readServerAddresses(app.getAssets open "servers_regtest.json", sslEnabled = true)
       case _ => throw new RuntimeException
     }
 
     CheckPoint.loadFromChainHash = {
       case Block.LivenetGenesisBlock.hash => CheckPoint.load(app.getAssets open "checkpoints_mainnet.json")
       case Block.TestnetGenesisBlock.hash => CheckPoint.load(app.getAssets open "checkpoints_testnet.json")
-      case Block.RegtestGenesisBlock.hash => Vector.empty
       case _ => throw new RuntimeException
     }
 

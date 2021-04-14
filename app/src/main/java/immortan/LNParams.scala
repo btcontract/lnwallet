@@ -51,31 +51,12 @@ object LNParams {
   val minDustLimit: Satoshi = Satoshi(546L)
   val minDepthBlocks: Int = 3
 
-  val chainHash: ByteVector32 = Block.LivenetGenesisBlock.hash
   val reserveToFundingRatio: Double = 0.0025 // %
   val offChainFeeRatio: Double = 0.01 // %
 
-  // Init messages + features
-
-  private[this] val networks: InitTlv = InitTlv.Networks(chainHash :: Nil)
-  private[this] val tlvStream: TlvStream[InitTlv] = TlvStream(networks)
-
-  val ourInit: Init = Init(Features(
-    (ChannelRangeQueries, FeatureSupport.Optional),
-    (ChannelRangeQueriesExtended, FeatureSupport.Optional),
-    (OptionDataLossProtect, FeatureSupport.Optional),
-    (BasicMultiPartPayment, FeatureSupport.Optional),
-    (VariableLengthOnion, FeatureSupport.Optional),
-    (TrampolineRouting, FeatureSupport.Optional),
-    (StaticRemoteKey, FeatureSupport.Optional),
-    (HostedChannels, FeatureSupport.Optional),
-    (AnchorOutputs, FeatureSupport.Optional),
-    (PaymentSecret, FeatureSupport.Optional),
-    (ChainSwap, FeatureSupport.Optional),
-    (Wumbo, FeatureSupport.Optional)
-  ), tlvStream)
-
   // Variables to be assigned at runtime
+
+  var chainHash: ByteVector32 = Block.LivenetGenesisBlock.hash
 
   var format: StorageFormat = _
   var routerConf: RouterConf = _
@@ -84,10 +65,31 @@ object LNParams {
   var fiatRatesInfo: FiatRatesInfo = _
   var feeRatesInfo: FeeRatesInfo = _
   var trampoline: TrampolineOn = _
+  var chainWallet: WalletExt = _
   var cm: ChannelMaster = _
 
-  // Better be set last
-  var chainWallet: WalletExt = _
+  // Init messages + features
+
+  lazy val ourInit: Init = {
+    // Late init because chain hash may be replaced
+    val networks: InitTlv = InitTlv.Networks(chainHash :: Nil)
+    val tlvStream: TlvStream[InitTlv] = TlvStream(networks)
+
+    Init(Features(
+      (ChannelRangeQueries, FeatureSupport.Optional),
+      (ChannelRangeQueriesExtended, FeatureSupport.Optional),
+      (OptionDataLossProtect, FeatureSupport.Optional),
+      (BasicMultiPartPayment, FeatureSupport.Optional),
+      (VariableLengthOnion, FeatureSupport.Optional),
+      (TrampolineRouting, FeatureSupport.Optional),
+      (StaticRemoteKey, FeatureSupport.Optional),
+      (HostedChannels, FeatureSupport.Optional),
+      (AnchorOutputs, FeatureSupport.Optional),
+      (PaymentSecret, FeatureSupport.Optional),
+      (ChainSwap, FeatureSupport.Optional),
+      (Wumbo, FeatureSupport.Optional)
+    ), tlvStream)
+  }
 
   // Last known chain tip (zero is unknown)
   val blockCount: AtomicLong = new AtomicLong(0L)
@@ -97,9 +99,9 @@ object LNParams {
   val lastDisconnect: AtomicLong = new AtomicLong(Long.MaxValue)
 
   def isOperational: Boolean =
-    null != format && null != chainWallet && null != syncParams && null != trampoline &&
-      null != feeRatesInfo && null != fiatRatesInfo && null != denomination && null != cm &&
-      null != cm.inProcessors && null != routerConf
+    null != chainHash && null != format && null != chainWallet && null != syncParams &&
+      null != trampoline && null != feeRatesInfo && null != fiatRatesInfo && null != denomination &&
+      null != cm && null != cm.inProcessors && null != routerConf
 
   implicit val timeout: Timeout = Timeout(30.seconds)
   implicit val system: ActorSystem = ActorSystem("immortan-actor-system")
@@ -142,6 +144,15 @@ class SyncParams {
   val acceptThreshold = 1 // ShortIds and updates are accepted if confirmed by more than this peers
   val messagesToAsk = 500 // Ask for this many messages from peer before they say this chunk is done
   val chunksToWait = 4 // Wait for at least this much chunk iterations from any peer before recording results
+}
+
+class TestNetSyncParams extends SyncParams {
+  val endurance: RemoteNodeInfo = RemoteNodeInfo(PublicKey(hex"03933884aaf1d6b108397e5efe5c86bcf2d8ca8d2f700eda99db9214fc2712b134"), NodeAddress.unresolved(9735, host = 76, 223, 71, 211), "Endurance")
+  val localhost: RemoteNodeInfo = RemoteNodeInfo(PublicKey(hex"03933884aaf1d6b108397e5efe5c86bcf2d8ca8d2f700eda99db9214fc2712b134"), NodeAddress.unresolved(9735, host = 10, 0, 2, 2), "localhost")
+  override val syncNodes: Set[RemoteNodeInfo] = Set(endurance, localhost)
+  override val minCapacity: MilliSatoshi = MilliSatoshi(1000000000L)
+  override val maxNodesToSyncFrom = 1
+  override val acceptThreshold = 0
 }
 
 // Important: LNParams.format must be defined
