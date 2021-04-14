@@ -15,9 +15,9 @@ import scala.util.Try
 case class TxSummary(fees: MilliSatoshi, received: MilliSatoshi, sent: MilliSatoshi, count: Long)
 
 class SQLiteTx(db: DBInterface) {
-  def updConfidence(event: TransactionConfidenceChanged): Unit = db txWrap {
-    db.change(TxTable.updCompletedAtSql, event.txid.toHex, event.msecs: JLong)
-    db.change(TxTable.updDepthSql, event.txid.toHex, event.depth: JLong)
+  def updConfidence(txid: ByteVector32, depth: Long): Unit = db txWrap {
+    db.change(TxTable.updCompletedAtSql, txid.toHex, System.currentTimeMillis: JLong)
+    db.change(TxTable.updDepthSql, txid.toHex, depth: JLong)
   }
 
   def updDoubleSpent(txid: ByteVector32): Unit = db.change(TxTable.updDoubleSpentSql, txid.toHex, 1L: JLong)
@@ -30,7 +30,7 @@ class SQLiteTx(db: DBInterface) {
 
   def putTx(event: TransactionReceived, description: TxDescription, balanceSnap: MilliSatoshi, fiatRateSnap: Fiat2Btc): Unit =
     db.change(TxTable.newSql, event.tx.txid.toHex, event.depth: JLong, event.received.toLong: JLong, event.sent.toLong: JLong, event.feeOpt.map(_.toLong: JLong).getOrElse(0L: JLong),
-      event.msecs: JLong /* SEEN */, event.msecs: JLong /* COMPLETED */, description.toJson.compactPrint, balanceSnap.toLong: JLong, fiatRateSnap.toJson.compactPrint,
+      System.currentTimeMillis: JLong /* SEEN */, System.currentTimeMillis: JLong /* COMPLETED */, description.toJson.compactPrint, balanceSnap.toLong: JLong, fiatRateSnap.toJson.compactPrint,
       if (event.received >= event.sent) 1L: JLong else 0L: JLong /* INCOMING? */, 0L: JLong /* NOT DOUBLE SPENT */)
 
   def toTxInfo(rc: RichCursor): TxInfo =

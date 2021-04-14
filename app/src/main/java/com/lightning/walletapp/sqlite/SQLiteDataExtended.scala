@@ -18,11 +18,6 @@ object SQLiteDataExtended {
   final val LABEL_FIAT_RATES = "label-fiat-rates"
   final val LABEL_FEE_RATES = "label-fee-rates"
 
-  // Last wallet ready message
-
-  implicit val walletReadyFmt: JsonFormat[WalletReady] = jsonFormat[Satoshi, Satoshi, Long, Long,
-    WalletReady](WalletReady.apply, "confirmedBalance", "unconfirmedBalance", "height", "timestamp")
-
   // Addons
 
   implicit object AddonDataFmt extends JsonFormat[AddonData] {
@@ -49,9 +44,9 @@ class SQLiteDataExtended(override val db: DBInterfaceSQLiteAndroidMisc) extends 
 
   def tryGetAddons: Try[UsedAddons] = tryGet(LABEL_ADDONS).map(SQLiteData.byteVecToString) map to[UsedAddons]
 
-  def putLastWalletReady(wr: WalletReady): Unit = put(LABEL_WALLET_READY, wr.toJson.compactPrint getBytes "UTF-8")
+  def putLastBalance(wr: Satoshi): Unit = put(LABEL_WALLET_READY, wr.toJson.compactPrint getBytes "UTF-8")
 
-  def tryGetLastWalletReady: Try[WalletReady] = tryGet(LABEL_WALLET_READY).map(SQLiteData.byteVecToString) map to[WalletReady]
+  def tryGetLastBalance: Try[Satoshi] = tryGet(LABEL_WALLET_READY).map(SQLiteData.byteVecToString) map to[Satoshi]
 
   def putFiatRatesInfo(data: FiatRatesInfo): Unit = put(LABEL_FIAT_RATES, data.toJson.compactPrint getBytes "UTF-8")
 

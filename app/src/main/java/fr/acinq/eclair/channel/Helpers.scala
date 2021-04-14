@@ -165,8 +165,7 @@ object Helpers {
   /** NB: this is a blocking call, use carefully! */
   def getFinalScriptPubKey(wallet: EclairWallet, chainHash: ByteVector32): ByteVector = {
     import scala.concurrent.duration._
-    val finalAddress = Await.result(wallet.getReceiveAddress, 40.seconds)
-
+    val finalAddress = Await.result(wallet.getReceiveAddresses, 40.seconds).head
     Script.write(addressToPublicKeyScript(finalAddress, chainHash))
   }
 

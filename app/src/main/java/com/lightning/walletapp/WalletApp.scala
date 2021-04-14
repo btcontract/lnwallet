@@ -3,16 +3,15 @@ package com.lightning.walletapp
 import immortan.sqlite._
 import com.lightning.walletapp.sqlite._
 import com.lightning.walletapp.R.string._
-import fr.acinq.bitcoin.{Block, Crypto, SatoshiLong}
 import fr.acinq.eclair.{CltvExpiryDelta, MilliSatoshi}
 import immortan.crypto.Tools.{Bytes, Fiat2Btc, none, runAnd}
+import fr.acinq.bitcoin.{Block, Crypto, Satoshi, SatoshiLong}
 import android.app.{Application, NotificationChannel, NotificationManager}
 import fr.acinq.eclair.blockchain.electrum.{CheckPoint, ElectrumClientPool}
 import android.content.{ClipboardManager, Context, Intent, SharedPreferences}
 import com.lightning.walletapp.utils.{AwaitService, DelayedNotification, UsedAddons, WebsocketBus}
 import immortan.utils.{BtcDenomination, FeeRates, FeeRatesInfo, FiatRates, FiatRatesInfo, SatDenomination}
 import immortan.{Channel, ChannelMaster, CommsTower, LNParams, MnemonicExtStorageFormat, PathFinder, RemoteNodeInfo, TestNetSyncParams}
-import fr.acinq.eclair.blockchain.electrum.ElectrumWallet.WalletReady
 import fr.acinq.eclair.router.Router.RouterConf
 import androidx.appcompat.app.AppCompatDelegate
 import immortan.utils.Denomination.formatFiat
@@ -29,7 +28,7 @@ import scala.util.Try
 object WalletApp { me =>
   var txDataBag: SQLiteTxExtended = _
   var extDataBag: SQLiteDataExtended = _
-  var lastWalletReady: WalletReady = _
+  var lastChainBalance: Satoshi = _
   var usedAddons: UsedAddons = _
   var app: WalletApp = _
 
@@ -54,7 +53,7 @@ object WalletApp { me =>
   def capLNFeeToChain: Boolean = app.prefs.getBoolean(CAP_LN_FEE_TO_CHAIN, false)
 
   // Due to Android specifics any of these may be nullified at runtime, must check for liveness on every entry
-  def isAlive: Boolean = null != extDataBag && null != txDataBag && null != lastWalletReady && null != usedAddons && null != app
+  def isAlive: Boolean = null != extDataBag && null != txDataBag && null != lastChainBalance && null != usedAddons && null != app
 
   def freePossiblyUsedResouces: Unit = {
     // Drop whatever network connections we still have
@@ -69,7 +68,7 @@ object WalletApp { me =>
 
     txDataBag = null
     extDataBag = null
-    lastWalletReady = null
+    lastChainBalance = null
     usedAddons = null
   }
 
@@ -80,10 +79,11 @@ object WalletApp { me =>
     miscInterface txWrap {
       extDataBag = new SQLiteDataExtended(miscInterface)
       txDataBag = new SQLiteTxExtended(app, miscInterface)
+      lastChainBalance = extDataBag.tryGetLastBalance getOrElse 0L.sat
       usedAddons = extDataBag.tryGetAddons getOrElse UsedAddons(List.empty)
-      if (app.isTablet) Table.DEFAULT_LIMIT.set(10) else Table.DEFAULT_LIMIT.set(20)
-      val emptyReady = WalletReady(0L.sat, 0L.sat, 0L, System.currentTimeMillis)
-      lastWalletReady = extDataBag.tryGetLastWalletReady getOrElse emptyReady
+
+      if (app.isTablet) Table.DEFAULT_LIMIT.set(10)
+      else Table.DEFAULT_LIMIT.set(20)
     }
   }
 

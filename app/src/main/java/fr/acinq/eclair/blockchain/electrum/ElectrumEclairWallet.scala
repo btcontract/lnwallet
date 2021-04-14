@@ -32,7 +32,7 @@ class ElectrumEclairWallet(val wallet: ActorRef, chainHash: ByteVector32)(implic
 
   override def getBalance: Future[OnChainBalance] = (wallet ? GetBalance).mapTo[GetBalanceResponse].map(balance => OnChainBalance(balance.confirmed, balance.unconfirmed))
 
-  override def getReceiveAddress: Future[String] = (wallet ? GetCurrentReceiveAddress).mapTo[GetCurrentReceiveAddressResponse].map(_.address)
+  override def getReceiveAddresses: Future[Seq[String]] = (wallet ? GetCurrentReceiveAddresses).mapTo[GetCurrentReceiveAddressesResponse].map(_.addresses)
 
   override def getReceivePubkey(receiveAddress: Option[String] = None): Future[Crypto.PublicKey] = Future.failed(new RuntimeException("Not implemented"))
 

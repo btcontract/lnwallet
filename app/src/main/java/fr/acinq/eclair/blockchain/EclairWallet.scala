@@ -30,7 +30,7 @@ trait EclairWallet {
 
   def getBalance: Future[OnChainBalance]
 
-  def getReceiveAddress: Future[String]
+  def getReceiveAddresses: Future[Seq[String]]
 
   def getReceivePubkey(receiveAddress: Option[String] = None): Future[PublicKey]
 

@@ -148,8 +148,13 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
   }
 
   def bringScanner(view: View): Unit = {
-    ChannelMaster.stateUpdateStream.onNext(ChannelMaster.updateCounter.incrementAndGet)
+//    ChannelMaster.stateUpdateStream.onNext(ChannelMaster.updateCounter.incrementAndGet)
     //callScanner(me)
+    import scala.concurrent.duration._
+    val a = System.currentTimeMillis()
+    val finalAddresses = Await.result(LNParams.chainWallet.wallet.getReceiveAddresses, 40.seconds)
+    println(s"-- ${System.currentTimeMillis() - a}")
+    println(s"-- $finalAddresses")
   }
 
   def bringSearch(view: View): Unit = {

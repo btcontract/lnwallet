@@ -80,19 +80,10 @@ class ElectrumWallet(seed: ByteVector, client: ActorRef, params: ElectrumWallet.
           val ready = data.readyMessage
           log.info(s"wallet is ready with $ready")
           context.system.eventStream.publish(ready)
-          context.system.eventStream.publish(NewWalletReceiveAddress(data.currentReceiveAddress))
           params.walletDb.persist(PersistentData(data))
           data.copy(lastReadyMessage = Some(ready))
       }
     } else data
-  }
-
-  // sent notifications for all wallet transactions
-  def advertiseTransactions(data: ElectrumWallet.Data): Unit = {
-    data.transactions.values.foreach(tx => data.computeTransactionDelta(tx).foreach {
-      case (received, sent, fee_opt) =>
-        context.system.eventStream.publish(TransactionReceived(tx, data.computeTransactionDepth(tx.txid), received, sent, fee_opt, data.computeTimestamp(tx.txid, params.walletDb)))
-    })
   }
 
   startWith(DISCONNECTED, {
@@ -136,7 +127,6 @@ class ElectrumWallet(seed: ByteVector, client: ActorRef, params: ElectrumWallet.
         val firstChangeKeys = (0 until params.swipeRange).map(i => derivePrivateKey(changeMaster, i)).toVector
         Data(params, blockchain1, firstAccountKeys, firstChangeKeys)
     }
-    context.system.eventStream.publish(NewWalletReceiveAddress(data.currentReceiveAddress))
     log.info(s"restored wallet balance=${data.balance}")
     data
   })
@@ -163,7 +153,6 @@ class ElectrumWallet(seed: ByteVector, client: ActorRef, params: ElectrumWallet.
         // nothing to sync
         data.accountKeys.foreach(key => client ! ElectrumClient.ScriptHashSubscription(computeScriptHashFromPublicKey(key.publicKey), self))
         data.changeKeys.foreach(key => client ! ElectrumClient.ScriptHashSubscription(computeScriptHashFromPublicKey(key.publicKey), self))
-        advertiseTransactions(data)
         goto(RUNNING) using persistAndNotify(data)
       } else {
         client ! ElectrumClient.GetHeaders(data.blockchain.tip.height + 1, RETARGETING_PERIOD)
@@ -179,7 +168,6 @@ class ElectrumWallet(seed: ByteVector, client: ActorRef, params: ElectrumWallet.
         log.info(s"headers sync complete, tip=${data.blockchain.tip}")
         data.accountKeys.foreach(key => client ! ElectrumClient.ScriptHashSubscription(computeScriptHashFromPublicKey(key.publicKey), self))
         data.changeKeys.foreach(key => client ! ElectrumClient.ScriptHashSubscription(computeScriptHashFromPublicKey(key.publicKey), self))
-        advertiseTransactions(data)
         goto(RUNNING) using persistAndNotify(data)
       } else {
         Try(Blockchain.addHeaders(data.blockchain, start, headers)) match {
@@ -217,11 +205,6 @@ class ElectrumWallet(seed: ByteVector, client: ActorRef, params: ElectrumWallet.
       } else {
         Try(Blockchain.addHeader(data.blockchain, height, header)) match {
           case Success(blockchain1) =>
-            data.heights.collect {
-              case (txid, txheight) if txheight > 0 =>
-                val confirmations = computeDepth(height, txheight)
-                context.system.eventStream.publish(TransactionConfidenceChanged(txid, confirmations, data.computeTimestamp(txid, params.walletDb)))
-            }
             val (blockchain2, saveme) = Blockchain.optimize(blockchain1)
             saveme.grouped(RETARGETING_PERIOD).foreach(chunk => params.walletDb.addHeaders(chunk.head.height, chunk.map(_.header)))
             stay using persistAndNotify(data.copy(blockchain = blockchain2))
@@ -322,18 +305,15 @@ class ElectrumWallet(seed: ByteVector, client: ActorRef, params: ElectrumWallet.
       // we now have updated height for all our transactions,
       heights1.collect {
         case (txid, height) =>
-          val confirmations = if (height <= 0) 0 else computeDepth(data.blockchain.tip.height, height)
           (data.heights.get(txid), height) match {
             case (None, height) if height <= 0 =>
             // height=0 => unconfirmed, height=-1 => unconfirmed and one input is unconfirmed
             case (None, height) if height > 0 =>
               // first time we get a height for this tx: either it was just confirmed, or we restarted the wallet
-              context.system.eventStream.publish(TransactionConfidenceChanged(txid, confirmations, data.computeTimestamp(txid, params.walletDb)))
               downloadHeadersIfMissing(height.toInt)
               client ! GetMerkle(txid, height.toInt)
             case (Some(previousHeight), height) if previousHeight != height =>
               // there was a reorg
-              context.system.eventStream.publish(TransactionConfidenceChanged(txid, confirmations, data.computeTimestamp(txid, params.walletDb)))
               if (height > 0) {
                 downloadHeadersIfMissing(height.toInt)
                 client ! GetMerkle(txid, height.toInt)
@@ -470,7 +450,7 @@ class ElectrumWallet(seed: ByteVector, client: ActorRef, params: ElectrumWallet.
         lastReadyMessage = None
       )
 
-    case Event(GetCurrentReceiveAddress, data) => stay replying GetCurrentReceiveAddressResponse(data.currentReceiveAddress)
+    case Event(GetCurrentReceiveAddresses, data) => stay replying GetCurrentReceiveAddressesResponse(data.currentReceiveAddresses)
 
     case Event(GetBalance, data) =>
       val (confirmed, unconfirmed) = data.balance
@@ -492,7 +472,7 @@ class ElectrumWallet(seed: ByteVector, client: ActorRef, params: ElectrumWallet.
 object ElectrumWallet {
   def props(seed: ByteVector, client: ActorRef, params: WalletParameters): Props = Props(new ElectrumWallet(seed, client, params))
 
-  case class WalletParameters(chainHash: ByteVector32, walletDb: WalletDb, minimumFee: Satoshi = 2000 sat, dustLimit: Satoshi = 546 sat, swipeRange: Int = 10, allowSpendUnconfirmed: Boolean = true)
+  case class WalletParameters(chainHash: ByteVector32, walletDb: WalletDb, minimumFee: Satoshi = 2000.sat, dustLimit: Satoshi = 546.sat, swipeRange: Int = 10, allowSpendUnconfirmed: Boolean = true)
 
   // @formatter:off
   sealed trait State
@@ -510,8 +490,8 @@ object ElectrumWallet {
   case object GetXpub extends Request
   case class GetXpubResponse(xpub: String, path: String) extends Response
 
-  case object GetCurrentReceiveAddress extends Request
-  case class GetCurrentReceiveAddressResponse(address: String) extends Response
+  case object GetCurrentReceiveAddresses extends Request
+  case class GetCurrentReceiveAddressesResponse(addresses: Seq[String] = Nil) extends Response
 
   case object GetData extends Request
   case class GetDataResponse(state: Data) extends Response
@@ -541,16 +521,8 @@ object ElectrumWallet {
   case class IsDoubleSpentResponse(tx: Transaction, isDoubleSpent: Boolean) extends Response
 
   sealed trait WalletEvent
-  case class TransactionReceived(tx: Transaction, depth: Long, received: Satoshi, sent: Satoshi, feeOpt: Option[Satoshi], timestamp: Option[Long] = None) extends WalletEvent {
-    val msecs: Long = timestamp.map(_ * 1000L).getOrElse(System.currentTimeMillis)
-  }
-  case class TransactionConfidenceChanged(txid: ByteVector32, depth: Long, timestamp: Option[Long] = None) extends WalletEvent {
-    val msecs: Long = timestamp.map(_ * 1000L).getOrElse(System.currentTimeMillis)
-  }
-  case class NewWalletReceiveAddress(address: String) extends WalletEvent
-  case class WalletReady(confirmedBalance: Satoshi, unconfirmedBalance: Satoshi, height: Long, timestamp: Long) extends WalletEvent {
-    val msecs: Long = timestamp * 1000L
-  }
+  case class TransactionReceived(tx: Transaction, depth: Long, received: Satoshi, sent: Satoshi, feeOpt: Option[Satoshi], timestamp: Option[Long] = None) extends WalletEvent
+  case class WalletReady(confirmedBalance: Satoshi, unconfirmedBalance: Satoshi, height: Long, timestamp: Long, heights: Map[ByteVector32, Int] = Map.empty) extends WalletEvent
 
   /**
    *
@@ -705,24 +677,24 @@ object ElectrumWallet {
 
     lazy val changeKeyMap = changeKeys.map(key => computeScriptHashFromPublicKey(key.publicKey) -> key).toMap
 
-    lazy val firstUnusedAccountKeys = accountKeys.find(key => status.get(computeScriptHashFromPublicKey(key.publicKey)) == Some(""))
+    lazy val firstUnusedAccountKeys = accountKeys.filter(key => status.get(computeScriptHashFromPublicKey(key.publicKey)).contains(""))
 
-    lazy val firstUnusedChangeKeys = changeKeys.find(key => status.get(computeScriptHashFromPublicKey(key.publicKey)) == Some(""))
+    lazy val firstUnusedChangeKeys = changeKeys.find(key => status.get(computeScriptHashFromPublicKey(key.publicKey)).contains(""))
 
     lazy val publicScriptMap = (accountKeys ++ changeKeys).map(key => Script.write(computePublicKeyScript(key.publicKey)) -> key).toMap
 
-    lazy val utxos = history.keys.toSeq.map(scriptHash => getUtxos(scriptHash)).flatten
+    lazy val utxos = history.keys.toSeq.flatMap(getUtxos)
 
     /**
      * The wallet is ready if all current keys have an empty status, and we don't have
      * any history/tx request pending
      * NB: swipeRange * 2 because we have account keys and change keys
      */
-    def isReady(swipeRange: Int) = status.filter(_._2 == "").size >= swipeRange * 2 && pendingHistoryRequests.isEmpty && pendingTransactionRequests.isEmpty
+    def isReady(swipeRange: Int) = status.count(_._2 == "") >= swipeRange * 2 && pendingHistoryRequests.isEmpty && pendingTransactionRequests.isEmpty
 
     def readyMessage: WalletReady = {
       val (confirmed, unconfirmed) = balance
-      WalletReady(confirmed, unconfirmed, blockchain.tip.height, blockchain.tip.header.time)
+      WalletReady(confirmed, unconfirmed, blockchain.tip.height, blockchain.tip.header.time, heights)
     }
 
     /**
@@ -731,7 +703,7 @@ object ElectrumWallet {
      *         and have no pending requests for.
      */
     def missingTransactions(scriptHash: ByteVector32): Set[ByteVector32] = {
-      val txids = history.getOrElse(scriptHash, List()).map(_.tx_hash).filterNot(txhash => transactions.contains(txhash)).toSet
+      val txids = history.getOrElse(scriptHash, Nil).map(_.tx_hash).filterNot(transactions.contains).toSet
       txids -- pendingTransactionRequests
     }
 
@@ -742,13 +714,9 @@ object ElectrumWallet {
      *         unused keys and none is available yet. In this case we will return
      *         the latest account key.
      */
-    def currentReceiveKey = firstUnusedAccountKeys.headOption.getOrElse {
-      // bad luck we are still looking for unused keys
-      // use the first account key
-      accountKeys.head
-    }
+    def currentReceiveKeys: Seq[ExtendedPrivateKey] = if (firstUnusedAccountKeys.isEmpty) accountKeys else firstUnusedAccountKeys
 
-    def currentReceiveAddress = segwitAddress(currentReceiveKey, chainHash)
+    def currentReceiveAddresses: Seq[String] = currentReceiveKeys.map(currentReceiveKey => segwitAddress(currentReceiveKey, chainHash))
 
     /**
      *
@@ -757,7 +725,7 @@ object ElectrumWallet {
      *         unused keys and none is available yet. In this case we will return
      *         the latest change key.
      */
-    def currentChangeKey = firstUnusedChangeKeys.headOption.getOrElse {
+    def currentChangeKey = firstUnusedChangeKeys.getOrElse {
       // bad luck we are still looking for unused keys
       // use the first account key
       changeKeys.head

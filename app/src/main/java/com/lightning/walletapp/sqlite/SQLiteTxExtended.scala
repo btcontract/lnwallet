@@ -10,8 +10,8 @@ import immortan.TxDescription
 
 
 class SQLiteTxExtended(app: WalletApp, db: DBInterfaceSQLiteAndroidMisc) extends SQLiteTx(db) {
-  override def updConfidence(confidenceChanged: ElectrumWallet.TransactionConfidenceChanged): Unit = {
-    super.updConfidence(confidenceChanged)
+  override def updConfidence(txid: ByteVector32, depth: Long): Unit = {
+    super.updConfidence(txid, depth)
     app.sqlNotify(TxTable.table)
   }
 
