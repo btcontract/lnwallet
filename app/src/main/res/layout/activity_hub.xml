@@ -52,7 +52,7 @@
 
             <TextView
                 android:id="@+id/totalBalance"
-                style="@style/Amount"/>
+                style="@style/Emphasized"/>
 
             <TextView
                 android:textStyle="bold"

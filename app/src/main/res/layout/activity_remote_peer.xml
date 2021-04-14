@@ -1,0 +1,101 @@
+<ScrollView
+    style="@style/StandardLinearLayout"
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:f="http://schemas.android.com/tools">
+
+    <LinearLayout style="@style/StandardXYMarginLinearLayout">
+
+        <!-- Remote peer info -->
+
+        <TextView
+            style="@style/Emphasized"
+            android:id="@+id/peerAlias"
+            android:layout_width="wrap_content"
+            android:textSize="@dimen/header_size"/>
+
+        <TextView
+            style="@style/BoundedView"
+            android:id="@+id/peerNodeKey"
+            android:textColor="@color/colorAccent"
+            android:layout_width="wrap_content"/>
+
+        <TextView
+            style="@style/BoundedView"
+            android:id="@+id/peerIpAddress"
+            android:textColor="@color/colorAccent"
+            android:layout_width="wrap_content"/>
+
+        <ProgressBar
+            android:id="@+id/progressBar"
+            android:layout_marginTop="25dp"
+            android:layout_marginBottom="25dp"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            style="?android:attr/progressBarStyle"/>
+
+        <!-- Features and actions -->
+
+        <LinearLayout
+            style="@style/StandardLinearLayout"
+            android:id="@+id/peerDetails"
+            android:visibility="gone">
+
+            <TextView
+                style="@style/YMarginFillingView"
+                android:text="@string/rpa_supported_features"
+                android:layout_width="wrap_content"/>
+
+            <org.apmem.tools.layouts.FlowLayout style="@style/BoundedView" f:layout_newLine="true">
+                <TextView style="@style/ChipTextGrayMargin" android:id="@+id/ChannelRangeQueriesExtended"/>
+                <TextView style="@style/ChipTextGrayMargin" android:id="@+id/OptionDataLossProtect"/>
+                <TextView style="@style/ChipTextGrayMargin" android:id="@+id/BasicMultiPartPayment"/>
+                <TextView style="@style/ChipTextGrayMargin" android:id="@+id/VariableLengthOnion"/>
+                <TextView style="@style/ChipTextGrayMargin" android:id="@+id/TrampolineRouting"/>
+                <TextView style="@style/ChipTextGrayMargin" android:id="@+id/StaticRemoteKey"/>
+                <TextView style="@style/ChipTextGrayMargin" android:id="@+id/HostedChannels"/>
+                <TextView style="@style/ChipTextGrayMargin" android:id="@+id/ChainSwap"/>
+                <TextView style="@style/ChipTextGrayMargin" android:id="@+id/Wumbo"/>
+            </org.apmem.tools.layouts.FlowLayout>
+
+            <TextView
+                style="@style/BoundedView"
+                android:layout_marginTop="25dp"
+                android:text="@string/rpa_no_feature_support"
+                android:id="@+id/viewNoFeatureSupport"/>
+
+            <!-- Actions -->
+
+            <LinearLayout
+                android:layout_marginTop="@dimen/square_button_size"
+                android:id="@+id/viewYesFeatureSupport"
+                style="@style/StandardLinearLayout">
+
+                <com.ornach.nobobutton.NoboButton
+                    app:nb_text="@string/rpa_open_nc"
+                    android:layout_marginTop="@dimen/square_button_size"
+                    android:onClick="openNewChannel"
+                    style="@style/GreenButton"/>
+
+                <TextView
+                    style="@style/BoundedView"
+                    android:text="@string/rpa_request_channel"
+                    android:layout_width="wrap_content"/>
+
+                <com.ornach.nobobutton.NoboButton
+                    android:layout_marginTop="@dimen/chip_default_padding_edge"
+                    android:onClick="sharePeerSpecificNodeId"
+                    app:nb_text="@string/rpa_share_node_id"
+                    style="@style/BlueButton"/>
+
+                <com.ornach.nobobutton.NoboButton
+                    app:nb_text="@string/rpa_request_hc"
+                    android:id="@+id/optionHostedChannel"
+                    android:layout_marginTop="@dimen/square_button_size"
+                    android:onClick="requestHostedChannel"
+                    style="@style/GrayButton"/>
+
+            </LinearLayout>
+        </LinearLayout>
+    </LinearLayout>
+</ScrollView>

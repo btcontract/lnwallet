@@ -20,7 +20,7 @@
             <TextView
                 android:id="@+id/totalBitcoinBalance"
                 android:layout_alignParentEnd="true"
-                style="@style/Amount"/>
+                style="@style/Emphasized"/>
 
         </RelativeLayout>
     </androidx.cardview.widget.CardView>
@@ -43,7 +43,7 @@
             <TextView
                 android:id="@+id/totalLightningBalance"
                 android:layout_alignParentEnd="true"
-                style="@style/Amount"/>
+                style="@style/Emphasized"/>
 
             <!-- Channel state and in-flight payment indicators -->
 

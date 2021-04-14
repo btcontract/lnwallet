@@ -149,10 +149,12 @@
         <item name="android:layout_height">50dp</item>
     </style>
 
-    <style name="Amount" parent="BoundedView">
+    <style name="Emphasized" parent="BoundedView">
         <item name="android:textColor">@color/colorAccent</item>
         <item name="android:textStyle">bold</item>
         <item name="android:textSize">20sp</item>
+        <item name="android:ellipsize">end</item>
+        <item name="android:maxLines">1</item>
     </style>
 
     <!-- chip text -->
@@ -162,10 +164,23 @@
         <item name="android:paddingLeft">7sp</item>
         <item name="android:paddingRight">7sp</item>
         <item name="android:paddingBottom">4sp</item>
-        <item name="android:background">@drawable/border_accent</item>
+        <item name="android:background">@drawable/border_gray</item>
         <item name="android:layout_height">wrap_content</item>
         <item name="android:layout_width">wrap_content</item>
         <item name="android:textSize">16sp</item>
+    </style>
+
+    <style name="ChipTextGrayMargin" parent="ChipTextGray">
+        <item name="android:layout_margin">2sp</item>
+        <item name="android:textStyle">bold</item>
+    </style>
+
+    <style name="ChipTextYellowMargin" parent="ChipTextGrayMargin">
+        <item name="android:background">@drawable/border_yellow</item>
+    </style>
+
+    <style name="ChipTextRedMargin" parent="ChipTextGrayMargin">
+        <item name="android:background">@drawable/border_red</item>
     </style>
 
     <!-- nachos -->

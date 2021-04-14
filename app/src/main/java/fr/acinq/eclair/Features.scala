@@ -102,7 +102,7 @@ object Features {
   }
 
   case object OptionDataLossProtect extends Feature {
-    val rfcName = "Basic data loss protect"
+    val rfcName = "Data loss protect"
     val mandatory = 0
   }
 
@@ -122,7 +122,7 @@ object Features {
   }
 
   case object ChannelRangeQueriesExtended extends Feature {
-    val rfcName = "Extended gossip queries"
+    val rfcName = "Advanced gossip queries"
     val mandatory = 10
   }
 

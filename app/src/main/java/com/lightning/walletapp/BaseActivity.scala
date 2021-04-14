@@ -36,6 +36,7 @@ object BaseActivity {
   implicit class StringOps(source: String) {
     def s2hex: String = ByteVector.view(source getBytes "UTF-8").toHex
     def noSpaces: String = source.replace(" ", "").replace("\u00A0", "")
+    def humanSix: String = source.grouped(6).mkString(s"\u0020").take(3)
     def html: Spanned = Html.fromHtml(source)
   }
 }
