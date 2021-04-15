@@ -18,6 +18,7 @@ import android.view.View
 
 
 object ClassNames {
+  val chainQrActivityClass: Class[ChainQRActivity] = classOf[ChainQRActivity]
   val remotePeerActivityClass: Class[RemotePeerActivity] = classOf[RemotePeerActivity]
   val mainActivityClass: Class[MainActivity] = classOf[MainActivity]
   val hubActivityClass: Class[HubActivity] = classOf[HubActivity]

@@ -24,7 +24,6 @@ class SetupActivity extends BaseActivity { me =>
   private[this] lazy val activitySetupMain = findViewById(R.id.activitySetupMain).asInstanceOf[LinearLayout]
   private[this] lazy val restoreOptionsButton = findViewById(R.id.restoreOptionsButton).asInstanceOf[NoboButton]
   private[this] lazy val restoreOptions = findViewById(R.id.restoreOptions).asInstanceOf[LinearLayout]
-
   private[this] final val FILE_REQUEST_CODE = 112
   private[this] final val SEPARATOR = " "
 

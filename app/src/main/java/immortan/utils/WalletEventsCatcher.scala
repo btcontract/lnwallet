@@ -15,16 +15,16 @@ class WalletEventsCatcher extends Actor {
   override def receive: Receive = {
     case listener: WalletEventsListener => listeners += listener
 
-    case event: WalletReady => for (lst <- listeners) lst.onWalletReady(event)
+    case event: WalletReady => for (lst <- listeners) lst.onChainSynchronized(event)
 
     case event: TransactionReceived => for (lst <- listeners) lst.onTransactionReceived(event)
 
-    case ElectrumDisconnected => for (lst <- listeners) lst.onElectrumDisconnected
+    case ElectrumDisconnected => for (lst <- listeners) lst.onChainDisconnected
   }
 }
 
 class WalletEventsListener {
-  def onWalletReady(event: WalletReady): Unit = none
+  def onChainSynchronized(event: WalletReady): Unit = none
   def onTransactionReceived(event: TransactionReceived): Unit = none
-  def onElectrumDisconnected: Unit = none
+  def onChainDisconnected: Unit = none
 }

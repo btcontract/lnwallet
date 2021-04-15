@@ -14,7 +14,6 @@ class DBInterfaceSQLiteAndroidMisc(context: Context, name: String) extends SQLit
     PaymentTable.createStatements.foreach(dbs.execSQL)
 
     ElectrumHeadersTable.createStatements.foreach(dbs.execSQL)
-    PayMarketTable.createStatements.foreach(dbs.execSQL)
     DataTable.createStatements.foreach(dbs.execSQL)
   }
 

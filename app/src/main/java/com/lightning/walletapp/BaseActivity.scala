@@ -5,20 +5,28 @@ import fr.acinq.eclair._
 import java.util.{Timer, TimerTask}
 import scala.util.{Failure, Success}
 import android.view.{View, ViewGroup}
+import java.io.{File, FileOutputStream}
+import android.graphics.{Bitmap, Color}
 import android.graphics.Color.{BLACK, WHITE}
 import android.content.{DialogInterface, Intent}
 import immortan.utils.{Denomination, InputParser}
 import immortan.crypto.Tools.{Fiat2Btc, none, runAnd}
+import com.google.zxing.{BarcodeFormat, EncodeHintType}
 import android.text.{Editable, Html, Spanned, TextWatcher}
+import androidx.core.content.{ContextCompat, FileProvider}
 import com.google.android.material.snackbar.{BaseTransientBottomBar, Snackbar}
-import android.widget.{ArrayAdapter, EditText, LinearLayout, ListView, TextView}
+import android.widget.{ArrayAdapter, EditText, ImageView, LinearLayout, ListView, TextView}
 import com.cottacush.android.currencyedittext.CurrencyEditText
 import com.google.android.material.textfield.TextInputLayout
+import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
 import com.lightning.walletapp.BaseActivity.StringOps
 import concurrent.ExecutionContext.Implicits.global
+import androidx.appcompat.widget.AppCompatButton
+import androidx.recyclerview.widget.RecyclerView
+import android.graphics.Bitmap.Config.ARGB_8888
 import androidx.appcompat.app.AppCompatActivity
 import android.text.method.LinkMovementMethod
-import androidx.core.content.ContextCompat
+import com.google.zxing.qrcode.QRCodeWriter
 import androidx.appcompat.app.AlertDialog
 import scala.language.implicitConversions
 import android.content.pm.PackageManager
@@ -36,7 +44,7 @@ object BaseActivity {
   implicit class StringOps(source: String) {
     def s2hex: String = ByteVector.view(source getBytes "UTF-8").toHex
     def noSpaces: String = source.replace(" ", "").replace("\u00A0", "")
-    def humanSix: String = source.grouped(6).mkString(s"\u0020").take(3)
+    def humanSix: String = source.grouped(6).mkString(s"\u0020")
     def html: Spanned = Html.fromHtml(source)
   }
 }
@@ -103,10 +111,11 @@ trait BaseActivity extends AppCompatActivity { me =>
   }
 
   def runInFutureProcessOnUI[T](fun: => T, no: Throwable => Unit)(ok: T => Unit): Unit =
-    Future(fun) onComplete {
-      case Success(result) => UITask(ok apply result).run
-      case Failure(error) => UITask(no apply error).run
-    }
+    runFutureProcessOnUI[T](Future(fun), no)(ok)
+
+  def runFutureProcessOnUI[T](fun: Future[T], no: Throwable => Unit)(ok: T => Unit): Unit = fun onComplete {
+    case Success(result) => UITask(ok apply result).run case Failure(error) => UITask(no apply error).run
+  }
 
   implicit def UITask(exec: => Any): TimerTask = {
     val runnableExec = new Runnable { override def run: Unit = exec }
@@ -249,5 +258,54 @@ trait BaseActivity extends AppCompatActivity { me =>
     lg match { case Some(text) => largeText setText text case None => largeText setVisibility View.GONE }
     sm match { case Some(text) => smallText setText text case None => smallText setVisibility View.GONE }
     def cancel: Unit = removeAndProceedWithTimeout(alert) { isCancelled = true }
+  }
+}
+
+trait QRActivity extends BaseActivity { me =>
+  lazy val qrSize: Int = getResources getDimensionPixelSize R.dimen.bitmap_qr_size
+
+  def shareData(bitmap: Bitmap, bech32: String): Unit = {
+    val paymentRequestFilePath = new File(getCacheDir, "images")
+    if (!paymentRequestFilePath.isFile) paymentRequestFilePath.mkdirs
+    val out = new FileOutputStream(s"$paymentRequestFilePath/qr.png")
+    bitmap.compress(Bitmap.CompressFormat.PNG, 85, out)
+    out.close
+
+    val savedFile = new File(paymentRequestFilePath, "qr.png")
+    val fileURI = FileProvider.getUriForFile(me, "com.lightning.walletapp", savedFile)
+    val share = new Intent setAction Intent.ACTION_SEND setType "text/plain" addFlags Intent.FLAG_GRANT_READ_URI_PERMISSION
+    share.putExtra(Intent.EXTRA_TEXT, bech32).putExtra(Intent.EXTRA_STREAM, fileURI).setDataAndType(fileURI, getContentResolver getType fileURI)
+    me startActivity Intent.createChooser(share, "Choose an app")
+  }
+
+  class QRViewHolder(itemView: View) extends RecyclerView.ViewHolder(itemView) {
+    val qrCode: ImageView = itemView.findViewById(R.id.qrCode).asInstanceOf[ImageView]
+    val qrLabel: TextView = itemView.findViewById(R.id.qrLabel).asInstanceOf[TextView]
+    val qrShare: AppCompatButton = itemView.findViewById(R.id.qrShare).asInstanceOf[AppCompatButton]
+    val qrCopy: AppCompatButton = itemView.findViewById(R.id.qrCopy).asInstanceOf[AppCompatButton]
+  }
+}
+
+object QRActivity {
+  val writer = new QRCodeWriter
+  val hints = new java.util.Hashtable[EncodeHintType, Any]
+  hints.put(EncodeHintType.ERROR_CORRECTION, ErrorCorrectionLevel.M)
+  hints.put(EncodeHintType.MARGIN, 1)
+
+  def get(data: String, size: Int): Bitmap = {
+    val bitMatrix = writer.encode(data, BarcodeFormat.QR_CODE, size, size, hints)
+    val (width, height) = (bitMatrix.getWidth, bitMatrix.getHeight)
+    val pixels = new Array[Int](width * height)
+
+    for {
+      xPos <- 0 until width
+      yPos <- 0 until height
+      isBlack = bitMatrix.get(xPos, yPos)
+      color = if (isBlack) Color.BLACK else Color.WHITE
+    } pixels(yPos * width + xPos) = color
+
+    val qrBitmap = Bitmap.createBitmap(width, height, ARGB_8888)
+    qrBitmap.setPixels(pixels, 0, size, 0, 0, width, height)
+    qrBitmap
   }
 }

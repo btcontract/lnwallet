@@ -89,12 +89,6 @@
             android:theme="@style/AppThemeNoActionBar"/>
 
         <activity
-            android:launchMode="singleTask"
-            android:name="QRDisplayActivity"
-            android:screenOrientation="portrait"
-            android:theme="@style/AppThemeNoActionBar"/>
-
-        <activity
             android:name="HubActivity"
             android:launchMode="singleTask"
             android:screenOrientation="portrait"
@@ -104,6 +98,12 @@
         <activity
             android:launchMode="singleTask"
             android:name="RemotePeerActivity"
+            android:screenOrientation="portrait"
+            android:theme="@style/AppThemeNoActionBar"/>
+
+        <activity
+            android:name="ChainQRActivity"
+            android:launchMode="singleTask"
             android:screenOrientation="portrait"
             android:theme="@style/AppThemeNoActionBar"/>
 

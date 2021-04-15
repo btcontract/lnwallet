@@ -139,7 +139,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
 
   def bringSettings(view: View): Unit = {
 //    WalletApp.app.getContentResolver.notifyChange(WalletApp.app.sqlPath(PaymentTable.table), null)
-    me goTo ClassNames.remotePeerActivityClass
+    me goTo ClassNames.chainQrActivityClass
   }
 
   def bringSendFromClipboard(view: View): Unit = {

@@ -15,7 +15,6 @@ import fr.acinq.eclair.transactions.{RemoteFulfill, RemoteReject}
 import immortan.crypto.{CanBeRepliedTo, CanBeShutDown, StateMachine}
 import immortan.utils.{FeeRatesInfo, FeeRatesListener, Rx, WalletEventsListener}
 import fr.acinq.eclair.blockchain.electrum.ElectrumWallet.WalletReady
-import fr.acinq.eclair.blockchain.electrum.ElectrumWallet
 import java.util.concurrent.atomic.AtomicLong
 import fr.acinq.eclair.payment.IncomingPacket
 import com.google.common.cache.LoadingCache
@@ -85,15 +84,15 @@ class ChannelMaster(val payBag: PaymentBag, val chanBag: ChannelBag, val dataBag
   val getPreimageMemo: LoadingCache[ByteVector32, PreimageTry] = memoize(payBag.getPreimage)
 
   val chainChannelListener: WalletEventsListener = new WalletEventsListener {
-    override def onWalletReady(event: WalletReady): Unit = {
+    override def onChainSynchronized(event: WalletReady): Unit = {
+      // Sync is complete now, we can start channel connections
       // Invalidate last disconnect stamp since we're up again
       LNParams.lastDisconnect.set(Long.MaxValue)
       LNParams.blockCount.set(event.height)
-      // Connect sockets now
       initConnect
     }
 
-    override def onElectrumDisconnected: Unit = {
+    override def onChainDisconnected: Unit = {
       // Remember to eventually stop accepting payments
       // note that there may be many these events in a row
       LNParams.lastDisconnect.set(System.currentTimeMillis)
@@ -106,8 +105,10 @@ class ChannelMaster(val payBag: PaymentBag, val chanBag: ChannelBag, val dataBag
   }
 
   val socketChannelListener: ConnectionListener = new ConnectionListener {
-    override def onOperational(worker: CommsTower.Worker, theirInit: Init): Unit =
+    override def onOperational(worker: CommsTower.Worker, theirInit: Init): Unit = {
+      // Note that this may be sent multiple times after chain wallet reconnects
       fromNode(worker.info.nodeId).foreach(_.chan process CMD_SOCKET_ONLINE)
+    }
 
     override def onMessage(worker: CommsTower.Worker, msg: LightningMessage): Unit = msg match {
       case nodeError: Error if nodeError.channelId == ByteVector32.Zeroes => fromNode(worker.info.nodeId).foreach(_.chan process nodeError)

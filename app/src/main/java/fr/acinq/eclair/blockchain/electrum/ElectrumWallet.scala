@@ -677,7 +677,7 @@ object ElectrumWallet {
 
     lazy val changeKeyMap = changeKeys.map(key => computeScriptHashFromPublicKey(key.publicKey) -> key).toMap
 
-    lazy val firstUnusedAccountKeys = accountKeys.filter(key => status.get(computeScriptHashFromPublicKey(key.publicKey)).contains(""))
+    lazy val firstUnusedAccountKeys = accountKeys.view.filter(key => status.get(computeScriptHashFromPublicKey(key.publicKey)).contains("")).take(Data.MAX_RECEIVE_ADDRESSES)
 
     lazy val firstUnusedChangeKeys = changeKeys.find(key => status.get(computeScriptHashFromPublicKey(key.publicKey)).contains(""))
 
@@ -714,7 +714,7 @@ object ElectrumWallet {
      *         unused keys and none is available yet. In this case we will return
      *         the latest account key.
      */
-    def currentReceiveKeys: Seq[ExtendedPrivateKey] = if (firstUnusedAccountKeys.isEmpty) accountKeys else firstUnusedAccountKeys
+    def currentReceiveKeys: Seq[ExtendedPrivateKey] = if (firstUnusedAccountKeys.isEmpty) accountKeys.take(Data.MAX_RECEIVE_ADDRESSES) else firstUnusedAccountKeys
 
     def currentReceiveAddresses: Seq[String] = currentReceiveKeys.map(currentReceiveKey => segwitAddress(currentReceiveKey, chainHash))
 
@@ -840,7 +840,7 @@ object ElectrumWallet {
       // to another set-like structure that will remove duplicates, so if we have several script hashes with exactly the
       // same balance we don't return the correct aggregated balance
       val balances = (accountKeyMap.keys ++ changeKeyMap.keys).toList.map(scriptHash => balance(scriptHash))
-      balances.foldLeft((0 sat, 0 sat)) {
+      balances.foldLeft((0.sat, 0.sat)) {
         case ((confirmed, unconfirmed), (confirmed1, unconfirmed1)) => (confirmed + confirmed1, unconfirmed + unconfirmed1)
       }
     }
@@ -1028,6 +1028,8 @@ object ElectrumWallet {
   }
 
   object Data {
+    final val MAX_RECEIVE_ADDRESSES = 4
+
     def apply(params: ElectrumWallet.WalletParameters, blockchain: Blockchain, accountKeys: Vector[ExtendedPrivateKey], changeKeys: Vector[ExtendedPrivateKey]): Data
     = Data(blockchain, accountKeys, changeKeys, Map(), Map(), Map(), Map(), Map(), Set(), Set(), Set(), Set(), List(), None)
   }
