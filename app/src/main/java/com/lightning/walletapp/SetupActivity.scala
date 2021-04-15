@@ -35,7 +35,6 @@ class SetupActivity extends BaseActivity { me =>
   }
 
   def makeFromSeed(seed: ByteVector): Unit = {
-    // Create and persist new keys from given seed
     val keys = LightningNodeKeys.makeFromSeed(seed.toArray)
     val format = MnemonicExtStorageFormat(Set.empty, keys, seed)
 

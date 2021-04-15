@@ -14,6 +14,7 @@ import com.github.mmin18.widget.RealtimeBlurView
 import org.ndeftools.Message
 import android.os.{Bundle, Handler}
 import android.view.View
+import com.androidstudy.networkmanager.{Monitor, Tovuti}
 import immortan.sqlite.{PaymentTable, RelayTable, TxTable}
 import rx.lang.scala.schedulers.{ComputationScheduler, IOScheduler}
 import rx.lang.scala.{Observable, Subject, Subscriber, Subscription}
@@ -54,6 +55,11 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
   override def onResume: Unit = {
     checkExternalData(noneRunnable)
     super.onResume
+  }
+
+  override def onStop: Unit = {
+    Tovuti.from(this).stop
+    super.onStop
   }
 
   override def checkExternalData(whenNone: Runnable): Unit =
@@ -102,10 +108,16 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
 //      getContentResolver.registerContentObserver(WalletApp.app.sqlPath(RelayTable.table), true, relayObserver)
 //      getContentResolver.registerContentObserver(WalletApp.app.sqlPath(TxTable.table), true, txObserver)
 
-      WalletApp.app.getContentResolver.notifyChange(WalletApp.app.sqlPath(PaymentTable.table), null)
-      WalletApp.app.getContentResolver.notifyChange(WalletApp.app.sqlPath(PaymentTable.table), null)
-      WalletApp.app.getContentResolver.notifyChange(WalletApp.app.sqlPath(RelayTable.table), null)
-      WalletApp.app.getContentResolver.notifyChange(WalletApp.app.sqlPath(TxTable.table), null)
+//      WalletApp.app.getContentResolver.notifyChange(WalletApp.app.sqlPath(PaymentTable.table), null)
+//      WalletApp.app.getContentResolver.notifyChange(WalletApp.app.sqlPath(PaymentTable.table), null)
+//      WalletApp.app.getContentResolver.notifyChange(WalletApp.app.sqlPath(RelayTable.table), null)
+//      WalletApp.app.getContentResolver.notifyChange(WalletApp.app.sqlPath(TxTable.table), null)
+
+      Tovuti.from(this) monitor new Monitor.ConnectivityListener {
+        override def onConnectivityChanged(connectionType: Int, isConnected: Boolean, isFast: Boolean): Unit = {
+          println(s"-- isConnected: $isConnected, isFast: $isFast")
+        }
+      }
 
 //      import scala.concurrent.duration._
 //

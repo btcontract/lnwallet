@@ -36,7 +36,7 @@
             style="@style/FillingView"
             android:id="@+id/qrShare"
             android:layout_weight="1"
-            android:textSize="16sp"
+            android:textSize="14sp"
             android:padding="10dp"/>
 
         <androidx.appcompat.widget.AppCompatButton
@@ -47,7 +47,7 @@
             style="@style/FillingView"
             android:layout_weight="1"
             android:id="@+id/qrCopy"
-            android:textSize="16sp"
+            android:textSize="14sp"
             android:padding="10dp"/>
 
     </LinearLayout>
