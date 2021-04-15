@@ -47,7 +47,7 @@ class ChainQRActivity extends QRActivity { me =>
       runFutureProcessOnUI(LNParams.chainWallet.wallet.getReceiveAddresses, onFail) { freshAddresses =>
         val layoutManager = new CarouselLayoutManager(CarouselLayoutManager.HORIZONTAL, false)
         layoutManager.setPostLayoutListener(new CarouselZoomPostLayoutListener)
-        layoutManager.setMaxVisibleItems(4)
+        layoutManager.setMaxVisibleItems(MAX_RECEIVE_ADDRESSES)
 
         allAddresses = freshAddresses
         addresses = freshAddresses.take(1)
