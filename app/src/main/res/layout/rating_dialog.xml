@@ -50,7 +50,7 @@
             android:layout_marginLeft="15dp"
             android:layout_marginRight="15dp"
             android:layout_marginTop="15dp"
-            android:textColor="@color/black"
+            android:textColor="@color/almostBlack"
             android:textSize="18sp"
             android:visibility="gone" />
 
