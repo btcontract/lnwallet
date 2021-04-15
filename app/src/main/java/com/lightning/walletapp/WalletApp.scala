@@ -3,9 +3,9 @@ package com.lightning.walletapp
 import immortan.sqlite._
 import com.lightning.walletapp.sqlite._
 import com.lightning.walletapp.R.string._
+import immortan.crypto.Tools.{Fiat2Btc, none, runAnd}
+import fr.acinq.bitcoin.{Block, Satoshi, SatoshiLong}
 import fr.acinq.eclair.{CltvExpiryDelta, MilliSatoshi}
-import immortan.crypto.Tools.{Bytes, Fiat2Btc, none, runAnd}
-import fr.acinq.bitcoin.{Block, Crypto, Satoshi, SatoshiLong}
 import android.app.{Application, NotificationChannel, NotificationManager}
 import fr.acinq.eclair.blockchain.electrum.{CheckPoint, ElectrumClientPool}
 import android.content.{ClipData, ClipboardManager, Context, Intent, SharedPreferences}
@@ -16,9 +16,7 @@ import fr.acinq.eclair.router.Router.RouterConf
 import androidx.appcompat.app.AppCompatDelegate
 import immortan.utils.Denomination.formatFiat
 import fr.acinq.eclair.wire.TrampolineOn
-import com.blockstream.libwally.Wally
 import androidx.multidex.MultiDex
-import scodec.bits.ByteVector
 import android.widget.Toast
 import android.os.Build
 import android.net.Uri
@@ -165,19 +163,6 @@ object WalletApp { me =>
 
   val currentMsatInFiatHuman: MilliSatoshi => String = msat =>
     msatInFiatHuman(LNParams.fiatRatesInfo.rates, fiatCode, msat)
-
-  // Other utils
-
-  def scryptDerive(email: String, pass: String): Bytes = {
-    // An intentionally expensive key-stretching method
-    // N = 2^19, r = 8, p = 2
-
-    val derived = new Array[Byte](64)
-    val emailBytes = ByteVector.view(email.getBytes)
-    val salt = Crypto.hash256(emailBytes).take(16).toArray
-    Wally.scrypt(pass.trim.getBytes, salt, Math.pow(2, 19).toLong, 8, 2, derived)
-    derived
-  }
 
   object Vibrator {
     private var lastVibrated = 0L
