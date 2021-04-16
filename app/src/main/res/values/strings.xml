@@ -87,11 +87,12 @@
     <string name="payment_incoming">Incoming payment</string>
     <string name="payment_outgoing">Outgoing payment</string>
 
-    <string name="tx_description_chan_funding">New channel funding</string>
-    <string name="tx_description_op_return">Payment proof timestamping</string>
-    <string name="tx_description_commit_claim">Channel refunding</string>
-    <string name="tx_description_htlc_claim">Payment refunding</string>
-    <string name="tx_description_penalty">Breach refunding</string>
+    <string name="tx_description_op_return">Preimage broadcast</string>
+    <string name="tx_description_funding">New channel funding</string>
+    <string name="tx_description_refunding">Channel closing refund</string>
+    <string name="tx_description_commit_claim">Channel force-closing refund</string>
+    <string name="tx_description_htlc_claim">Lightning payment refund</string>
+    <string name="tx_description_penalty">Channel breach penalty</string>
 
     <!-- /special tx/payment descriptions -->
 
