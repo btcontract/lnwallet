@@ -208,9 +208,9 @@ object PaymentTable extends Table {
 }
 
 object TxTable extends Table {
-  private val paymentTableFields = ("txs", "txid", "depth", "received", "sent", "fee", "seen", "completed", "desc", "balance", "fiatrates", "incoming", "doublespent")
-  val (table, txid, depth, receivedMsat, sentMsat, feeMsat, firstSeen, completedAt, description, balanceMsat, fiatRates, incoming, doubleSpent) = paymentTableFields
-  val inserts = s"$txid, $depth, $receivedMsat, $sentMsat, $feeMsat, $firstSeen, $completedAt, $description, $balanceMsat, $fiatRates, $incoming, $doubleSpent"
+  private val paymentTableFields = ("txs", "raw", "txid", "depth", "received", "sent", "fee", "seen", "desc", "balance", "fiatrates", "incoming", "doublespent")
+  val (table, rawTx, txid, depth, receivedMsat, sentMsat, feeMsat, firstSeen, description, balanceMsat, fiatRates, incoming, doubleSpent) = paymentTableFields
+  val inserts = s"$rawTx, $txid, $depth, $receivedMsat, $sentMsat, $feeMsat, $firstSeen, $description, $balanceMsat, $fiatRates, $incoming, $doubleSpent"
   val newSql = s"INSERT OR IGNORE INTO $table ($inserts) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
 
   // Selecting
@@ -219,15 +219,14 @@ object TxTable extends Table {
 
   // Updating
   val updDoubleSpentSql = s"UPDATE $table SET $doubleSpent = ? WHERE $txid = ?"
-  val updCompletedAtSql = s"UPDATE $table SET $completedAt = ? WHERE $txid = ?"
   val updDepthSql = s"UPDATE $table SET $depth = ? WHERE $txid = ?"
 
   def createStatements: Seq[String] =
     s"""CREATE TABLE IF NOT EXISTS $table(
-      $id INTEGER PRIMARY KEY AUTOINCREMENT, $txid TEXT NOT NULL UNIQUE, $depth INTEGER NOT NULL,
-      $receivedMsat INTEGER NOT NULL, $sentMsat INTEGER NOT NULL, $feeMsat INTEGER NOT NULL, $firstSeen INTEGER NOT NULL,
-      $completedAt INTEGER NOT NULL, $description TEXT NOT NULL, $balanceMsat INTEGER NOT NULL, $fiatRates TEXT NOT NULL,
-      $incoming INTEGER NOT NULL, $doubleSpent INTEGER NOT NULL
+      $id INTEGER PRIMARY KEY AUTOINCREMENT, $rawTx TEXT NOT NULL, $txid TEXT NOT NULL UNIQUE, $depth INTEGER NOT NULL,
+      $receivedMsat INTEGER NOT NULL,$sentMsat INTEGER NOT NULL, $feeMsat INTEGER NOT NULL, $firstSeen INTEGER NOT NULL,
+      $description TEXT NOT NULL, $balanceMsat INTEGER NOT NULL, $fiatRates TEXT NOT NULL, $incoming INTEGER NOT NULL,
+      $doubleSpent INTEGER NOT NULL
     )""" :: Nil
 }
 

@@ -41,6 +41,8 @@ import immortan.LNParams
 
 
 object BaseActivity {
+  val viewMap: Map[Boolean, Int] = Map(true -> View.VISIBLE, false -> View.GONE)
+
   implicit class StringOps(source: String) {
     def s2hex: String = ByteVector.view(source getBytes "UTF-8").toHex
     def noSpaces: String = source.replace(" ", "").replace("\u00A0", "")

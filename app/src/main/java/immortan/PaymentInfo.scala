@@ -2,7 +2,8 @@ package immortan
 
 import immortan.utils.ImplicitJsonFormats._
 import immortan.crypto.Tools.{Bytes, Fiat2Btc}
-import fr.acinq.bitcoin.{ByteVector32, Satoshi}
+import fr.acinq.eclair.channel.{DATA_CLOSING, DATA_NEGOTIATING, HasNormalCommitments}
+import fr.acinq.bitcoin.{ByteVector32, Satoshi, Transaction}
 import fr.acinq.eclair.wire.{FullPaymentTag, PaymentTagTlv}
 import fr.acinq.eclair.payment.PaymentRequest
 import fr.acinq.bitcoin.Crypto.PublicKey
@@ -103,9 +104,9 @@ case class RelayedPreimageInfo(paymentHashString: String, preimageString: String
 
 // Tx descriptions
 
-case class TxInfo(txidString: String, depth: Long, receivedMsat: MilliSatoshi, sentMsat: MilliSatoshi, feeMsat: MilliSatoshi,
-                  seenAt: Long, completedAt: Long, descriptionString: String, balanceSnapshot: MilliSatoshi, fiatRatesString: String,
-                  incoming: Long, doubleSpent: Long) extends TransactionDetails {
+case class TxInfo(txString: String, txidString: String, depth: Long, receivedMsat: MilliSatoshi, sentMsat: MilliSatoshi,
+                  feeMsat: MilliSatoshi, seenAt: Long, descriptionString: String, balanceSnapshot: MilliSatoshi,
+                  fiatRatesString: String, incoming: Long, doubleSpent: Long) extends TransactionDetails {
 
   val isIncoming: Boolean = 1L == incoming
   val isDoubleSpent: Boolean = 1L == doubleSpent
@@ -119,17 +120,31 @@ sealed trait TxDescription
 
 case class PlainTxDescription(label: Option[String] = None) extends TxDescription
 
-sealed trait ChanTxDescription extends TxDescription {
-  val remoteNodeId: PublicKey = PublicKey(ByteVector32 fromValidHex nodeId)
-  def nodeId: String
+sealed trait ChanTxDescription extends TxDescription { def nodeId: PublicKey }
+
+case class OpReturnTxDescription(nodeId: PublicKey, preimage: ByteVector32) extends ChanTxDescription
+
+case class ChanFundingTxDescription(nodeId: PublicKey) extends ChanTxDescription
+
+case class ChanRefundingTxDescription(nodeId: PublicKey) extends ChanTxDescription
+
+case class CommitClaimTxDescription(nodeId: PublicKey) extends ChanTxDescription
+
+case class HtlcClaimTxDescription(nodeId: PublicKey) extends ChanTxDescription
+
+case class PenaltyTxDescription(nodeId: PublicKey) extends ChanTxDescription
+
+object TxDescription {
+  def defineDescription(chans: Iterable[Channel], tx: Transaction): TxDescription =
+    defineChannelRelation(chans, tx) getOrElse PlainTxDescription(None)
+
+  def defineChannelRelation(chans: Iterable[Channel], tx: Transaction): Option[TxDescription] = chans.map(_.data).collectFirst {
+    case hasCommits: HasNormalCommitments if hasCommits.commitments.commitInput.outPoint.txid == tx.txid => ChanFundingTxDescription(hasCommits.commitments.remoteInfo.nodeId)
+    case closing: DATA_CLOSING if closing.revokedCommitPublished.flatMap(_.penaltyTxs).exists(_.txid == tx.txid) => PenaltyTxDescription(closing.commitments.remoteInfo.nodeId)
+    case negs: DATA_NEGOTIATING if negs.closingTxProposed.flatten.exists(_.unsignedTx.txid == tx.txid) => ChanRefundingTxDescription(negs.commitments.remoteInfo.nodeId)
+    case negs: DATA_NEGOTIATING if negs.bestUnpublishedClosingTxOpt.exists(_.txid == tx.txid) => ChanRefundingTxDescription(negs.commitments.remoteInfo.nodeId)
+    case closing: DATA_CLOSING if closing.mutualCloseProposed.exists(_.txid == tx.txid) => ChanRefundingTxDescription(closing.commitments.remoteInfo.nodeId)
+    case closing: DATA_CLOSING if closing.secondTierTxs.exists(_.txid == tx.txid) => HtlcClaimTxDescription(closing.commitments.remoteInfo.nodeId)
+    case closing: DATA_CLOSING if closing.commitTxes.exists(_.txid == tx.txid) => CommitClaimTxDescription(closing.commitments.remoteInfo.nodeId)
+  }
 }
-
-case class OpReturnTxDescription(nodeId: String, preimage: ByteVector32) extends ChanTxDescription
-
-case class ChanFundingTxDescription(nodeId: String) extends ChanTxDescription
-
-case class CommitClaimTxDescription(nodeId: String) extends ChanTxDescription
-
-case class HtlcClaimTxDescription(nodeId: String) extends ChanTxDescription
-
-case class PenaltyTxDescription(nodeId: String) extends ChanTxDescription

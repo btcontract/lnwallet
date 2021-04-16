@@ -17,16 +17,16 @@
 package fr.acinq.eclair.blockchain
 
 import fr.acinq.bitcoin.Crypto.PublicKey
-import fr.acinq.bitcoin.{Satoshi, Transaction}
+import fr.acinq.bitcoin.{Satoshi, Transaction, TxIn}
 import fr.acinq.eclair.blockchain.fee.FeeratePerKw
-import scodec.bits.ByteVector
-
 import scala.concurrent.Future
+import scodec.bits.ByteVector
 
 /**
  * Created by PM on 06/07/2017.
  */
 trait EclairWallet {
+  final val OPT_IN_FULL_RBF = TxIn.SEQUENCE_FINAL - 2
 
   def getBalance: Future[OnChainBalance]
 

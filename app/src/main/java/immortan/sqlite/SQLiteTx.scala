@@ -15,10 +15,7 @@ import scala.util.Try
 case class TxSummary(fees: MilliSatoshi, received: MilliSatoshi, sent: MilliSatoshi, count: Long)
 
 class SQLiteTx(db: DBInterface) {
-  def updConfidence(txid: ByteVector32, depth: Long): Unit = db txWrap {
-    db.change(TxTable.updCompletedAtSql, txid.toHex, System.currentTimeMillis: JLong)
-    db.change(TxTable.updDepthSql, txid.toHex, depth: JLong)
-  }
+  def updConfidence(txid: ByteVector32, depth: Long): Unit = db.change(TxTable.updDepthSql, txid.toHex, depth: JLong)
 
   def updDoubleSpent(txid: ByteVector32): Unit = db.change(TxTable.updDoubleSpentSql, txid.toHex, 1L: JLong)
 
@@ -29,13 +26,13 @@ class SQLiteTx(db: DBInterface) {
   }
 
   def putTx(event: TransactionReceived, description: TxDescription, balanceSnap: MilliSatoshi, fiatRateSnap: Fiat2Btc): Unit =
-    db.change(TxTable.newSql, event.tx.txid.toHex, event.depth: JLong, event.received.toLong: JLong, event.sent.toLong: JLong, event.feeOpt.map(_.toLong: JLong).getOrElse(0L: JLong),
-      System.currentTimeMillis: JLong /* SEEN */, System.currentTimeMillis: JLong /* COMPLETED */, description.toJson.compactPrint, balanceSnap.toLong: JLong, fiatRateSnap.toJson.compactPrint,
-      if (event.received >= event.sent) 1L: JLong else 0L: JLong /* INCOMING? */, 0L: JLong /* NOT DOUBLE SPENT */)
+    db.change(TxTable.newSql, event.tx.toString, event.tx.txid.toHex, event.depth: JLong, event.received.toLong: JLong, event.sent.toLong: JLong,
+      event.feeOpt.map(_.toLong: JLong).getOrElse(0L: JLong), System.currentTimeMillis: JLong /* FIRST SEEN */, description.toJson.compactPrint,
+      balanceSnap.toLong: JLong, fiatRateSnap.toJson.compactPrint, if (event.received >= event.sent) 1L: JLong else 0L: JLong /* INCOMING? */,
+      0L: JLong /* NOT DOUBLE SPENT YET */)
 
   def toTxInfo(rc: RichCursor): TxInfo =
-    TxInfo(rc string TxTable.txid, rc long TxTable.depth, MilliSatoshi(rc long TxTable.receivedMsat),
-      MilliSatoshi(rc long TxTable.sentMsat), MilliSatoshi(rc long TxTable.feeMsat), rc long TxTable.firstSeen,
-      rc long TxTable.completedAt, rc string TxTable.description, MilliSatoshi(rc long TxTable.balanceMsat),
-      rc string TxTable.fiatRates, rc long TxTable.incoming, rc long TxTable.doubleSpent)
+    TxInfo(rc string TxTable.rawTx, rc string TxTable.txid, rc long TxTable.depth, MilliSatoshi(rc long TxTable.receivedMsat),
+      MilliSatoshi(rc long TxTable.sentMsat), MilliSatoshi(rc long TxTable.feeMsat), rc long TxTable.firstSeen, rc string TxTable.description,
+      MilliSatoshi(rc long TxTable.balanceMsat), rc string TxTable.fiatRates, rc long TxTable.incoming, rc long TxTable.doubleSpent)
 }

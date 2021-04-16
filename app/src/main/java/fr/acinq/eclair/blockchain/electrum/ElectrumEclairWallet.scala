@@ -16,17 +16,18 @@
 
 package fr.acinq.eclair.blockchain.electrum
 
-import akka.actor.{ActorRef, ActorSystem}
-import akka.pattern.ask
-import fr.acinq.bitcoin.{ByteVector32, Crypto, Satoshi, Script, Transaction, TxOut}
-import fr.acinq.eclair.addressToPublicKeyScript
-import fr.acinq.eclair.blockchain.electrum.ElectrumClient.BroadcastTransaction
 import fr.acinq.eclair.blockchain.electrum.ElectrumWallet._
+import fr.acinq.eclair.blockchain.electrum.ElectrumClient.BroadcastTransaction
 import fr.acinq.eclair.blockchain.fee.FeeratePerKw
+import fr.acinq.eclair.addressToPublicKeyScript
+import akka.pattern.ask
+
+import fr.acinq.bitcoin.{ByteVector32, Crypto, Satoshi, Script, Transaction, TxIn, TxOut}
 import fr.acinq.eclair.blockchain.{EclairWallet, MakeFundingTxResponse, OnChainBalance}
+import scala.concurrent.{ExecutionContext, Future}
+import akka.actor.{ActorRef, ActorSystem}
 import scodec.bits.ByteVector
 
-import scala.concurrent.{ExecutionContext, Future}
 
 class ElectrumEclairWallet(val wallet: ActorRef, chainHash: ByteVector32)(implicit system: ActorSystem, ec: ExecutionContext, timeout: akka.util.Timeout) extends EclairWallet {
 
@@ -40,7 +41,9 @@ class ElectrumEclairWallet(val wallet: ActorRef, chainHash: ByteVector32)(implic
 
   override def makeFundingTx(pubkeyScript: ByteVector, amount: Satoshi, feeRatePerKw: FeeratePerKw): Future[MakeFundingTxResponse] = {
     val tx = Transaction(version = 2, txIn = Nil, txOut = TxOut(amount, pubkeyScript) :: Nil, lockTime = 0)
-    (wallet ? CompleteTransaction(tx, feeRatePerKw)).mapTo[CompleteTransactionResponse].map {
+    val nonRbfRequest = CompleteTransaction(tx, feeRatePerKw, TxIn.SEQUENCE_FINAL)
+
+    (wallet ? nonRbfRequest).mapTo[CompleteTransactionResponse].map {
       case CompleteTransactionResponse(tx1, fee1, None) => MakeFundingTxResponse(tx1, 0, fee1)
       case CompleteTransactionResponse(_, _, Some(error)) => throw error
     }
@@ -48,16 +51,16 @@ class ElectrumEclairWallet(val wallet: ActorRef, chainHash: ByteVector32)(implic
 
   override def commit(tx: Transaction): Future[Boolean] =
     (wallet ? BroadcastTransaction(tx)) flatMap {
-      case ElectrumClient.BroadcastTransactionResponse(tx, None) =>
+      case ElectrumClient.BroadcastTransactionResponse(_, None) =>
         //tx broadcast successfully: commit tx
         wallet ? CommitTransaction(tx)
-      case ElectrumClient.BroadcastTransactionResponse(tx, Some(error)) if error.message.contains("transaction already in block chain") =>
+      case ElectrumClient.BroadcastTransactionResponse(_, errorOpt) if errorOpt.exists(_.message contains "transaction already in block chain") =>
         // tx was already in the blockchain, that's weird but it is OK
         wallet ? CommitTransaction(tx)
-      case ElectrumClient.BroadcastTransactionResponse(_, Some(error)) =>
+      case ElectrumClient.BroadcastTransactionResponse(_, errorOpt) if errorOpt.isDefined =>
         //tx broadcast failed: cancel tx
         wallet ? CancelTransaction(tx)
-      case ElectrumClient.ServerError(ElectrumClient.BroadcastTransaction(tx), error) =>
+      case ElectrumClient.ServerError(_: ElectrumClient.BroadcastTransaction, _) =>
         //tx broadcast failed: cancel tx
         wallet ? CancelTransaction(tx)
     } map {
@@ -65,27 +68,17 @@ class ElectrumEclairWallet(val wallet: ActorRef, chainHash: ByteVector32)(implic
       case CancelTransactionResponse(_) => false
     }
 
-  def sendPayment(amount: Satoshi, address: String, feeRatePerKw: FeeratePerKw): Future[String] = {
+  def sendPayment(amount: Satoshi, address: String, feeRatePerKw: FeeratePerKw): Future[CompleteTransactionResponse] = {
     val publicKeyScript = Script.write(addressToPublicKeyScript(address, chainHash))
     val tx = Transaction(version = 2, txIn = Nil, txOut = TxOut(amount, publicKeyScript) :: Nil, lockTime = 0)
-    (wallet ? CompleteTransaction(tx, feeRatePerKw))
-      .mapTo[CompleteTransactionResponse]
-      .flatMap {
-        case CompleteTransactionResponse(tx, _, None) => commit(tx).map {
-          case true => tx.txid.toString()
-          case false => throw new RuntimeException(s"could not commit tx=$tx")
-        }
-        case CompleteTransactionResponse(_, _, Some(error)) => throw error
-      }
+    val rbfRequest = CompleteTransaction(tx, feeRatePerKw, OPT_IN_FULL_RBF)
+    (wallet ? rbfRequest).mapTo[CompleteTransactionResponse]
   }
 
-  def sendAll(address: String, feeRatePerKw: FeeratePerKw): Future[(Transaction, Satoshi)] = {
+  def sendPaymentAll(address: String, feeRatePerKw: FeeratePerKw): Future[SendAllResponse] = {
     val publicKeyScript = Script.write(addressToPublicKeyScript(address, chainHash))
-    (wallet ? SendAll(publicKeyScript, feeRatePerKw))
-      .mapTo[SendAllResponse]
-      .map {
-        case SendAllResponse(tx, fee) => (tx, fee)
-      }
+    val rbfRequest = SendAll(publicKeyScript, feeRatePerKw, OPT_IN_FULL_RBF)
+    (wallet ? rbfRequest).mapTo[SendAllResponse]
   }
 
   override def rollback(tx: Transaction): Future[Boolean] = (wallet ? CancelTransaction(tx)).map(_ => true)

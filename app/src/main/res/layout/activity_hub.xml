@@ -36,14 +36,26 @@
                 android:layout_centerVertical="true"
                 style="@style/FillingView"/>
 
-            <ImageButton
-                android:padding="6dp"
-                android:onClick="bringSettings"
+            <LinearLayout
+                style="@style/BoundedView"
                 android:layout_alignParentEnd="true"
-                android:src="@drawable/baseline_settings_24"
-                android:background="?android:selectableItemBackground"
-                style="@style/BoundedView"/>
+                android:gravity="center">
 
+                <TextView
+                    android:visibility="gone"
+                    android:text="@string/offline"
+                    android:id="@+id/offlineIndicator"
+                    style="@style/ChipTextYellowMargin"/>
+
+                <ImageButton
+                    android:padding="6dp"
+                    android:onClick="bringSettings"
+                    android:layout_marginStart="10dp"
+                    android:src="@drawable/baseline_settings_24"
+                    android:background="?android:selectableItemBackground"
+                    style="@style/BoundedView"/>
+
+            </LinearLayout>
         </RelativeLayout>
 
         <RelativeLayout

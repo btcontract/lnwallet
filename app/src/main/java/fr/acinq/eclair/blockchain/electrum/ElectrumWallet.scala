@@ -397,14 +397,14 @@ class ElectrumWallet(seed: ByteVector, client: ActorRef, params: ElectrumWallet.
           stay() using data.copy(pendingHeadersRequests = pendingHeadersRequest1)
       }
 
-    case Event(CompleteTransaction(tx, feeRatePerKw), data) =>
-      Try(data.completeTransaction(tx, feeRatePerKw, minimumFee, dustLimit, allowSpendUnconfirmed)) match {
+    case Event(CompleteTransaction(tx, feeRatePerKw, sequenceFlag), data) =>
+      Try(data.completeTransaction(tx, feeRatePerKw, minimumFee, dustLimit, allowSpendUnconfirmed, sequenceFlag)) match {
         case Success((data1, tx1, fee1)) => stay using data1 replying CompleteTransactionResponse(tx1, fee1, None)
-        case Failure(t) => stay replying CompleteTransactionResponse(tx, 0 sat, Some(t))
+        case Failure(t) => stay replying CompleteTransactionResponse(tx, 0.sat, Some(t))
       }
 
-    case Event(SendAll(publicKeyScript, feeRatePerKw), data) =>
-      val (tx, fee) = data.spendAll(publicKeyScript, feeRatePerKw)
+    case Event(SendAll(publicKeyScript, feeRatePerKw, sequenceFlag), data) =>
+      val (tx, fee) = data.spendAll(publicKeyScript, feeRatePerKw, sequenceFlag)
       stay replying SendAllResponse(tx, fee)
 
     case Event(CommitTransaction(tx), data) =>
@@ -496,10 +496,10 @@ object ElectrumWallet {
   case object GetData extends Request
   case class GetDataResponse(state: Data) extends Response
 
-  case class CompleteTransaction(tx: Transaction, feeRatePerKw: FeeratePerKw) extends Request
+  case class CompleteTransaction(tx: Transaction, feeRatePerKw: FeeratePerKw, sequenceFlag: Long) extends Request
   case class CompleteTransactionResponse(tx: Transaction, fee: Satoshi, error: Option[Throwable]) extends Response
 
-  case class SendAll(publicKeyScript: ByteVector, feeRatePerKw: FeeratePerKw) extends Request
+  case class SendAll(publicKeyScript: ByteVector, feeRatePerKw: FeeratePerKw, sequenceFlag: Long) extends Request
   case class SendAllResponse(tx: Transaction, fee: Satoshi) extends Response
 
   case class CommitTransaction(tx: Transaction) extends Request
@@ -877,13 +877,13 @@ object ElectrumWallet {
      * @return a tx where all utxos have been added as inputs, signed with dummy invalid signatures. This
      *         is used to estimate the weight of the signed transaction
      */
-    def addUtxosWithDummySig(tx: Transaction, utxos: Seq[Utxo]): Transaction =
+    def addUtxosWithDummySig(tx: Transaction, utxos: Seq[Utxo], sequenceFlag: Long): Transaction =
       tx.copy(txIn = utxos.map { utxo =>
         // we use dummy signature here, because the result is only used to estimate fees
         val sig = ByteVector.fill(71)(1)
         val sigScript = Script.write(OP_PUSHDATA(Script.write(Script.pay2wpkh(utxo.key.publicKey))) :: Nil)
         val witness = ScriptWitness(sig :: utxo.key.publicKey.value :: Nil)
-        TxIn(utxo.outPoint, signatureScript = sigScript, sequence = TxIn.SEQUENCE_FINAL, witness = witness)
+        TxIn(utxo.outPoint, signatureScript = sigScript, sequenceFlag, witness = witness)
       })
 
     /**
@@ -897,7 +897,7 @@ object ElectrumWallet {
      *         our utxos spent by this tx are locked and won't be available for spending
      *         until the tx has been cancelled. If the tx is committed, they will be removed
      */
-    def completeTransaction(tx: Transaction, feeRatePerKw: FeeratePerKw, minimumFee: Satoshi, dustLimit: Satoshi, allowSpendUnconfirmed: Boolean): (Data, Transaction, Satoshi) = {
+    def completeTransaction(tx: Transaction, feeRatePerKw: FeeratePerKw, minimumFee: Satoshi, dustLimit: Satoshi, allowSpendUnconfirmed: Boolean, sequenceFlag: Long): (Data, Transaction, Satoshi) = {
       require(tx.txIn.isEmpty, "cannot complete a tx that already has inputs")
       val amount = tx.txOut.map(_.amount).sum
       require(amount > dustLimit, "amount to send is below dust limit")
@@ -914,7 +914,7 @@ object ElectrumWallet {
 
       // computes the fee what we would have to pay for our tx with our candidate utxos and an optional change output
       def computeFee(candidates: Seq[Utxo], change: Option[TxOut]): Satoshi = {
-        val tx1 = addUtxosWithDummySig(tx, candidates)
+        val tx1 = addUtxosWithDummySig(tx, candidates, sequenceFlag)
         val tx2 = change.map(o => tx1.addOutput(o)).getOrElse(tx1)
         Transactions.weight2fee(feeRatePerKw, tx2.weight())
       }
@@ -949,7 +949,7 @@ object ElectrumWallet {
       val (selected, change_opt) = loop(Seq.empty[Utxo], unlocked)
 
       // sign our tx
-      val tx1 = addUtxosWithDummySig(tx, selected)
+      val tx1 = addUtxosWithDummySig(tx, selected, sequenceFlag)
       val tx2 = change_opt.map(out => tx1.addOutput(out)).getOrElse(tx1)
       val tx3 = signTransaction(tx2)
 
@@ -1012,19 +1012,20 @@ object ElectrumWallet {
      * @return a (tx, fee) tuple, tx is a signed transaction that spends all our balance and
      *         fee is the associated bitcoin network fee
      */
-    def spendAll(publicKeyScript: ByteVector, feeRatePerKw: FeeratePerKw): (Transaction, Satoshi) = {
+    def spendAll(publicKeyScript: ByteVector, feeRatePerKw: FeeratePerKw, sequenceFlag: Long): (Transaction, Satoshi) = {
       // use confirmed and unconfirmed balance
       val amount = balance._1 + balance._2
       val tx = Transaction(version = 2, txIn = Nil, txOut = TxOut(amount, publicKeyScript) :: Nil, lockTime = 0)
       // use all uxtos, including locked ones
-      val tx1 = addUtxosWithDummySig(tx, utxos)
+      val tx1 = addUtxosWithDummySig(tx, utxos, sequenceFlag)
       val fee = Transactions.weight2fee(feeRatePerKw, tx1.weight())
       val tx2 = tx1.copy(txOut = TxOut(amount - fee, publicKeyScript) :: Nil)
       val tx3 = signTransaction(tx2)
       (tx3, fee)
     }
 
-    def spendAll(publicKeyScript: Seq[ScriptElt], feeRatePerKw: FeeratePerKw): (Transaction, Satoshi) = spendAll(Script.write(publicKeyScript), feeRatePerKw)
+    def spendAll(publicKeyScript: Seq[ScriptElt], feeRatePerKw: FeeratePerKw, sequenceFlag: Long): (Transaction, Satoshi) =
+      spendAll(Script.write(publicKeyScript), feeRatePerKw, sequenceFlag: Long)
   }
 
   object Data {

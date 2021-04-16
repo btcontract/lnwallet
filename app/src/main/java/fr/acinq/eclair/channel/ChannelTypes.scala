@@ -20,7 +20,6 @@ import scodec.bits._
 import fr.acinq.eclair._
 import fr.acinq.bitcoin._
 import fr.acinq.eclair.wire._
-import com.softwaremill.quicklens._
 import fr.acinq.eclair.transactions.Transactions._
 import fr.acinq.bitcoin.Crypto.{PrivateKey, PublicKey}
 import immortan.{LNParams, RemoteNodeInfo}
@@ -79,7 +78,6 @@ sealed trait Command
 sealed trait IncomingResolution
 
 sealed trait ReasonableResolution extends IncomingResolution {
-  def incorrectDetailsFailCommand: FinalResolution = failCommand(LNParams incorrectDetails add.amountMsat)
   def failCommand(failure: FailureMessage): FinalResolution = CMD_FAIL_HTLC(Right(failure), secret, add)
   def fulfillCommand(preimage: ByteVector32): FinalResolution = CMD_FULFILL_HTLC(preimage, add)
 

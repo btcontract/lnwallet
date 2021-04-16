@@ -24,6 +24,7 @@ import scala.concurrent.{Await, Future}
 
 class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataChecker with ChoiceReceiver { me =>
   private[this] lazy val contentWindow = findViewById(R.id.contentWindow).asInstanceOf[RelativeLayout]
+  private[this] lazy val offlineIndicator = findViewById(R.id.offlineIndicator).asInstanceOf[TextView]
 
   private[this] lazy val topInfoLayout = findViewById(R.id.topInfoLayout).asInstanceOf[LinearLayout]
   private[this] lazy val topBlurringArea = findViewById(R.id.topBlurringArea).asInstanceOf[RealtimeBlurView]
@@ -58,7 +59,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
   }
 
   override def onStop: Unit = {
-    Tovuti.from(this).stop
+    Tovuti.from(me).stop
     super.onStop
   }
 
@@ -113,9 +114,9 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
 //      WalletApp.app.getContentResolver.notifyChange(WalletApp.app.sqlPath(RelayTable.table), null)
 //      WalletApp.app.getContentResolver.notifyChange(WalletApp.app.sqlPath(TxTable.table), null)
 
-      Tovuti.from(this) monitor new Monitor.ConnectivityListener {
-        override def onConnectivityChanged(connectionType: Int, isConnected: Boolean, isFast: Boolean): Unit = {
-          println(s"-- isConnected: $isConnected, isFast: $isFast")
+      Tovuti.from(me) monitor new Monitor.ConnectivityListener {
+        override def onConnectivityChanged(ct: Int, isConnected: Boolean, isFast: Boolean): Unit = {
+          offlineIndicator setVisibility BaseActivity.viewMap(!isConnected)
         }
       }
 

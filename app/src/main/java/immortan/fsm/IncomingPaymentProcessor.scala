@@ -93,8 +93,8 @@ class IncomingPaymentReceiver(val fullTag: FullPaymentTag, cm: ChannelMaster) ex
   }
 
   def abort(data1: IncomingAborted, adds: ReasonableLocals): Unit = data1.failure match {
-    case None => for (local <- adds) cm.sendTo(local.incorrectDetailsFailCommand, local.add.channelId)
-    case Some(fail) => for (local <- adds) cm.sendTo(local.failCommand(fail), local.add.channelId)
+    case None => for (local <- adds) cm.sendTo(local.failCommand(LNParams incorrectDetails local.add.amountMsat), local.add.channelId)
+    case Some(specificFail) => for (local <- adds) cm.sendTo(local.failCommand(specificFail), local.add.channelId)
   }
 
   def becomeAborted(data1: IncomingAborted, adds: ReasonableLocals): Unit = {

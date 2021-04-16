@@ -1,6 +1,7 @@
 <resources>
     <string name="lang">eng</string>
     <string name="app_name">BLW</string>
+    <string name="offline">OFFLINE</string>
     <string name="bitcoin_wallet">Bitcoin</string>
     <string name="lightning_wallet">Lightning</string>
     <string name="total_balance">Total balance</string>
