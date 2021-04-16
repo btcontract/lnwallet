@@ -17,7 +17,8 @@
 package fr.acinq.eclair.blockchain
 
 import fr.acinq.bitcoin.Crypto.PublicKey
-import fr.acinq.bitcoin.{Satoshi, Transaction, TxIn}
+import fr.acinq.bitcoin.{ByteVector32, Satoshi, Transaction, TxIn}
+import fr.acinq.eclair.blockchain.electrum.ElectrumWallet.{CompleteTransactionResponse, SendAllResponse}
 import fr.acinq.eclair.blockchain.fee.FeeratePerKw
 import scala.concurrent.Future
 import scodec.bits.ByteVector
@@ -26,11 +27,13 @@ import scodec.bits.ByteVector
  * Created by PM on 06/07/2017.
  */
 trait EclairWallet {
+  type Addresses = List[String]
+
   final val OPT_IN_FULL_RBF = TxIn.SEQUENCE_FINAL - 2
 
   def getBalance: Future[OnChainBalance]
 
-  def getReceiveAddresses: Future[List[String]]
+  def getReceiveAddresses: Future[Addresses]
 
   def getReceivePubkey(receiveAddress: Option[String] = None): Future[PublicKey]
 
@@ -48,6 +51,12 @@ trait EclairWallet {
    */
   def commit(tx: Transaction): Future[Boolean]
 
+  def sendPreimageBroadcast(preimage: ByteVector32, feeRatePerKw: FeeratePerKw): Future[CompleteTransactionResponse]
+
+  def sendPayment(amount: Satoshi, address: String, feeRatePerKw: FeeratePerKw): Future[CompleteTransactionResponse]
+
+  def sendPaymentAll(address: String, feeRatePerKw: FeeratePerKw): Future[SendAllResponse]
+
   /**
    * Cancels this transaction: this probably translates to "release locks on utxos".
    */
@@ -59,7 +68,6 @@ trait EclairWallet {
    * Implementations may always return false if they don't want to implement it
    */
   def doubleSpent(tx: Transaction): Future[Boolean]
-
 }
 
 final case class OnChainBalance(confirmed: Satoshi, unconfirmed: Satoshi)

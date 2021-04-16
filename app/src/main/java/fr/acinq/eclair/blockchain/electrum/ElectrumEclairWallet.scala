@@ -22,7 +22,7 @@ import fr.acinq.eclair.blockchain.fee.FeeratePerKw
 import fr.acinq.eclair.addressToPublicKeyScript
 import akka.pattern.ask
 
-import fr.acinq.bitcoin.{ByteVector32, Crypto, Satoshi, Script, Transaction, TxIn, TxOut}
+import fr.acinq.bitcoin.{ByteVector32, Crypto, OP_PUSHDATA, OP_RETURN, Satoshi, Script, Transaction, TxIn, TxOut}
 import fr.acinq.eclair.blockchain.{EclairWallet, MakeFundingTxResponse, OnChainBalance}
 import scala.concurrent.{ExecutionContext, Future}
 import akka.actor.{ActorRef, ActorSystem}
@@ -33,11 +33,9 @@ class ElectrumEclairWallet(val wallet: ActorRef, chainHash: ByteVector32)(implic
 
   override def getBalance: Future[OnChainBalance] = (wallet ? GetBalance).mapTo[GetBalanceResponse].map(balance => OnChainBalance(balance.confirmed, balance.unconfirmed))
 
-  override def getReceiveAddresses: Future[List[String]] = (wallet ? GetCurrentReceiveAddresses).mapTo[GetCurrentReceiveAddressesResponse].map(_.addresses.toList)
+  override def getReceiveAddresses: Future[Addresses] = (wallet ? GetCurrentReceiveAddresses).mapTo[GetCurrentReceiveAddressesResponse].map(_.addresses.toList)
 
   override def getReceivePubkey(receiveAddress: Option[String] = None): Future[Crypto.PublicKey] = Future failed new RuntimeException("Not implemented")
-
-  def getXpub: Future[GetXpubResponse] = (wallet ? GetXpub).mapTo[GetXpubResponse]
 
   override def makeFundingTx(pubkeyScript: ByteVector, amount: Satoshi, feeRatePerKw: FeeratePerKw): Future[MakeFundingTxResponse] = {
     val tx = Transaction(version = 2, txIn = Nil, txOut = TxOut(amount, pubkeyScript) :: Nil, lockTime = 0)
@@ -68,14 +66,21 @@ class ElectrumEclairWallet(val wallet: ActorRef, chainHash: ByteVector32)(implic
       case CancelTransactionResponse(_) => false
     }
 
-  def sendPayment(amount: Satoshi, address: String, feeRatePerKw: FeeratePerKw): Future[CompleteTransactionResponse] = {
+  override def sendPreimageBroadcast(preimage: ByteVector32, feeRatePerKw: FeeratePerKw): Future[CompleteTransactionResponse] = {
+    val publicKeyScript = Script.write(OP_RETURN :: OP_PUSHDATA(preimage.bytes) :: Nil)
+    val tx = Transaction(version = 2, txIn = Nil, txOut = TxOut(Satoshi(0L), publicKeyScript) :: Nil, lockTime = 0)
+    val rbfRequest = CompleteTransaction(tx, feeRatePerKw, OPT_IN_FULL_RBF)
+    (wallet ? rbfRequest).mapTo[CompleteTransactionResponse]
+  }
+
+  override def sendPayment(amount: Satoshi, address: String, feeRatePerKw: FeeratePerKw): Future[CompleteTransactionResponse] = {
     val publicKeyScript = Script.write(addressToPublicKeyScript(address, chainHash))
     val tx = Transaction(version = 2, txIn = Nil, txOut = TxOut(amount, publicKeyScript) :: Nil, lockTime = 0)
     val rbfRequest = CompleteTransaction(tx, feeRatePerKw, OPT_IN_FULL_RBF)
     (wallet ? rbfRequest).mapTo[CompleteTransactionResponse]
   }
 
-  def sendPaymentAll(address: String, feeRatePerKw: FeeratePerKw): Future[SendAllResponse] = {
+  override def sendPaymentAll(address: String, feeRatePerKw: FeeratePerKw): Future[SendAllResponse] = {
     val publicKeyScript = Script.write(addressToPublicKeyScript(address, chainHash))
     val rbfRequest = SendAll(publicKeyScript, feeRatePerKw, OPT_IN_FULL_RBF)
     (wallet ? rbfRequest).mapTo[SendAllResponse]

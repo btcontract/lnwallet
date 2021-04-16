@@ -122,17 +122,17 @@ case class PlainTxDescription(label: Option[String] = None) extends TxDescriptio
 
 sealed trait ChanTxDescription extends TxDescription { def nodeId: PublicKey }
 
-case class OpReturnTxDescription(nodeId: PublicKey, preimage: ByteVector32) extends ChanTxDescription // Preimage broadcast
+case class OpReturnTxDescription(nodeId: PublicKey, preimage: ByteVector32) extends ChanTxDescription
 
-case class ChanFundingTxDescription(nodeId: PublicKey) extends ChanTxDescription // New channel funding
+case class ChanFundingTxDescription(nodeId: PublicKey) extends ChanTxDescription
 
-case class ChanRefundingTxDescription(nodeId: PublicKey) extends ChanTxDescription // Channel closing refund
+case class ChanRefundingTxDescription(nodeId: PublicKey) extends ChanTxDescription
 
-case class CommitClaimTxDescription(nodeId: PublicKey) extends ChanTxDescription // Channel force-closing refund
+case class CommitClaimTxDescription(nodeId: PublicKey) extends ChanTxDescription
 
-case class HtlcClaimTxDescription(nodeId: PublicKey) extends ChanTxDescription // Lightning payment refund
+case class HtlcClaimTxDescription(nodeId: PublicKey) extends ChanTxDescription
 
-case class PenaltyTxDescription(nodeId: PublicKey) extends ChanTxDescription // Channel breach penalty
+case class PenaltyTxDescription(nodeId: PublicKey) extends ChanTxDescription
 
 object TxDescription {
   def defineDescription(chans: Iterable[Channel], tx: Transaction): TxDescription =
