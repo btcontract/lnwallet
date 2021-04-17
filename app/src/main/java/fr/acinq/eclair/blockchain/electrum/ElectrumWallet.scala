@@ -16,19 +16,20 @@
 
 package fr.acinq.eclair.blockchain.electrum
 
+import fr.acinq.bitcoin._
+import fr.acinq.eclair.blockchain.EclairWallet._
+import fr.acinq.eclair.blockchain.electrum.ElectrumClient._
+
+import scala.util.{Failure, Success, Try}
 import akka.actor.{ActorRef, FSM, PoisonPill, Props}
 import fr.acinq.bitcoin.Crypto.{PrivateKey, PublicKey}
-import fr.acinq.bitcoin.DeterministicWallet.{ExtendedPrivateKey, derivePrivateKey, hardened}
-import fr.acinq.bitcoin.{Base58, Base58Check, Block, ByteVector32, Crypto, DeterministicWallet, OP_PUSHDATA, OutPoint, SIGHASH_ALL, Satoshi, SatoshiLong, Script, ScriptElt, ScriptWitness, SigVersion, Transaction, TxIn, TxOut}
-import fr.acinq.eclair.blockchain.bitcoind.rpc.Error
-import fr.acinq.eclair.blockchain.electrum.ElectrumClient._
 import fr.acinq.eclair.blockchain.electrum.db.{HeaderDb, WalletDb}
+import fr.acinq.bitcoin.DeterministicWallet.{ExtendedPrivateKey, derivePrivateKey, hardened}
+import fr.acinq.eclair.blockchain.bitcoind.rpc.Error
 import fr.acinq.eclair.blockchain.fee.FeeratePerKw
 import fr.acinq.eclair.transactions.Transactions
-import scodec.bits.ByteVector
-
 import scala.annotation.tailrec
-import scala.util.{Failure, Success, Try}
+import scodec.bits.ByteVector
 
 /**
  * Simple electrum wallet.
@@ -184,7 +185,7 @@ class ElectrumWallet(seed: ByteVector, client: ActorRef, params: ElectrumWallet.
         }
       }
 
-    case Event(ElectrumClient.HeaderSubscriptionResponse(height, header), data) =>
+    case Event(ElectrumClient.HeaderSubscriptionResponse(height, header), _) =>
       // we can ignore this, we will request header chunks until the server has nothing left to send us
       log.debug("ignoring header {} at {} while syncing", header, height)
       stay()
@@ -399,13 +400,15 @@ class ElectrumWallet(seed: ByteVector, client: ActorRef, params: ElectrumWallet.
 
     case Event(CompleteTransaction(tx, feeRatePerKw, sequenceFlag), data) =>
       Try(data.completeTransaction(tx, feeRatePerKw, minimumFee, dustLimit, allowSpendUnconfirmed, sequenceFlag)) match {
-        case Success((data1, tx1, fee1)) => stay using data1 replying CompleteTransactionResponse(tx1, fee1, None)
-        case Failure(t) => stay replying CompleteTransactionResponse(tx, 0.sat, Some(t))
+        case Success((data1, tx1, fee1)) => stay using data1 replying CompleteTransactionResponse(Some(tx1, fee1))
+        case _ => stay replying CompleteTransactionResponse(None)
       }
 
     case Event(SendAll(publicKeyScript, feeRatePerKw, sequenceFlag), data) =>
-      val (tx, fee) = data.spendAll(publicKeyScript, feeRatePerKw, sequenceFlag)
-      stay replying SendAllResponse(tx, fee)
+      Try(data.spendAll(publicKeyScript, feeRatePerKw, dustLimit, sequenceFlag)) match {
+        case Success((tx, fee)) => stay replying SendAllResponse(Some(tx, fee))
+        case _ => stay replying SendAllResponse(None)
+      }
 
     case Event(CommitTransaction(tx), data) =>
       log.info(s"committing txid=${tx.txid}")
@@ -472,7 +475,8 @@ class ElectrumWallet(seed: ByteVector, client: ActorRef, params: ElectrumWallet.
 object ElectrumWallet {
   def props(seed: ByteVector, client: ActorRef, params: WalletParameters): Props = Props(new ElectrumWallet(seed, client, params))
 
-  case class WalletParameters(chainHash: ByteVector32, walletDb: WalletDb, minimumFee: Satoshi = 2000.sat, dustLimit: Satoshi = 546.sat, swipeRange: Int = 10, allowSpendUnconfirmed: Boolean = true)
+  case class WalletParameters(chainHash: ByteVector32, walletDb: WalletDb, minimumFee: Satoshi = 2000.sat,
+                              dustLimit: Satoshi = 546.sat, swipeRange: Int = 10, allowSpendUnconfirmed: Boolean = true)
 
   // @formatter:off
   sealed trait State
@@ -491,16 +495,16 @@ object ElectrumWallet {
   case class GetXpubResponse(xpub: String, path: String) extends Response
 
   case object GetCurrentReceiveAddresses extends Request
-  case class GetCurrentReceiveAddressesResponse(addresses: Seq[String] = Nil) extends Response
+  case class GetCurrentReceiveAddressesResponse(addresses: Addresses) extends Response
 
   case object GetData extends Request
   case class GetDataResponse(state: Data) extends Response
 
   case class CompleteTransaction(tx: Transaction, feeRatePerKw: FeeratePerKw, sequenceFlag: Long) extends Request
-  case class CompleteTransactionResponse(tx: Transaction, fee: Satoshi, error: Option[Throwable]) extends Response
+  case class CompleteTransactionResponse(result: Option[TxAndFee] = None) extends Response
 
   case class SendAll(publicKeyScript: ByteVector, feeRatePerKw: FeeratePerKw, sequenceFlag: Long) extends Request
-  case class SendAllResponse(tx: Transaction, fee: Satoshi) extends Response
+  case class SendAllResponse(result: Option[TxAndFee] = None) extends Response
 
   case class CommitTransaction(tx: Transaction) extends Request
   case class CommitTransactionResponse(tx: Transaction) extends Response
@@ -677,7 +681,7 @@ object ElectrumWallet {
 
     lazy val changeKeyMap = changeKeys.map(key => computeScriptHashFromPublicKey(key.publicKey) -> key).toMap
 
-    lazy val firstUnusedAccountKeys = accountKeys.view.filter(key => status.get(computeScriptHashFromPublicKey(key.publicKey)).contains("")).take(Data.MAX_RECEIVE_ADDRESSES)
+    lazy val firstUnusedAccountKeys = accountKeys.view.filter(key => status.get(computeScriptHashFromPublicKey(key.publicKey)).contains("")).take(MAX_RECEIVE_ADDRESSES)
 
     lazy val firstUnusedChangeKeys = changeKeys.find(key => status.get(computeScriptHashFromPublicKey(key.publicKey)).contains(""))
 
@@ -714,9 +718,9 @@ object ElectrumWallet {
      *         unused keys and none is available yet. In this case we will return
      *         the latest account key.
      */
-    def currentReceiveKeys: Seq[ExtendedPrivateKey] = if (firstUnusedAccountKeys.isEmpty) accountKeys.take(Data.MAX_RECEIVE_ADDRESSES) else firstUnusedAccountKeys
+    def currentReceiveKeys: Seq[ExtendedPrivateKey] = if (firstUnusedAccountKeys.isEmpty) accountKeys.take(MAX_RECEIVE_ADDRESSES) else firstUnusedAccountKeys
 
-    def currentReceiveAddresses: Seq[String] = currentReceiveKeys.map(currentReceiveKey => segwitAddress(currentReceiveKey, chainHash))
+    def currentReceiveAddresses: Addresses = currentReceiveKeys.map(currentReceiveKey => segwitAddress(currentReceiveKey, chainHash)).toList
 
     /**
      *
@@ -991,16 +995,16 @@ object ElectrumWallet {
       // unconfirmed transactions. A few seconds later electrum will notify us and the entry will be overwritten.
       // Note that we need to take into account both inputs and outputs, because there may be change.
       val history1 = (tx.txIn.filter(isMine).flatMap(extractPubKeySpentFrom).map(computeScriptHashFromPublicKey) ++ tx.txOut.filter(isMine).map(_.publicKeyScript).map(computeScriptHash))
-        .foldLeft(this.history) {
-          case (history, scriptHash) =>
-            val entry = history.get(scriptHash) match {
+        .foldLeft(history) {
+          case (h, scriptHash) =>
+            val entry = h.get(scriptHash) match {
               case None => List(TransactionHistoryItem(0, tx.txid))
               case Some(items) if items.map(_.tx_hash).contains(tx.txid) => items
               case Some(items) => TransactionHistoryItem(0, tx.txid) :: items
             }
-            history + (scriptHash -> entry)
+            h + (scriptHash -> entry)
         }
-      this.copy(locks = this.locks - tx, transactions = this.transactions + (tx.txid -> tx), heights = this.heights + (tx.txid -> 0), history = history1)
+      copy(locks = locks - tx, transactions = transactions + (tx.txid -> tx), heights = heights + (tx.txid -> 0), history = history1)
     }
 
     /**
@@ -1012,27 +1016,27 @@ object ElectrumWallet {
      * @return a (tx, fee) tuple, tx is a signed transaction that spends all our balance and
      *         fee is the associated bitcoin network fee
      */
-    def spendAll(publicKeyScript: ByteVector, feeRatePerKw: FeeratePerKw, sequenceFlag: Long): (Transaction, Satoshi) = {
+    def spendAll(publicKeyScript: ByteVector, feeRatePerKw: FeeratePerKw, dustLimit: Satoshi, sequenceFlag: Long): (Transaction, Satoshi) = {
       // use confirmed and unconfirmed balance
       val amount = balance._1 + balance._2
       val tx = Transaction(version = 2, txIn = Nil, txOut = TxOut(amount, publicKeyScript) :: Nil, lockTime = 0)
       // use all uxtos, including locked ones
       val tx1 = addUtxosWithDummySig(tx, utxos, sequenceFlag)
       val fee = Transactions.weight2fee(feeRatePerKw, tx1.weight())
+      println(s"amount: $amount, dustLimit: $dustLimit")
+      require(amount - fee > dustLimit, "amount to send is below dust limit")
       val tx2 = tx1.copy(txOut = TxOut(amount - fee, publicKeyScript) :: Nil)
       val tx3 = signTransaction(tx2)
       (tx3, fee)
     }
 
-    def spendAll(publicKeyScript: Seq[ScriptElt], feeRatePerKw: FeeratePerKw, sequenceFlag: Long): (Transaction, Satoshi) =
-      spendAll(Script.write(publicKeyScript), feeRatePerKw, sequenceFlag: Long)
+    def spendAll(publicKeyScript: Seq[ScriptElt], feeRatePerKw: FeeratePerKw, dustLimit: Satoshi, sequenceFlag: Long): (Transaction, Satoshi) =
+      spendAll(Script.write(publicKeyScript), feeRatePerKw, dustLimit, sequenceFlag)
   }
 
   object Data {
-    final val MAX_RECEIVE_ADDRESSES = 4
-
-    def apply(params: ElectrumWallet.WalletParameters, blockchain: Blockchain, accountKeys: Vector[ExtendedPrivateKey], changeKeys: Vector[ExtendedPrivateKey]): Data
-    = Data(blockchain, accountKeys, changeKeys, Map(), Map(), Map(), Map(), Map(), Set(), Set(), Set(), Set(), List(), None)
+    def apply(params: ElectrumWallet.WalletParameters, blockchain: Blockchain, accountKeys: Vector[ExtendedPrivateKey], changeKeys: Vector[ExtendedPrivateKey]): Data =
+      Data(blockchain, accountKeys, changeKeys, Map.empty, Map.empty, Map.empty, Map.empty, Map.empty, Set.empty, Set.empty, Set.empty, Set.empty, List.empty, None)
   }
 
   case class InfiniteLoopException(data: Data, tx: Transaction) extends Exception
@@ -1050,5 +1054,4 @@ object ElectrumWallet {
   object PersistentData {
     def apply(data: Data) = new PersistentData(data.accountKeys.length, data.changeKeys.length, data.status, data.transactions, data.heights, data.history, data.proofs, data.pendingTransactions, data.locks)
   }
-
 }

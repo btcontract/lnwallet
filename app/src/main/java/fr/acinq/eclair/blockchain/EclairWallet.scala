@@ -16,21 +16,27 @@
 
 package fr.acinq.eclair.blockchain
 
-import fr.acinq.bitcoin.Crypto.PublicKey
+import fr.acinq.eclair.blockchain.EclairWallet._
 import fr.acinq.bitcoin.{ByteVector32, Satoshi, Transaction, TxIn}
-import fr.acinq.eclair.blockchain.electrum.ElectrumWallet.{CompleteTransactionResponse, SendAllResponse}
 import fr.acinq.eclair.blockchain.fee.FeeratePerKw
+import fr.acinq.bitcoin.Crypto.PublicKey
 import scala.concurrent.Future
 import scodec.bits.ByteVector
 
 /**
  * Created by PM on 06/07/2017.
  */
-trait EclairWallet {
+object EclairWallet {
   type Addresses = List[String]
+
+  type TxAndFee = (Transaction, Satoshi)
 
   final val OPT_IN_FULL_RBF = TxIn.SEQUENCE_FINAL - 2
 
+  final val MAX_RECEIVE_ADDRESSES = 4
+}
+
+trait EclairWallet {
   def getBalance: Future[OnChainBalance]
 
   def getReceiveAddresses: Future[Addresses]
@@ -38,6 +44,8 @@ trait EclairWallet {
   def getReceivePubkey(receiveAddress: Option[String] = None): Future[PublicKey]
 
   def makeFundingTx(pubkeyScript: ByteVector, amount: Satoshi, feeRatePerKw: FeeratePerKw): Future[MakeFundingTxResponse]
+
+  def makeAllFundingTx(pubkeyScript: ByteVector, feeRatePerKw: FeeratePerKw): Future[MakeFundingTxResponse]
 
   /**
    * Committing *must* include publishing the transaction on the network.
@@ -51,11 +59,11 @@ trait EclairWallet {
    */
   def commit(tx: Transaction): Future[Boolean]
 
-  def sendPreimageBroadcast(preimage: ByteVector32, feeRatePerKw: FeeratePerKw): Future[CompleteTransactionResponse]
+  def sendPreimageBroadcast(preimage: ByteVector32, feeRatePerKw: FeeratePerKw): Future[TxAndFee]
 
-  def sendPayment(amount: Satoshi, address: String, feeRatePerKw: FeeratePerKw): Future[CompleteTransactionResponse]
+  def sendPayment(amount: Satoshi, address: String, feeRatePerKw: FeeratePerKw): Future[TxAndFee]
 
-  def sendPaymentAll(address: String, feeRatePerKw: FeeratePerKw): Future[SendAllResponse]
+  def sendPaymentAll(address: String, feeRatePerKw: FeeratePerKw): Future[TxAndFee]
 
   /**
    * Cancels this transaction: this probably translates to "release locks on utxos".

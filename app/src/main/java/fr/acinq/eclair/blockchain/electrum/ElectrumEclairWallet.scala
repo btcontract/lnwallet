@@ -16,6 +16,7 @@
 
 package fr.acinq.eclair.blockchain.electrum
 
+import fr.acinq.eclair.blockchain.EclairWallet._
 import fr.acinq.eclair.blockchain.electrum.ElectrumWallet._
 import fr.acinq.eclair.blockchain.electrum.ElectrumClient.BroadcastTransaction
 import fr.acinq.eclair.blockchain.fee.FeeratePerKw
@@ -33,7 +34,7 @@ class ElectrumEclairWallet(val wallet: ActorRef, chainHash: ByteVector32)(implic
 
   override def getBalance: Future[OnChainBalance] = (wallet ? GetBalance).mapTo[GetBalanceResponse].map(balance => OnChainBalance(balance.confirmed, balance.unconfirmed))
 
-  override def getReceiveAddresses: Future[Addresses] = (wallet ? GetCurrentReceiveAddresses).mapTo[GetCurrentReceiveAddressesResponse].map(_.addresses.toList)
+  override def getReceiveAddresses: Future[Addresses] = (wallet ? GetCurrentReceiveAddresses).mapTo[GetCurrentReceiveAddressesResponse].map(_.addresses)
 
   override def getReceivePubkey(receiveAddress: Option[String] = None): Future[Crypto.PublicKey] = Future failed new RuntimeException("Not implemented")
 
@@ -42,8 +43,17 @@ class ElectrumEclairWallet(val wallet: ActorRef, chainHash: ByteVector32)(implic
     val nonRbfRequest = CompleteTransaction(tx, feeRatePerKw, TxIn.SEQUENCE_FINAL)
 
     (wallet ? nonRbfRequest).mapTo[CompleteTransactionResponse].map {
-      case CompleteTransactionResponse(tx1, fee1, None) => MakeFundingTxResponse(tx1, 0, fee1)
-      case CompleteTransactionResponse(_, _, Some(error)) => throw error
+      case CompleteTransactionResponse(Some((tx1, fee1))) => MakeFundingTxResponse(tx1, 0, fee1)
+      case CompleteTransactionResponse(None) => throw new RuntimeException
+    }
+  }
+
+  def makeAllFundingTx(pubkeyScript: ByteVector, feeRatePerKw: FeeratePerKw): Future[MakeFundingTxResponse] = {
+    val nonRbfRequest = SendAll(pubkeyScript, feeRatePerKw, TxIn.SEQUENCE_FINAL)
+
+    (wallet ? nonRbfRequest).mapTo[SendAllResponse].map {
+      case SendAllResponse(Some((tx1, fee1))) => MakeFundingTxResponse(tx1, 0, fee1)
+      case SendAllResponse(None) => throw new RuntimeException
     }
   }
 
@@ -66,24 +76,36 @@ class ElectrumEclairWallet(val wallet: ActorRef, chainHash: ByteVector32)(implic
       case CancelTransactionResponse(_) => false
     }
 
-  override def sendPreimageBroadcast(preimage: ByteVector32, feeRatePerKw: FeeratePerKw): Future[CompleteTransactionResponse] = {
+  override def sendPreimageBroadcast(preimage: ByteVector32, feeRatePerKw: FeeratePerKw): Future[TxAndFee] = {
     val publicKeyScript = Script.write(OP_RETURN :: OP_PUSHDATA(preimage.bytes) :: Nil)
     val tx = Transaction(version = 2, txIn = Nil, txOut = TxOut(Satoshi(0L), publicKeyScript) :: Nil, lockTime = 0)
     val rbfRequest = CompleteTransaction(tx, feeRatePerKw, OPT_IN_FULL_RBF)
-    (wallet ? rbfRequest).mapTo[CompleteTransactionResponse]
+
+    (wallet ? rbfRequest).mapTo[CompleteTransactionResponse].map {
+      case CompleteTransactionResponse(Some(realTxAndFee)) => realTxAndFee
+      case CompleteTransactionResponse(None) => throw new RuntimeException
+    }
   }
 
-  override def sendPayment(amount: Satoshi, address: String, feeRatePerKw: FeeratePerKw): Future[CompleteTransactionResponse] = {
+  override def sendPayment(amount: Satoshi, address: String, feeRatePerKw: FeeratePerKw): Future[TxAndFee] = {
     val publicKeyScript = Script.write(addressToPublicKeyScript(address, chainHash))
     val tx = Transaction(version = 2, txIn = Nil, txOut = TxOut(amount, publicKeyScript) :: Nil, lockTime = 0)
     val rbfRequest = CompleteTransaction(tx, feeRatePerKw, OPT_IN_FULL_RBF)
-    (wallet ? rbfRequest).mapTo[CompleteTransactionResponse]
+
+    (wallet ? rbfRequest).mapTo[CompleteTransactionResponse].map {
+      case CompleteTransactionResponse(Some(realTxAndFee)) => realTxAndFee
+      case CompleteTransactionResponse(None) => throw new RuntimeException
+    }
   }
 
-  override def sendPaymentAll(address: String, feeRatePerKw: FeeratePerKw): Future[SendAllResponse] = {
+  override def sendPaymentAll(address: String, feeRatePerKw: FeeratePerKw): Future[TxAndFee] = {
     val publicKeyScript = Script.write(addressToPublicKeyScript(address, chainHash))
     val rbfRequest = SendAll(publicKeyScript, feeRatePerKw, OPT_IN_FULL_RBF)
-    (wallet ? rbfRequest).mapTo[SendAllResponse]
+
+    (wallet ? rbfRequest).mapTo[SendAllResponse].map {
+      case SendAllResponse(Some(realTxAndFee)) => realTxAndFee
+      case SendAllResponse(None) => throw new RuntimeException
+    }
   }
 
   override def rollback(tx: Transaction): Future[Boolean] = (wallet ? CancelTransaction(tx)).map(_ => true)

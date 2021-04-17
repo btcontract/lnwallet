@@ -2,9 +2,9 @@ package com.lightning.walletapp
 
 import com.azoft.carousellayoutmanager._
 import com.lightning.walletapp.R.string._
+import fr.acinq.eclair.blockchain.EclairWallet._
 
 import android.view.{View, ViewGroup}
-import fr.acinq.eclair.blockchain.electrum.ElectrumWallet.Data.MAX_RECEIVE_ADDRESSES
 import com.lightning.walletapp.BaseActivity.StringOps
 import androidx.recyclerview.widget.RecyclerView
 import com.ornach.nobobutton.NoboButton

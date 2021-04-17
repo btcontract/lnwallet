@@ -3,10 +3,8 @@ package com.lightning.walletapp.sqlite
 import spray.json._
 import immortan.utils.ImplicitJsonFormats._
 import com.lightning.walletapp.sqlite.SQLiteDataExtended._
-
-import immortan.utils.{FeeRatesInfo, FiatRatesInfo}
 import com.lightning.walletapp.utils.{AddonData, BasicAddon, UsedAddons}
-import fr.acinq.eclair.blockchain.electrum.ElectrumWallet.WalletReady
+import immortan.utils.{FeeRatesInfo, FiatRatesInfo}
 import immortan.sqlite.SQLiteData
 import fr.acinq.bitcoin.Satoshi
 import scala.util.Try
@@ -14,7 +12,7 @@ import scala.util.Try
 
 object SQLiteDataExtended {
   final val LABEL_ADDONS = "label-addons"
-  final val LABEL_WALLET_READY = "label-wallet-ready"
+  final val LABEL_LAST_BALANCE = "label-last-balance"
   final val LABEL_FIAT_RATES = "label-fiat-rates"
   final val LABEL_FEE_RATES = "label-fee-rates"
 
@@ -44,9 +42,9 @@ class SQLiteDataExtended(override val db: DBInterfaceSQLiteAndroidMisc) extends 
 
   def tryGetAddons: Try[UsedAddons] = tryGet(LABEL_ADDONS).map(SQLiteData.byteVecToString) map to[UsedAddons]
 
-  def putLastBalance(wr: Satoshi): Unit = put(LABEL_WALLET_READY, wr.toJson.compactPrint getBytes "UTF-8")
+  def putLastBalance(wr: Satoshi): Unit = put(LABEL_LAST_BALANCE, wr.toJson.compactPrint getBytes "UTF-8")
 
-  def tryGetLastBalance: Try[Satoshi] = tryGet(LABEL_WALLET_READY).map(SQLiteData.byteVecToString) map to[Satoshi]
+  def tryGetLastBalance: Try[Satoshi] = tryGet(LABEL_LAST_BALANCE).map(SQLiteData.byteVecToString) map to[Satoshi]
 
   def putFiatRatesInfo(data: FiatRatesInfo): Unit = put(LABEL_FIAT_RATES, data.toJson.compactPrint getBytes "UTF-8")
 
