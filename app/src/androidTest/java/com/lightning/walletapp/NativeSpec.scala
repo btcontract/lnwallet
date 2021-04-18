@@ -1,6 +1,5 @@
 package com.lightning.walletapp
 
-import scodec.bits._
 import fr.acinq.eclair._
 import immortan.{LightningNodeKeys, MnemonicExtStorageFormat}
 import fr.acinq.bitcoin.Crypto.{PrivateKey, PublicKey, curve, one}
@@ -9,7 +8,6 @@ import org.bouncycastle.crypto.params.ECPublicKeyParameters
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.bouncycastle.crypto.signers.ECDSASigner
 import fr.acinq.eclair.channel.Helpers
-import com.blockstream.libwally.Wally
 import fr.acinq.bitcoin.Base58.Prefix
 import org.bitcoin.Secp256k1Context
 import org.junit.Assert.assertTrue
@@ -44,7 +42,6 @@ class NativeSpec {
   @Test
   def useAppContext: Unit = {
     assertTrue(Secp256k1Context.isEnabled)
-    assertTrue(Wally.isEnabled)
   }
 
   @Test

@@ -59,7 +59,7 @@ trait EclairWallet {
    */
   def commit(tx: Transaction): Future[Boolean]
 
-  def sendPreimageBroadcast(preimage: ByteVector32, feeRatePerKw: FeeratePerKw): Future[TxAndFee]
+  def sendPreimageBroadcast(preimages: Set[ByteVector32], feeRatePerKw: FeeratePerKw): Future[TxAndFee]
 
   def sendPayment(amount: Satoshi, address: String, feeRatePerKw: FeeratePerKw): Future[TxAndFee]
 

@@ -331,6 +331,12 @@ case class QueryPublicHostedChannels(chainHash: ByteVector32) extends RoutingMes
 
 case class ReplyPublicHostedChannelsEnd(chainHash: ByteVector32) extends RoutingMessage with HasChainHash
 
+// Preimage queries
+
+case class QueryPreimages(hashes: List[ByteVector32] = Nil) extends HostedChannelMessage
+
+case class ReplyPreimages(preimages: List[ByteVector32] = Nil, searchDenied: Boolean) extends HostedChannelMessage
+
 // Swap In/Out
 
 sealed trait ChainSwapMessage extends LightningMessage
@@ -387,7 +393,7 @@ case object TrampolineUndesired extends TrampolineStatus
 
 object TrampolineOn {
   def default(minimumMsat: MilliSatoshi, cltvExpiryDelta: CltvExpiryDelta): TrampolineOn =
-  // A relatively high (10 sat + 0.1%) and linear defaults in case if peer still wants to route while routing is undesired by us
+    // A relatively high (10 sat + 0.1%) and linear defaults in case if peer still wants to route while routing is undesired by us
     TrampolineOn(minimumMsat, maximumMsat = 1000000000L.msat, feeBaseMsat = 10000L.msat, feeProportionalMillionths = 1000L,
       exponent = 0.0, logExponent = 0.0, cltvExpiryDelta)
 }
