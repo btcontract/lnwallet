@@ -1,10 +1,10 @@
 package com.lightning.walletapp.sqlite
 
 import immortan.{PaymentAction, PaymentDescription}
+import com.lightning.walletapp.{Vibrator, WalletApp}
 import immortan.sqlite.{PaymentTable, RelayTable, SQLitePayment}
 import fr.acinq.eclair.transactions.RemoteFulfill
 import fr.acinq.eclair.wire.FullPaymentTag
-import com.lightning.walletapp.WalletApp
 import immortan.utils.PaymentRequestExt
 import immortan.crypto.Tools.Fiat2Btc
 import fr.acinq.bitcoin.ByteVector32
@@ -25,11 +25,13 @@ class SQLitePaymentExtended(app: WalletApp, db: DBInterfaceSQLiteAndroidMisc, pr
   override def updOkOutgoing(fulfill: RemoteFulfill, fee: MilliSatoshi): Unit = {
     super.updOkOutgoing(fulfill, fee)
     app.sqlNotify(PaymentTable.table)
+    app.notify(Vibrator.uri)
   }
 
   override def updOkIncoming(receivedAmount: MilliSatoshi, paymentHash: ByteVector32): Unit = {
     super.updOkIncoming(receivedAmount, paymentHash)
     app.sqlNotify(PaymentTable.table)
+    app.notify(Vibrator.uri)
   }
 
   override def replaceOutgoingPayment(prex: PaymentRequestExt, description: PaymentDescription, action: Option[PaymentAction],

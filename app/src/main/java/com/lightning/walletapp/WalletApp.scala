@@ -19,6 +19,7 @@ import androidx.appcompat.app.AppCompatDelegate
 import immortan.utils.Denomination.formatFiat
 import fr.acinq.eclair.wire.TrampolineOn
 import androidx.multidex.MultiDex
+import android.provider.Settings
 import android.widget.Toast
 import android.os.Build
 import android.net.Uri
@@ -167,6 +168,8 @@ object WalletApp { me =>
       override def onTransactionReceived(event: TransactionReceived): Unit = {
         val txDescription = TxDescription.defineDescription(LNParams.cm.all.values, event.tx)
         txDataBag.putTx(event, txDescription, lastChainBalance.toMilliSatoshi, LNParams.fiatRatesInfo.rates)
+        // Mainly to prevent multiple vibrations when getting many txs on wallet restoring
+        if (event.depth < 1) app.notify(Vibrator.uri)
       }
 
       override def onChainDisconnected: Unit = {
@@ -203,16 +206,17 @@ object WalletApp { me =>
 
   val currentMsatInFiatHuman: MilliSatoshi => String = msat =>
     msatInFiatHuman(LNParams.fiatRatesInfo.rates, fiatCode, msat)
+}
 
-  object Vibrator {
-    private var lastVibrated = 0L
-    private val vibrator = app.getSystemService(Context.VIBRATOR_SERVICE).asInstanceOf[android.os.Vibrator]
-    def canVibrate: Boolean = null != vibrator && vibrator.hasVibrator && lastVibrated < System.currentTimeMillis - 3000L
+object Vibrator {
+  var lastVibrated: Long = 0L
+  val uri: Uri = Settings.System.getUriFor(Settings.System.VIBRATE_ON)
+  val vibrator: android.os.Vibrator = WalletApp.app.getSystemService(Context.VIBRATOR_SERVICE).asInstanceOf[android.os.Vibrator]
+  def canVibrate: Boolean = null != vibrator && vibrator.hasVibrator && lastVibrated < System.currentTimeMillis - 3000L
 
-    def vibrate: Unit = if (canVibrate) {
-      lastVibrated = System.currentTimeMillis
-      vibrator.vibrate(Array(0L, 85, 200), -1)
-    }
+  def vibrate: Unit = if (canVibrate) {
+    lastVibrated = System.currentTimeMillis
+    vibrator.vibrate(Array(0L, 85, 200), -1)
   }
 }
 
@@ -274,11 +278,10 @@ class WalletApp extends Application { me =>
     quickToast(copied_to_clipboard)
   }
 
-  def clipboardManager: ClipboardManager = getSystemService(Context.CLIPBOARD_SERVICE).asInstanceOf[ClipboardManager]
   def getBufferUnsafe: String = clipboardManager.getPrimaryClip.getItemAt(0).getText.toString
-
+  def clipboardManager: ClipboardManager = getSystemService(Context.CLIPBOARD_SERVICE).asInstanceOf[ClipboardManager]
   def englishWordList: Array[String] = scala.io.Source.fromInputStream(getAssets.open("bip39_english_wordlist.txt"), "UTF-8").getLines.toArray
-
   def sqlPath(targetTable: String): Uri = Uri.parse(s"sqlite://com.lightning.walletapp/table/$targetTable")
   def sqlNotify(targetTable: String): Unit = getContentResolver.notifyChange(sqlPath(targetTable), null)
+  def notify(uri: Uri): Unit = getContentResolver.notifyChange(uri, null)
 }

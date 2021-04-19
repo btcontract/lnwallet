@@ -65,7 +65,6 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
   def setPaymentTypeVis(views: Map[Int, View], visible: Int): Unit = for (id <- paymentTypeIconIds) views(id) setVisibility BaseActivity.viewMap(id == visible)
 
   class PaymentLineViewHolder(itemView: View) extends RecyclerView.ViewHolder(itemView) {
-    println("-- !!!")
     val cardContainer: LinearLayout = itemView.findViewById(R.id.cardContainer).asInstanceOf[LinearLayout]
     val contentContainer: LinearLayout = itemView.findViewById(R.id.contentContainer).asInstanceOf[LinearLayout]
     val typeAndStatus: TextView = itemView.findViewById(R.id.typeAndStatus).asInstanceOf[TextView]
@@ -93,6 +92,10 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
 
   private val txObserver: ContentObserver = new ContentObserver(new Handler) {
     override def onChange(self: Boolean): Unit = txEventStream.onNext(ChannelMaster.updateCounter.incrementAndGet)
+  }
+
+  private val vibratorObserver: ContentObserver = new ContentObserver(new Handler) {
+    override def onChange(self: Boolean): Unit = Vibrator.vibrate
   }
 
   private val netListener: Monitor.ConnectivityListener = new Monitor.ConnectivityListener {
@@ -137,6 +140,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
   override def onDestroy: Unit = {
     streamSubscription.foreach(_.unsubscribe)
 
+    getContentResolver.unregisterContentObserver(vibratorObserver)
     getContentResolver.unregisterContentObserver(paymentObserver)
     getContentResolver.unregisterContentObserver(relayObserver)
     getContentResolver.unregisterContentObserver(txObserver)
@@ -169,6 +173,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
       topInfoLayout post UITask(topBlurringArea setHeightTo topInfoLayout)
       bottomActionBar post UITask(bottomBlurringArea setHeightTo bottomActionBar)
 
+      getContentResolver.registerContentObserver(Vibrator.uri, true, vibratorObserver)
       getContentResolver.registerContentObserver(WalletApp.app.sqlPath(PaymentTable.table), true, paymentObserver)
       getContentResolver.registerContentObserver(WalletApp.app.sqlPath(RelayTable.table), true, relayObserver)
       getContentResolver.registerContentObserver(WalletApp.app.sqlPath(TxTable.table), true, txObserver)

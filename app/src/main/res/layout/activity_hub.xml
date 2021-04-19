@@ -7,7 +7,9 @@
     <!-- Payment list + header -->
 
     <androidx.recyclerview.widget.RecyclerView
-        style="@style/StandardLinearLayout"
+        app:layoutManager="androidx.recyclerview.widget.LinearLayoutManager"
+        android:layout_height="wrap_content"
+        android:layout_width="match_parent"
         android:id="@+id/itemsList"
         android:paddingStart="15dp"
         android:paddingEnd="15dp"/>
