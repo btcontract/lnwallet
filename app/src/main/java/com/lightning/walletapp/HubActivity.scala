@@ -1,28 +1,25 @@
 package com.lightning.walletapp
 
-import java.util.Timer
-import java.util.concurrent.atomic.AtomicLong
-
+import immortan._
+import immortan.utils._
 import fr.acinq.eclair._
-import android.database.ContentObserver
 import immortan.crypto.Tools._
+import scala.concurrent.duration._
 import com.lightning.walletapp.R.string._
-import immortan.{ChannelMaster, LNParams, PaymentInfo, RelayedPreimageInfo, RemoteNodeInfo, TransactionDetails, TxInfo}
-import android.widget.{ImageView, LinearLayout, ListView, RelativeLayout, TextView}
-import immortan.utils.{BitcoinUri, FiatRates, FiatRatesInfo, FiatRatesListener, InputParser, LNUrl, PaymentRequestExt, WalletEventsCatcher, WalletEventsListener}
+
+import android.os.{Bundle, Handler}
+import android.view.{View, ViewGroup}
+import rx.lang.scala.{Subject, Subscription}
+import com.androidstudy.networkmanager.{Monitor, Tovuti}
+import android.widget.{LinearLayout, RelativeLayout, TextView}
+import immortan.sqlite.{PaymentTable, RelayTable, Table, TxTable}
+import fr.acinq.eclair.blockchain.electrum.ElectrumWallet.WalletReady
 import com.lightning.walletapp.BaseActivity.StringOps
 import org.ndeftools.util.activity.NfcReaderActivity
 import com.github.mmin18.widget.RealtimeBlurView
-import org.ndeftools.Message
-import android.os.{Bundle, Handler}
-import android.view.{View, ViewGroup}
 import androidx.recyclerview.widget.RecyclerView
-import com.androidstudy.networkmanager.{Monitor, Tovuti}
-import fr.acinq.eclair.blockchain.electrum.ElectrumWallet.WalletReady
-import immortan.sqlite.{PaymentTable, RelayTable, Table, TxTable}
-import rx.lang.scala.schedulers.{ComputationScheduler, IOScheduler}
-import rx.lang.scala.{Observable, Subject, Subscriber, Subscription}
-
+import android.database.ContentObserver
+import org.ndeftools.Message
 
 
 class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataChecker with ChoiceReceiver { me =>
@@ -80,16 +77,21 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
 
   // LISTENERS
 
+  private var streamSubscription = Option.empty[Subscription]
+  private val paymentEventStream = Subject[Long]
+  private val relayEventStream = Subject[Long]
+  private val txEventStream = Subject[Long]
+
   private val paymentObserver: ContentObserver = new ContentObserver(new Handler) {
-    override def onChange(askedFromSelf: Boolean): Unit = none
+    override def onChange(self: Boolean): Unit = paymentEventStream.onNext(ChannelMaster.updateCounter.incrementAndGet)
   }
 
   private val relayObserver: ContentObserver = new ContentObserver(new Handler) {
-    override def onChange(askedFromSelf: Boolean): Unit = none
+    override def onChange(self: Boolean): Unit = relayEventStream.onNext(ChannelMaster.updateCounter.incrementAndGet)
   }
 
   private val txObserver: ContentObserver = new ContentObserver(new Handler) {
-    override def onChange(askedFromSelf: Boolean): Unit = none
+    override def onChange(self: Boolean): Unit = txEventStream.onNext(ChannelMaster.updateCounter.incrementAndGet)
   }
 
   private val netListener: Monitor.ConnectivityListener = new Monitor.ConnectivityListener {
@@ -132,6 +134,8 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
   }
 
   override def onDestroy: Unit = {
+    streamSubscription.foreach(_.unsubscribe)
+
     getContentResolver.unregisterContentObserver(paymentObserver)
     getContentResolver.unregisterContentObserver(relayObserver)
     getContentResolver.unregisterContentObserver(txObserver)
@@ -184,6 +188,14 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
 
       updateTotalBalance
       updateFiatRates
+
+      // Throttle all types of burst updates, but make sure the last one is always called
+      val chanEvents = Rx.uniqueFirstAndLastWithinWindow(ChannelMaster.stateUpdateStream, 1.second)
+      val txEvents = Rx.uniqueFirstAndLastWithinWindow(txEventStream, 1.second).doOnNext(_ => reloadTxInfos)
+      val paymentEvents = Rx.uniqueFirstAndLastWithinWindow(paymentEventStream, 1.second).doOnNext(_ => reloadPaymentInfos)
+      val relayEvents = Rx.uniqueFirstAndLastWithinWindow(relayEventStream, 1.second).doOnNext(_ => reloadRelayedPreimageInfos)
+      val allEvents = txEvents.merge(paymentEvents).merge(relayEvents).doOnNext(_ => updAllInfos).merge(chanEvents)
+      streamSubscription = allEvents.subscribe(_ => UITask(adapter.notifyDataSetChanged).run).toSome
     } else {
       WalletApp.freePossiblyUsedResouces
       me exitTo ClassNames.mainActivityClass
@@ -192,8 +204,11 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
   // VIEW HANDLERS
 
   def bringSettings(view: View): Unit = {
-//    WalletApp.app.getContentResolver.notifyChange(WalletApp.app.sqlPath(PaymentTable.table), null)
-    me goTo ClassNames.chainQrActivityClass
+
+  }
+
+  def bringSearch(view: View): Unit = {
+
   }
 
   def bringSendFromClipboard(view: View): Unit = {
@@ -201,14 +216,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
     runInFutureProcessOnUI(InputParser.parse(WalletApp.app.getBufferUnsafe), _ => explain)(_ => me checkExternalData explain)
   }
 
-  def bringScanner(view: View): Unit = {
-//    ChannelMaster.stateUpdateStream.onNext(ChannelMaster.updateCounter.incrementAndGet)
-    //callScanner(me)
-  }
-
-  def bringSearch(view: View): Unit = {
-
-  }
+  def bringScanner(view: View): Unit = callScanner(me)
 
   def bringReceiveOptions(view: View): Unit = {
     val options = Array(dialog_receive_btc, dialog_receive_ln).map(res => getString(res).html)

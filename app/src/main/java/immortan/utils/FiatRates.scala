@@ -59,8 +59,8 @@ case class FiatRatesInfo(rates: Fiat2Btc, oldRates: Fiat2Btc, stamp: Long) {
   def pctChange(fresh: Double, old: Double): Double = (fresh - old) / old * 100
 
   def pctDifference(code: String): Option[String] = List(rates get code, oldRates get code) match {
-    case Some(fresh) :: Some(old) :: Nil if fresh > old => Some(s"<font color=#8BD670>▲ ${Denomination.formatFiatPrecise format pctChange(fresh, old).abs}%</font>")
-    case Some(fresh) :: Some(old) :: Nil if fresh < old => Some(s"<font color=#E35646>▼ ${Denomination.formatFiatPrecise format pctChange(fresh, old).abs}%</font>")
+    case Some(fresh) :: Some(old) :: Nil if fresh > old => Some(s"<font color=#8BD670><small>▲</small> ${Denomination.formatFiatPrecise format pctChange(fresh, old).abs}%</font>")
+    case Some(fresh) :: Some(old) :: Nil if fresh < old => Some(s"<small>▼</small> ${Denomination.formatFiatPrecise format pctChange(fresh, old).abs}%")
     case _ => None
   }
 }
