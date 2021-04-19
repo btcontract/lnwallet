@@ -42,7 +42,7 @@
     ]]></string>
 
     <string name="action_recovery_phrase_title"><![CDATA[Wallet recovery phrase]]></string>
-    <string name="action_recovery_phrase_hint">Type 12 phrase words</string>
+    <string name="action_recovery_phrase_hint">Type recovery words</string>
 
     <string name="dialog_ok">OK</string>
     <string name="dialog_cancel">Cancel</string>
@@ -60,7 +60,7 @@
     <!-- errors -->
 
     <string name="error_could_not_decrypt"><![CDATA[<strong>Backup decryption failed</strong>.<br><br>Make sure that both backup file and recovery phrase are correct.<br><br>Error details:<br><br>%1$s]]></string>
-    <string name="error_wrong_phrase"><![CDATA[<strong>A phrase must be 12 words long</strong>.<br><br><strong>All words must be different</strong>.]]></string>
+    <string name="error_wrong_phrase"><![CDATA[<strong>A phrase must be 12 or 24 words long</strong>.<br><br><strong>All words must be different</strong>.]]></string>
     <string name="error_nothing_useful">Nothing useful is found</string>
 
     <string name="error_nothing_in_clipboard"><![CDATA[

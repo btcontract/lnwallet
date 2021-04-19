@@ -8,7 +8,6 @@ import immortan.crypto.CanBeShutDown
 import immortan.LNParams
 
 
-
 object FiatRates extends CanBeShutDown {
   type BlockchainInfoItemMap = Map[String, BlockchainInfoItem]
   type CoinGeckoItemMap = Map[String, CoinGeckoItem]

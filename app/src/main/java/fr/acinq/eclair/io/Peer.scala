@@ -1,7 +1,7 @@
 package fr.acinq.eclair.io
 
 import fr.acinq.eclair._
-import fr.acinq.bitcoin.{ByteVector32, DeterministicWallet, Satoshi, Script}
+import fr.acinq.bitcoin.{DeterministicWallet, Satoshi, Script}
 import fr.acinq.eclair.channel.{ChannelVersion, Helpers, LocalParams}
 import immortan.{LNParams, RemoteNodeInfo}
 

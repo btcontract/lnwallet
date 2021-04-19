@@ -102,7 +102,7 @@
             android:theme="@style/AppThemeNoActionBar"/>
 
         <activity
-            android:name="ChainQRActivity"
+            android:name="QRChainActivity"
             android:launchMode="singleTask"
             android:screenOrientation="portrait"
             android:theme="@style/AppThemeNoActionBar"/>

@@ -335,7 +335,7 @@ case class ReplyPublicHostedChannelsEnd(chainHash: ByteVector32) extends Routing
 
 case class QueryPreimages(hashes: List[ByteVector32] = Nil) extends HostedChannelMessage
 
-case class ReplyPreimages(preimages: List[ByteVector32] = Nil, searchDenied: Boolean) extends HostedChannelMessage
+case class ReplyPreimages(preimages: List[ByteVector32] = Nil) extends HostedChannelMessage
 
 // Swap In/Out
 

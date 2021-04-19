@@ -1,18 +1,18 @@
 package com.lightning.walletapp
 
 import immortan.sqlite._
+import fr.acinq.eclair._
 import com.lightning.walletapp.sqlite._
 import com.lightning.walletapp.R.string._
 import immortan.crypto.Tools.{Fiat2Btc, none, runAnd}
 import fr.acinq.bitcoin.{Block, Satoshi, SatoshiLong}
-import fr.acinq.eclair.{CltvExpiryDelta, MilliSatoshi}
 import android.app.{Application, NotificationChannel, NotificationManager}
 import fr.acinq.eclair.blockchain.electrum.{CheckPoint, ElectrumClientPool}
 import android.content.{ClipData, ClipboardManager, Context, Intent, SharedPreferences}
 import com.lightning.walletapp.utils.{AwaitService, DelayedNotification, UsedAddons, WebsocketBus}
 import immortan.utils.{BtcDenomination, FeeRates, FeeRatesInfo, FeeRatesListener, FiatRates, FiatRatesInfo, FiatRatesListener, SatDenomination, WalletEventsListener}
-import immortan.{Channel, ChannelMaster, CommsTower, LNParams, MnemonicExtStorageFormat, PathFinder, RemoteNodeInfo, TestNetSyncParams}
-import fr.acinq.eclair.blockchain.electrum.ElectrumWallet.WalletReady
+import immortan.{Channel, ChannelMaster, CommsTower, LNParams, MnemonicExtStorageFormat, PathFinder, RemoteNodeInfo, TestNetSyncParams, TxDescription}
+import fr.acinq.eclair.blockchain.electrum.ElectrumWallet.{TransactionReceived, WalletReady}
 import fr.acinq.eclair.channel.CMD_CHECK_FEERATE
 import fr.acinq.eclair.router.Router.RouterConf
 import androidx.appcompat.app.AppCompatDelegate
@@ -158,9 +158,15 @@ object WalletApp { me =>
         LNParams.blockCount.set(event.height)
         LNParams.cm.initConnect
 
-        if (event.totalBalance == lastChainBalance) return
-        extDataBag.putLastBalance(event.totalBalance)
-        lastChainBalance = event.totalBalance
+        if (event.totalBalance != lastChainBalance) {
+          extDataBag.putLastBalance(event.totalBalance)
+          lastChainBalance = event.totalBalance
+        }
+      }
+
+      override def onTransactionReceived(event: TransactionReceived): Unit = {
+        val txDescription = TxDescription.defineDescription(LNParams.cm.all.values, event.tx)
+        txDataBag.putTx(event, txDescription, lastChainBalance.toMilliSatoshi, LNParams.fiatRatesInfo.rates)
       }
 
       override def onChainDisconnected: Unit = {

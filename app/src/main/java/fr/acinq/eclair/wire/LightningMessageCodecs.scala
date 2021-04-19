@@ -354,10 +354,7 @@ object LightningMessageCodecs {
 
   lazy val queryPreimagesCodec = (listOfN(uint16, bytes32) withContext "hashes").as[QueryPreimages]
 
-  lazy val replyPreimagesCodec = {
-    (listOfN(uint16, bytes32) withContext "preimages") ::
-      (bool8 withContext "searchDenied")
-  }.as[ReplyPreimages]
+  lazy val replyPreimagesCodec = (listOfN(uint16, bytes32) withContext "preimages").as[ReplyPreimages]
 
   final val HC_INVOKE_HOSTED_CHANNEL_TAG = 65535
   final val HC_INIT_HOSTED_CHANNEL_TAG = 65533

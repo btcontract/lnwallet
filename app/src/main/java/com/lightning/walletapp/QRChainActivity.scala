@@ -14,7 +14,7 @@ import android.os.Bundle
 import immortan.LNParams
 
 
-class ChainQRActivity extends QRActivity { me =>
+class QRChainActivity extends QRActivity { me =>
   lazy private[this] val chainQrCaption = findViewById(R.id.chainQrCaption).asInstanceOf[TextView]
   lazy private[this] val chainQrCodes = findViewById(R.id.chainQrCodes).asInstanceOf[RecyclerView]
   lazy private[this] val chainQrMore = findViewById(R.id.chainQrMore).asInstanceOf[NoboButton]

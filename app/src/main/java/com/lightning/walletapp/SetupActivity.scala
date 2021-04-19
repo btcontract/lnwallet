@@ -77,7 +77,10 @@ class SetupActivity extends BaseActivity { me =>
       }
     }
 
-  def createNewWallet(view: View): Unit = proceedWithSeed(randomBytes32)
+  def createNewWallet(view: View): Unit = {
+    val twelveWordsSeed = randomBytes(16)
+    proceedWithSeed(twelveWordsSeed)
+  }
 
   def showRestoreOptions(view: View): Unit = {
     TransitionManager.beginDelayedTransition(activitySetupMain)
@@ -102,7 +105,7 @@ class SetupActivity extends BaseActivity { me =>
     def maybeProceed(alert: AlertDialog): Unit = {
       val mnemonic = recoveryPhrase.getText.toString.toLowerCase.trim
       val pureMnemonic = mnemonic.replaceAll("[^a-zA-Z0-9']+", SEPARATOR).split(SEPARATOR).distinct
-      if (pureMnemonic.length != 12) WalletApp.app.quickToast(getString(R.string.error_wrong_phrase).html) else {
+      if (pureMnemonic.length % 12 != 0) WalletApp.app.quickToast(getString(R.string.error_wrong_phrase).html) else {
         val seed = MnemonicCode.toSeed(pureMnemonic, passphrase = new String)
         removeAndProceedWithTimeout(alert)(onSeed apply seed)
       }

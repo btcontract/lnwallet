@@ -61,6 +61,9 @@ trait ChoiceReceiver {
 }
 
 trait BaseActivity extends AppCompatActivity { me =>
+  val btcDenominationWhiteZero = "#33FFFFFF"
+  val btcDenominationGrayZero = "#99333333"
+
   override def onCreate(savedActivityState: Bundle): Unit = {
     Thread setDefaultUncaughtExceptionHandler new UncaughtHandler(me)
     super.onCreate(savedActivityState)

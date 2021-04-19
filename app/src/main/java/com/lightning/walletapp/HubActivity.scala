@@ -51,7 +51,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
   def updAllInfos: Unit = allInfos = (paymentInfos ++ relayedPreimageInfos ++ txInfos).toList.sortBy(_.seenAt)(Ordering[Long].reverse)
 
   val adapter: RecyclerView.Adapter[PaymentLineViewHolder] = new RecyclerView.Adapter[PaymentLineViewHolder] {
-    override def onBindViewHolder(holder: PaymentLineViewHolder, pos: Int): Unit = allInfos(pos)
+    override def onBindViewHolder(holder: PaymentLineViewHolder, pos: Int): Unit = none
     override def getItemId(itemPosition: Int): Long = itemPosition
     override def getItemCount: Int = allInfos.size
 
@@ -61,10 +61,11 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
     }
   }
 
-  val paymentTypeIconIds = List(R.id.btcIncoming, R.id.btcOutgoing, R.id.lnIncoming, R.id.lnOutgoing, R.id.lnRouted, R.id.btcLn, R.id.lnBtc)
+  lazy val paymentTypeIconIds = List(R.id.btcIncoming, R.id.btcOutgoing, R.id.lnIncoming, R.id.lnOutgoing, R.id.lnRouted, R.id.btcLn, R.id.lnBtc)
   def setPaymentTypeVis(views: Map[Int, View], visible: Int): Unit = for (id <- paymentTypeIconIds) views(id) setVisibility BaseActivity.viewMap(id == visible)
 
   class PaymentLineViewHolder(itemView: View) extends RecyclerView.ViewHolder(itemView) {
+    println("-- !!!")
     val cardContainer: LinearLayout = itemView.findViewById(R.id.cardContainer).asInstanceOf[LinearLayout]
     val contentContainer: LinearLayout = itemView.findViewById(R.id.contentContainer).asInstanceOf[LinearLayout]
     val typeAndStatus: TextView = itemView.findViewById(R.id.typeAndStatus).asInstanceOf[TextView]
@@ -176,6 +177,14 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
       FiatRates.listeners += fiatRatesListener
       Tovuti.from(me).monitor(netListener)
 
+      // Throttle all types of burst updates, but make sure the last one is always called
+      val chanEvents = Rx.uniqueFirstAndLastWithinWindow(ChannelMaster.stateUpdateStream, 1.second)
+      val txEvents = Rx.uniqueFirstAndLastWithinWindow(txEventStream, 1.second).doOnNext(_ => reloadTxInfos)
+      val paymentEvents = Rx.uniqueFirstAndLastWithinWindow(paymentEventStream, 1.second).doOnNext(_ => reloadPaymentInfos)
+      val relayEvents = Rx.uniqueFirstAndLastWithinWindow(relayEventStream, 1.second).doOnNext(_ => reloadRelayedPreimageInfos)
+      val allEvents = txEvents.merge(paymentEvents).merge(relayEvents).doOnNext(_ => updAllInfos).merge(chanEvents)
+      streamSubscription = allEvents.subscribe(_ => UITask(adapter.notifyDataSetChanged).run).toSome
+
       WalletApp.txDataBag.db txWrap {
         reloadRelayedPreimageInfos
         reloadPaymentInfos
@@ -185,17 +194,8 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
 
       itemsList.setHasFixedSize(true)
       itemsList.setAdapter(adapter)
-
       updateTotalBalance
       updateFiatRates
-
-      // Throttle all types of burst updates, but make sure the last one is always called
-      val chanEvents = Rx.uniqueFirstAndLastWithinWindow(ChannelMaster.stateUpdateStream, 1.second)
-      val txEvents = Rx.uniqueFirstAndLastWithinWindow(txEventStream, 1.second).doOnNext(_ => reloadTxInfos)
-      val paymentEvents = Rx.uniqueFirstAndLastWithinWindow(paymentEventStream, 1.second).doOnNext(_ => reloadPaymentInfos)
-      val relayEvents = Rx.uniqueFirstAndLastWithinWindow(relayEventStream, 1.second).doOnNext(_ => reloadRelayedPreimageInfos)
-      val allEvents = txEvents.merge(paymentEvents).merge(relayEvents).doOnNext(_ => updAllInfos).merge(chanEvents)
-      streamSubscription = allEvents.subscribe(_ => UITask(adapter.notifyDataSetChanged).run).toSome
     } else {
       WalletApp.freePossiblyUsedResouces
       me exitTo ClassNames.mainActivityClass
@@ -204,7 +204,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
   // VIEW HANDLERS
 
   def bringSettings(view: View): Unit = {
-
+    me goTo ClassNames.chainQrActivityClass
   }
 
   def bringSearch(view: View): Unit = {
@@ -235,7 +235,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
 
   def updateTotalBalance: Unit = {
     val chainBalanceMsat = WalletApp.lastChainBalance.toMilliSatoshi
-    totalBalance.setText(LNParams.denomination.parsedWithSign(chainBalanceMsat, "#333333").html)
+    totalBalance.setText(LNParams.denomination.parsedWithSign(chainBalanceMsat, btcDenominationGrayZero).html)
     totalFiatBalance.setText(WalletApp.currentMsatInFiatHuman(chainBalanceMsat).html)
   }
 }
