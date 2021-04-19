@@ -10,7 +10,7 @@ import android.app.{Application, NotificationChannel, NotificationManager}
 import fr.acinq.eclair.blockchain.electrum.{CheckPoint, ElectrumClientPool}
 import android.content.{ClipData, ClipboardManager, Context, Intent, SharedPreferences}
 import com.lightning.walletapp.utils.{AwaitService, DelayedNotification, UsedAddons, WebsocketBus}
-import immortan.utils.{BtcDenomination, FeeRates, FeeRatesInfo, FiatRates, FiatRatesInfo, SatDenomination}
+import immortan.utils.{BtcDenomination, FeeRates, FeeRatesInfo, FeeRatesListener, FiatRates, FiatRatesInfo, FiatRatesListener, SatDenomination, WalletEventsListener}
 import immortan.{Channel, ChannelMaster, CommsTower, LNParams, MnemonicExtStorageFormat, PathFinder, RemoteNodeInfo, TestNetSyncParams}
 import fr.acinq.eclair.router.Router.RouterConf
 import androidx.appcompat.app.AppCompatDelegate
@@ -20,6 +20,9 @@ import androidx.multidex.MultiDex
 import android.widget.Toast
 import android.os.Build
 import android.net.Uri
+import fr.acinq.eclair.blockchain.electrum.ElectrumWallet.WalletReady
+import fr.acinq.eclair.channel.CMD_CHECK_FEERATE
+
 import scala.util.Try
 
 
@@ -61,8 +64,8 @@ object WalletApp { me =>
     // Clear listeners
     try LNParams.cm.becomeShutDown catch none
     try LNParams.chainWallet.becomeShutDown catch none
-    try FiatRates.subscription.unsubscribe catch none
-    try FeeRates.subscription.unsubscribe catch none
+    try FiatRates.becomeShutDown catch none
+    try FeeRates.becomeShutDown catch none
 
     txDataBag = null
     extDataBag = null
@@ -78,8 +81,7 @@ object WalletApp { me =>
       extDataBag = new SQLiteDataExtended(miscInterface)
       txDataBag = new SQLiteTxExtended(app, miscInterface)
       lastChainBalance = extDataBag.tryGetLastBalance getOrElse 0L.sat
-      usedAddons = extDataBag.tryGetAddons getOrElse UsedAddons(List.empty)
-
+      usedAddons = extDataBag.tryGetAddons getOrElse UsedAddons(Nil)
       if (app.isTablet) Table.DEFAULT_LIMIT.set(10)
       else Table.DEFAULT_LIMIT.set(20)
     }
@@ -131,14 +133,47 @@ object WalletApp { me =>
     LNParams.cm = new ChannelMaster(payBag, chanBag, extDataBag, pf)
     LNParams.chainWallet = LNParams.createWallet(extDataBag, format.seed)
 
-    // Take care of essential listeners
-    LNParams.chainWallet.eventsCatcher ! LNParams.cm.chainChannelListener
-    FeeRates.listeners += LNParams.cm.feeRatesListener
+    // Take care of essential listeners of all kinds
+    // Listeners added here will be called first
     pf.listeners += LNParams.cm.opm
 
+    FeeRates.listeners += new FeeRatesListener {
+      def onFeeRates(newFeeRates: FeeRatesInfo): Unit = {
+        LNParams.cm.all.values.foreach(_ process CMD_CHECK_FEERATE)
+        extDataBag.putFeeRatesInfo(newFeeRates)
+      }
+    }
+
+    FiatRates.listeners += new FiatRatesListener {
+      def onFiatRates(newFiatRates: FiatRatesInfo): Unit = {
+        extDataBag.putFiatRatesInfo(newFiatRates)
+      }
+    }
+
+    LNParams.chainWallet.eventsCatcher ! new WalletEventsListener {
+      // CurrentBlockCount is handled separately is Channel.Receiver
+      override def onChainSynchronized(event: WalletReady): Unit = {
+        // Sync is complete now, we can start channel connections
+        // Invalidate last disconnect stamp since we're up again
+        LNParams.lastDisconnect.set(Long.MaxValue)
+        LNParams.blockCount.set(event.height)
+        LNParams.cm.initConnect
+
+        if (event.totalBalance == lastChainBalance) return
+        extDataBag.putLastBalance(event.totalBalance)
+        lastChainBalance = event.totalBalance
+      }
+
+      override def onChainDisconnected: Unit = {
+        // Remember to eventually stop accepting payments
+        // note that there may be many these events in a row
+        LNParams.lastDisconnect.set(System.currentTimeMillis)
+      }
+    }
+
     // Get up channels and payment FSMs
-    LNParams.cm.all = Channel.load(Set(LNParams.cm), LNParams.cm.chanBag)
-    // This is a critically important update which will create routed and incoming FSMs if we still have pending payments in channels
+    LNParams.cm.all = Channel.load(listeners = Set(LNParams.cm), chanBag)
+    // This is a critically important update which will create all in/routed/out FSMs if we still have pending payments in channels
     LNParams.cm.notifyFSMs(LNParams.cm.allInChannelOutgoing, LNParams.cm.allIncomingResolutions, Nil, makeMissingOutgoingFSM = true)
   }
 

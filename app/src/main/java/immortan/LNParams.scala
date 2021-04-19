@@ -280,6 +280,9 @@ trait DataBag {
   def putFormat(format: StorageFormat): Unit
   def tryGetFormat: Try[StorageFormat]
 
+  def putFeeRatesInfo(data: FeeRatesInfo): Unit
+  def tryGetFeeRatesInfo: Try[FeeRatesInfo]
+
   def putReport(paymentHash: ByteVector32, report: String): Unit
   def tryGetReport(paymentHash: ByteVector32): Try[String]
 

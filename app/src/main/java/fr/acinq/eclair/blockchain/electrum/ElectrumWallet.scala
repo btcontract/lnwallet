@@ -526,7 +526,9 @@ object ElectrumWallet {
 
   sealed trait WalletEvent
   case class TransactionReceived(tx: Transaction, depth: Long, received: Satoshi, sent: Satoshi, feeOpt: Option[Satoshi], timestamp: Option[Long] = None) extends WalletEvent
-  case class WalletReady(confirmedBalance: Satoshi, unconfirmedBalance: Satoshi, height: Long, timestamp: Long, heights: Map[ByteVector32, Int] = Map.empty) extends WalletEvent
+  case class WalletReady(confirmedBalance: Satoshi, unconfirmedBalance: Satoshi, height: Long, timestamp: Long, heights: Map[ByteVector32, Int] = Map.empty) extends WalletEvent {
+    val totalBalance: Satoshi = confirmedBalance + unconfirmedBalance
+  }
 
   /**
    *

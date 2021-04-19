@@ -13,13 +13,12 @@ import fr.acinq.bitcoin.Crypto.{PrivateKey, PublicKey}
 import immortan.ChannelListener.{Malfunction, Transition}
 import fr.acinq.eclair.transactions.{RemoteFulfill, RemoteReject}
 import immortan.crypto.{CanBeRepliedTo, CanBeShutDown, StateMachine}
-import immortan.utils.{FeeRatesInfo, FeeRatesListener, Rx, WalletEventsListener}
-import fr.acinq.eclair.blockchain.electrum.ElectrumWallet.WalletReady
 import java.util.concurrent.atomic.AtomicLong
 import fr.acinq.eclair.payment.IncomingPacket
 import com.google.common.cache.LoadingCache
 import fr.acinq.bitcoin.ByteVector32
 import rx.lang.scala.Subject
+import immortan.utils.Rx
 import scala.util.Try
 
 
@@ -34,7 +33,7 @@ object ChannelMaster {
 
   var NO_CHANNEL: StateMachine[ChannelData] with CanBeRepliedTo =
     // It's possible that user removes an HC from system at runtime
-    // or that peer sends a message targeted to non-exiting local channel
+    // or peer sends a message targeted to non-exiting local channel
     new StateMachine[ChannelData] with CanBeRepliedTo {
       def process(change: Any): Unit = doProcess(change)
       def doProcess(change: Any): Unit = none
@@ -82,27 +81,6 @@ class ChannelMaster(val payBag: PaymentBag, val chanBag: ChannelBag, val dataBag
   val getPaymentInfoMemo: LoadingCache[ByteVector32, PaymentInfoTry] = memoize(payBag.getPaymentInfo)
   val initResolveMemo: LoadingCache[UpdateAddHtlcExt, IncomingResolution] = memoize(initResolve)
   val getPreimageMemo: LoadingCache[ByteVector32, PreimageTry] = memoize(payBag.getPreimage)
-
-  val chainChannelListener: WalletEventsListener = new WalletEventsListener {
-    override def onChainSynchronized(event: WalletReady): Unit = {
-      // Sync is complete now, we can start channel connections
-      // Invalidate last disconnect stamp since we're up again
-      LNParams.lastDisconnect.set(Long.MaxValue)
-      LNParams.blockCount.set(event.height)
-      initConnect
-    }
-
-    override def onChainDisconnected: Unit = {
-      // Remember to eventually stop accepting payments
-      // note that there may be many these events in a row
-      LNParams.lastDisconnect.set(System.currentTimeMillis)
-    }
-  }
-
-  val feeRatesListener: FeeRatesListener = new FeeRatesListener {
-    // Unless anchor outputs are used we need to priodically adjust channel fee-rates to avoid force-closing
-    def onFeeRates(rates: FeeRatesInfo): Unit = all.values.foreach(_ process CMD_CHECK_FEERATE)
-  }
 
   val socketChannelListener: ConnectionListener = new ConnectionListener {
     override def onOperational(worker: CommsTower.Worker, theirInit: Init): Unit = {
@@ -225,8 +203,8 @@ class ChannelMaster(val payBag: PaymentBag, val chanBag: ChannelBag, val dataBag
       case _ => // Do nothing
     }
 
-    // Incoming FSM may have been created, but now no related incoming or outgoing payments are left
-    // this is used by incoming FSMs to finalize themselves including removal from `inProcessors` map
+    // Incoming FSM may have been created, but now no related payments are left
+    // this specific change is used by incoming FSMs to properly finalize themselves
     inProcessors.values.foreach(_ doProcess bag)
     rejects.foreach(opm.process)
   }
@@ -253,6 +231,7 @@ class ChannelMaster(val payBag: PaymentBag, val chanBag: ChannelBag, val dataBag
   }
 
   override def stateUpdated(rejects: Seq[RemoteReject] = Nil): Unit = {
+    // Outgoing FSM should have been created on app startup, here we specifically do not ever recreate it
     notifyFSMs(allInChannelOutgoing, allIncomingResolutions, rejects, makeMissingOutgoingFSM = false)
     stateUpdateStream.onNext(updateCounter.incrementAndGet)
   }

@@ -1,10 +1,13 @@
 package immortan.sqlite
 
+import spray.json._
 import immortan.sqlite.SQLiteData._
-import fr.acinq.eclair.wire.LightningMessageCodecs.{trampolineOnCodec, swapInStateCodec}
+import immortan.utils.ImplicitJsonFormats._
+import fr.acinq.eclair.wire.LightningMessageCodecs.{swapInStateCodec, trampolineOnCodec}
 import fr.acinq.eclair.wire.{HostedChannelBranding, SwapInState, TrampolineOn}
+import fr.acinq.bitcoin.{BlockHeader, ByteVector32, Satoshi}
 import immortan.{DataBag, StorageFormat, SwapInStateExt}
-import fr.acinq.bitcoin.{BlockHeader, ByteVector32}
+import immortan.utils.{FeeRatesInfo, FiatRatesInfo}
 import java.lang.{Integer => JInt}
 
 import fr.acinq.eclair.blockchain.electrum.db.WalletDb
@@ -22,9 +25,14 @@ object SQLiteData {
   final val LABEL_FORMAT = "label-format"
   final val LABEL_ELECTRUM_DATA = "label-electrum-data"
   final val LABLEL_TRAMPOLINE_ON = "label-trampoline-on"
+  final val LABEL_LAST_BALANCE = "label-last-balance"
+  final val LABEL_FIAT_RATES = "label-fiat-rates"
+  final val LABEL_FEE_RATES = "label-fee-rates"
+
   final val LABEL_BRANDING_PREFIX = "label-branding-node-"
   final val LABEL_SWAP_IN_STATE_PREFIX = "label-swap-in-node-"
   final val LABEL_PAYMENT_REPORT_PREFIX = "label-payment-report-"
+
   def byteVecToString(bv: ByteVector): String = new String(bv.toArray, "UTF-8")
 }
 
@@ -45,11 +53,23 @@ class SQLiteData(val db: DBInterface) extends WalletDb with DataBag {
 
   def tryGetFormat: Try[StorageFormat] = tryGet(LABEL_FORMAT).map(raw => storageFormatCodec.decode(raw.toBitVector).require.value)
 
-  // Trampoline
+  // Trampoline, last balance, fiat rates, fee rates
 
   def putTrampolineOn(ton: TrampolineOn): Unit = put(LABLEL_TRAMPOLINE_ON, trampolineOnCodec.encode(ton).require.toByteArray)
 
   def tryGetTrampolineOn: Try[TrampolineOn] = tryGet(LABLEL_TRAMPOLINE_ON).map(raw => trampolineOnCodec.decode(raw.toBitVector).require.value)
+
+  def putLastBalance(data: Satoshi): Unit = put(LABEL_LAST_BALANCE, data.toJson.compactPrint getBytes "UTF-8")
+
+  def tryGetLastBalance: Try[Satoshi] = tryGet(LABEL_LAST_BALANCE).map(SQLiteData.byteVecToString) map to[Satoshi]
+
+  def putFiatRatesInfo(data: FiatRatesInfo): Unit = put(LABEL_FIAT_RATES, data.toJson.compactPrint getBytes "UTF-8")
+
+  def tryGetFiatRatesInfo: Try[FiatRatesInfo] = tryGet(LABEL_FIAT_RATES).map(SQLiteData.byteVecToString) map to[FiatRatesInfo]
+
+  def putFeeRatesInfo(data: FeeRatesInfo): Unit = put(LABEL_FEE_RATES, data.toJson.compactPrint getBytes "UTF-8")
+
+  def tryGetFeeRatesInfo: Try[FeeRatesInfo] = tryGet(LABEL_FEE_RATES).map(SQLiteData.byteVecToString) map to[FeeRatesInfo]
 
   // Payment reports
 

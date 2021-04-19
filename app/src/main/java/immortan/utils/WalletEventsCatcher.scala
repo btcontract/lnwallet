@@ -2,10 +2,13 @@ package immortan.utils
 
 import fr.acinq.eclair.blockchain.electrum.ElectrumClient._
 import fr.acinq.eclair.blockchain.electrum.ElectrumWallet._
-import fr.acinq.eclair.blockchain.CurrentBlockCount
 import immortan.crypto.Tools.none
 import akka.actor.Actor
 
+
+object WalletEventsCatcher {
+  case class Remove(listener: WalletEventsListener)
+}
 
 class WalletEventsCatcher extends Actor {
   var listeners: Set[WalletEventsListener] = Set.empty
@@ -14,6 +17,8 @@ class WalletEventsCatcher extends Actor {
 
   override def receive: Receive = {
     case listener: WalletEventsListener => listeners += listener
+
+    case WalletEventsCatcher.Remove(listener) => listeners -= listener
 
     case event: WalletReady => for (lst <- listeners) lst.onChainSynchronized(event)
 

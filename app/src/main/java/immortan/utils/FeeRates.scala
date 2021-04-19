@@ -6,11 +6,12 @@ import immortan.utils.ImplicitJsonFormats._
 import rx.lang.scala.{Observable, Subscription}
 import com.github.kevinsawicki.http.HttpRequest.get
 import fr.acinq.eclair.blockchain.CurrentFeerates
+import immortan.crypto.CanBeShutDown
 import immortan.crypto.Tools.none
 import immortan.LNParams
 
 
-object FeeRates {
+object FeeRates extends CanBeShutDown {
   def reloadData: FeeratesPerKB = fr.acinq.eclair.secureRandom nextInt 4 match {
     case 0 => new EsploraFeeProvider("https://blockstream.info/api/fee-estimates").provide
     case 1 => new EsploraFeeProvider("https://mempool.space/api/fee-estimates").provide
@@ -44,6 +45,11 @@ object FeeRates {
       blocks_1008 = FeeratePerKB(5000.sat),
       mempoolMinFee = FeeratePerKB(5000.sat)
     )
+
+  override def becomeShutDown: Unit = {
+    subscription.unsubscribe
+    listeners = Set.empty
+  }
 }
 
 case class FeeRatesInfo(perKb: FeeratesPerKB, stamp: Long) {

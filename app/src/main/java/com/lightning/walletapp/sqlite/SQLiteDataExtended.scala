@@ -4,19 +4,12 @@ import spray.json._
 import immortan.utils.ImplicitJsonFormats._
 import com.lightning.walletapp.sqlite.SQLiteDataExtended._
 import com.lightning.walletapp.utils.{AddonData, BasicAddon, UsedAddons}
-import immortan.utils.{FeeRatesInfo, FiatRatesInfo}
 import immortan.sqlite.SQLiteData
-import fr.acinq.bitcoin.Satoshi
 import scala.util.Try
 
 
 object SQLiteDataExtended {
   final val LABEL_ADDONS = "label-addons"
-  final val LABEL_LAST_BALANCE = "label-last-balance"
-  final val LABEL_FIAT_RATES = "label-fiat-rates"
-  final val LABEL_FEE_RATES = "label-fee-rates"
-
-  // Addons
 
   implicit object AddonDataFmt extends JsonFormat[AddonData] {
     def write(internal: AddonData): JsValue = internal match {
@@ -41,16 +34,4 @@ class SQLiteDataExtended(override val db: DBInterfaceSQLiteAndroidMisc) extends 
   def putAddons(addons: UsedAddons): Unit = put(LABEL_ADDONS, addons.toJson.compactPrint getBytes "UTF-8")
 
   def tryGetAddons: Try[UsedAddons] = tryGet(LABEL_ADDONS).map(SQLiteData.byteVecToString) map to[UsedAddons]
-
-  def putLastBalance(wr: Satoshi): Unit = put(LABEL_LAST_BALANCE, wr.toJson.compactPrint getBytes "UTF-8")
-
-  def tryGetLastBalance: Try[Satoshi] = tryGet(LABEL_LAST_BALANCE).map(SQLiteData.byteVecToString) map to[Satoshi]
-
-  def putFiatRatesInfo(data: FiatRatesInfo): Unit = put(LABEL_FIAT_RATES, data.toJson.compactPrint getBytes "UTF-8")
-
-  def tryGetFiatRatesInfo: Try[FiatRatesInfo] = tryGet(LABEL_FIAT_RATES).map(SQLiteData.byteVecToString) map to[FiatRatesInfo]
-
-  def putFeeRatesInfo(data: FeeRatesInfo): Unit = put(LABEL_FEE_RATES, data.toJson.compactPrint getBytes "UTF-8")
-
-  def tryGetFeeRatesInfo: Try[FeeRatesInfo] = tryGet(LABEL_FEE_RATES).map(SQLiteData.byteVecToString) map to[FeeRatesInfo]
 }

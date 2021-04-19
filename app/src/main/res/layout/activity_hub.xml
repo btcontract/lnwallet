@@ -6,11 +6,11 @@
 
     <!-- Payment list + header -->
 
-    <ListView
-        android:paddingEnd="15dp"
-        android:paddingStart="15dp"
+    <androidx.recyclerview.widget.RecyclerView
+        style="@style/StandardLinearLayout"
         android:id="@+id/itemsList"
-        style="@style/StandardLinearLayout"/>
+        android:paddingStart="15dp"
+        android:paddingEnd="15dp"/>
 
     <!-- Top info -->
 
@@ -77,6 +77,7 @@
                 android:id="@+id/fiatUnitPriceAndChange"
                 android:layout_alignParentEnd="true"
                 android:layout_centerVertical="true"
+                android:textAlignment="textEnd"
                 style="@style/ChipTextGray"/>
 
         </RelativeLayout>

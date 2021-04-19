@@ -6,7 +6,11 @@ import fr.acinq.eclair._
 
 object Denomination {
   val symbols = new DecimalFormatSymbols
-  val formatFiat = new DecimalFormat("#,###,###.##")
+
+  val formatFiatPrecise = new DecimalFormat("#,###,###.##")
+  val formatFiat = new DecimalFormat("#,###,###")
+
+  formatFiatPrecise setDecimalFormatSymbols symbols
   formatFiat setDecimalFormatSymbols symbols
 
   def btcBigDecimal2MSat(btc: BigDecimal): MilliSatoshi =
