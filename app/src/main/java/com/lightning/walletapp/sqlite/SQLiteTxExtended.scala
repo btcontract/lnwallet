@@ -9,7 +9,7 @@ import fr.acinq.eclair.MilliSatoshi
 import immortan.TxDescription
 
 
-class SQLiteTxExtended(app: WalletApp, db: DBInterfaceSQLiteAndroidMisc) extends SQLiteTx(db) {
+class SQLiteTxExtended(app: WalletApp, val db: DBInterfaceSQLiteAndroidMisc) extends SQLiteTx(db) {
   override def updConfidence(txid: ByteVector32, depth: Long): Unit = {
     super.updConfidence(txid, depth)
     app.sqlNotify(TxTable.table)

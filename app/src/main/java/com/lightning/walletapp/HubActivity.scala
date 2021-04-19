@@ -7,19 +7,19 @@ import fr.acinq.eclair._
 import android.database.ContentObserver
 import immortan.crypto.Tools._
 import com.lightning.walletapp.R.string._
-import immortan.{ChannelMaster, LNParams, RemoteNodeInfo}
-import android.widget.{LinearLayout, ListView, RelativeLayout, TextView}
+import immortan.{ChannelMaster, LNParams, PaymentInfo, RelayedPreimageInfo, RemoteNodeInfo, TransactionDetails, TxInfo}
+import android.widget.{ImageView, LinearLayout, ListView, RelativeLayout, TextView}
 import immortan.utils.{BitcoinUri, FiatRates, FiatRatesInfo, FiatRatesListener, InputParser, LNUrl, PaymentRequestExt, WalletEventsCatcher, WalletEventsListener}
 import com.lightning.walletapp.BaseActivity.StringOps
 import org.ndeftools.util.activity.NfcReaderActivity
 import com.github.mmin18.widget.RealtimeBlurView
 import org.ndeftools.Message
 import android.os.{Bundle, Handler}
-import android.view.View
+import android.view.{View, ViewGroup}
 import androidx.recyclerview.widget.RecyclerView
 import com.androidstudy.networkmanager.{Monitor, Tovuti}
 import fr.acinq.eclair.blockchain.electrum.ElectrumWallet.WalletReady
-import immortan.sqlite.{PaymentTable, RelayTable, TxTable}
+import immortan.sqlite.{PaymentTable, RelayTable, Table, TxTable}
 import rx.lang.scala.schedulers.{ComputationScheduler, IOScheduler}
 import rx.lang.scala.{Observable, Subject, Subscriber, Subscription}
 
@@ -40,6 +40,43 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
   private[this] lazy val totalFiatBalance = findViewById(R.id.totalFiatBalance).asInstanceOf[TextView]
   private[this] lazy val fiatUnitPriceAndChange = findViewById(R.id.fiatUnitPriceAndChange).asInstanceOf[TextView]
   private val CHOICE_RECEIVE_TAG = "choiceReceiveTag"
+
+  // PAYMENT LIST
+
+  private var txInfos = Iterable.empty[TxInfo]
+  private var paymentInfos = Iterable.empty[PaymentInfo]
+  private var relayedPreimageInfos = Iterable.empty[RelayedPreimageInfo]
+  private var allInfos = List.empty[TransactionDetails]
+
+  def reloadTxInfos: Unit = txInfos = WalletApp.txDataBag.listRecentTxs(Table.DEFAULT_LIMIT.get).map(WalletApp.txDataBag.toTxInfo)
+  def reloadPaymentInfos: Unit = paymentInfos = LNParams.cm.payBag.listRecentPayments(Table.DEFAULT_LIMIT.get).map(LNParams.cm.payBag.toPaymentInfo)
+  def reloadRelayedPreimageInfos: Unit = relayedPreimageInfos = LNParams.cm.payBag.listRecentRelays(Table.DEFAULT_LIMIT.get).map(LNParams.cm.payBag.toRelayedPreimageInfo)
+  def updAllInfos: Unit = allInfos = (paymentInfos ++ relayedPreimageInfos ++ txInfos).toList.sortBy(_.seenAt)(Ordering[Long].reverse)
+
+  val adapter: RecyclerView.Adapter[PaymentLineViewHolder] = new RecyclerView.Adapter[PaymentLineViewHolder] {
+    override def onBindViewHolder(holder: PaymentLineViewHolder, pos: Int): Unit = allInfos(pos)
+    override def getItemId(itemPosition: Int): Long = itemPosition
+    override def getItemCount: Int = allInfos.size
+
+    override def onCreateViewHolder(parent: ViewGroup, viewType: Int): PaymentLineViewHolder = {
+      val paymentLineContainer = getLayoutInflater.inflate(R.layout.frag_payment_line, parent, false)
+      new PaymentLineViewHolder(paymentLineContainer)
+    }
+  }
+
+  val paymentTypeIconIds = List(R.id.btcIncoming, R.id.btcOutgoing, R.id.lnIncoming, R.id.lnOutgoing, R.id.lnRouted, R.id.btcLn, R.id.lnBtc)
+  def setPaymentTypeVis(views: Map[Int, View], visible: Int): Unit = for (id <- paymentTypeIconIds) views(id) setVisibility BaseActivity.viewMap(id == visible)
+
+  class PaymentLineViewHolder(itemView: View) extends RecyclerView.ViewHolder(itemView) {
+    val cardContainer: LinearLayout = itemView.findViewById(R.id.cardContainer).asInstanceOf[LinearLayout]
+    val contentContainer: LinearLayout = itemView.findViewById(R.id.contentContainer).asInstanceOf[LinearLayout]
+    val typeAndStatus: TextView = itemView.findViewById(R.id.typeAndStatus).asInstanceOf[TextView]
+    val amount: TextView = itemView.findViewById(R.id.amount).asInstanceOf[TextView]
+    val meta: TextView = itemView.findViewById(R.id.meta).asInstanceOf[TextView]
+
+    val paymentTypeViews: List[View] = paymentTypeIconIds.map(itemView.findViewById)
+    val typeMap: Map[Int, View] = paymentTypeIconIds.zip(paymentTypeViews).toMap
+  }
 
   // LISTENERS
 
@@ -134,6 +171,16 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
       LNParams.chainWallet.eventsCatcher ! chainListener
       FiatRates.listeners += fiatRatesListener
       Tovuti.from(me).monitor(netListener)
+
+      WalletApp.txDataBag.db txWrap {
+        reloadRelayedPreimageInfos
+        reloadPaymentInfos
+        reloadTxInfos
+        updAllInfos
+      }
+
+      itemsList.setHasFixedSize(true)
+      itemsList.setAdapter(adapter)
 
       updateTotalBalance
       updateFiatRates

@@ -272,6 +272,7 @@ trait PaymentBag {
 
   def listRecentRelays(limit: Int): RichCursor
   def listRecentPayments(limit: Int): RichCursor
+
   def toRelayedPreimageInfo(rc: RichCursor): RelayedPreimageInfo
   def toPaymentInfo(rc: RichCursor): PaymentInfo
 }

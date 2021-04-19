@@ -12,6 +12,8 @@ import android.content.{ClipData, ClipboardManager, Context, Intent, SharedPrefe
 import com.lightning.walletapp.utils.{AwaitService, DelayedNotification, UsedAddons, WebsocketBus}
 import immortan.utils.{BtcDenomination, FeeRates, FeeRatesInfo, FeeRatesListener, FiatRates, FiatRatesInfo, FiatRatesListener, SatDenomination, WalletEventsListener}
 import immortan.{Channel, ChannelMaster, CommsTower, LNParams, MnemonicExtStorageFormat, PathFinder, RemoteNodeInfo, TestNetSyncParams}
+import fr.acinq.eclair.blockchain.electrum.ElectrumWallet.WalletReady
+import fr.acinq.eclair.channel.CMD_CHECK_FEERATE
 import fr.acinq.eclair.router.Router.RouterConf
 import androidx.appcompat.app.AppCompatDelegate
 import immortan.utils.Denomination.formatFiat
@@ -20,9 +22,6 @@ import androidx.multidex.MultiDex
 import android.widget.Toast
 import android.os.Build
 import android.net.Uri
-import fr.acinq.eclair.blockchain.electrum.ElectrumWallet.WalletReady
-import fr.acinq.eclair.channel.CMD_CHECK_FEERATE
-
 import scala.util.Try
 
 
