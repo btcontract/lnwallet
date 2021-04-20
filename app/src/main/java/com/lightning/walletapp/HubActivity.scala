@@ -12,13 +12,14 @@ import android.view.{View, ViewGroup}
 import rx.lang.scala.{Subject, Subscription}
 import com.androidstudy.networkmanager.{Monitor, Tovuti}
 import immortan.sqlite.{PaymentTable, RelayTable, Table, TxTable}
-import android.widget.{BaseAdapter, LinearLayout, ListView, RelativeLayout, TextView}
+import android.widget.{BaseAdapter, ImageView, LinearLayout, ListView, RelativeLayout, TextView}
 import fr.acinq.eclair.blockchain.electrum.ElectrumWallet.WalletReady
 import com.lightning.walletapp.BaseActivity.StringOps
 import org.ndeftools.util.activity.NfcReaderActivity
 import concurrent.ExecutionContext.Implicits.global
 import com.github.mmin18.widget.RealtimeBlurView
 import androidx.recyclerview.widget.RecyclerView
+import com.indicator.ChannelIndicatorLine
 import android.database.ContentObserver
 import org.ndeftools.Message
 
@@ -37,6 +38,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
   private[this] lazy val totalBalance = findViewById(R.id.totalBalance).asInstanceOf[TextView]
   private[this] lazy val totalFiatBalance = findViewById(R.id.totalFiatBalance).asInstanceOf[TextView]
   private[this] lazy val fiatUnitPriceAndChange = findViewById(R.id.fiatUnitPriceAndChange).asInstanceOf[TextView]
+  private[this] lazy val walletCards = new WalletCardsViewHolder
   private val CHOICE_RECEIVE_TAG = "choiceReceiveTag"
 
   // PAYMENT LIST
@@ -51,7 +53,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
   def reloadRelayedPreimageInfos: Unit = relayedPreimageInfos = LNParams.cm.payBag.listRecentRelays(Table.DEFAULT_LIMIT.get).map(LNParams.cm.payBag.toRelayedPreimageInfo)
   def updAllInfos: Unit = allInfos = (paymentInfos ++ relayedPreimageInfos ++ txInfos).toList.sortBy(_.seenAt)(Ordering[Long].reverse)
 
-  val adapter: BaseAdapter = new BaseAdapter {
+  val paymentsAdapter: BaseAdapter = new BaseAdapter {
     override def getItem(pos: Int): TransactionDetails = allInfos(pos)
     override def getItemId(position: Int): Long = position
     override def getCount: Int = allInfos.size
@@ -76,6 +78,20 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
     val paymentTypeViews: List[View] = paymentTypeIconIds.map(itemView.findViewById)
     val typeMap: Map[Int, View] = paymentTypeIconIds.zip(paymentTypeViews).toMap
     itemView.setTag(self)
+  }
+
+  class WalletCardsViewHolder {
+    val view: View = getLayoutInflater.inflate(R.layout.frag_wallet_cards, null)
+    val listCaption: RelativeLayout = view.findViewById(R.id.listCaption).asInstanceOf[RelativeLayout]
+    val totalBitcoinBalance: TextView = view.findViewById(R.id.totalBitcoinBalance).asInstanceOf[TextView]
+    val totalLightningBalance: TextView = view.findViewById(R.id.totalLightningBalance).asInstanceOf[TextView]
+    val channelStateIndicators: LinearLayout = view.findViewById(R.id.channelStateIndicators).asInstanceOf[LinearLayout]
+    val channelIndicator: ChannelIndicatorLine = view.findViewById(R.id.channelIndicator).asInstanceOf[ChannelIndicatorLine]
+
+    val inFlightIncoming: TextView = view.findViewById(R.id.inFlightIncoming).asInstanceOf[TextView]
+    val inFlightOutgoing: TextView = view.findViewById(R.id.inFlightOutgoing).asInstanceOf[TextView]
+    val inFlightRouted: TextView = view.findViewById(R.id.inFlightRouted).asInstanceOf[TextView]
+    val addChannelTip: ImageView = view.findViewById(R.id.addChannelTip).asInstanceOf[ImageView]
   }
 
   // LISTENERS
@@ -108,16 +124,15 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
   }
 
   private val chainListener: WalletEventsListener = new WalletEventsListener {
-    override def onChainSynchronized(event: WalletReady): Unit = UITask {
-      // This may happen due to another block so check our pending txs
-      updateTotalBalance
+    override def onChainSynchronized(event: WalletReady): Unit = {
+      UITask(updateTotalBalance).run
 
       for {
         txInfo <- txInfos if !txInfo.isConfirmed && !txInfo.isDoubleSpent
         (newDepth, newDoubleSpent) <- LNParams.chainWallet.wallet.doubleSpent(txInfo.tx)
         if newDepth != txInfo.depth || newDoubleSpent != txInfo.isDoubleSpent
       } WalletApp.txDataBag.updStatus(txInfo.txid, newDepth, newDoubleSpent)
-    }.run
+    }
   }
 
   private val fiatRatesListener: FiatRatesListener = new FiatRatesListener {
@@ -170,7 +185,10 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
       case _ => whenNone.run
     }
 
-  override def onChoiceMade(tag: String, pos: Int): Unit = {
+  override def onChoiceMade(tag: String, pos: Int): Unit = (tag, pos) match {
+    case (CHOICE_RECEIVE_TAG, 0) => me goTo ClassNames.chainQrActivityClass
+    case (CHOICE_RECEIVE_TAG, 1) =>
+    case _ =>
 //    val body = getLayoutInflater.inflate(R.layout.frag_input_fiat_converter, null)
 //    val rateManager = new RateManager(body, None, Map("usd" -> 57500D), "usd")
 //    val alertBuilder = titleBodyAsViewBuilder(getString(dialog_receive_ln_title), rateManager.content)
@@ -180,8 +198,15 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
   def INIT(state: Bundle): Unit =
     if (WalletApp.isAlive && LNParams.isOperational) {
       setContentView(com.lightning.walletapp.R.layout.activity_hub)
-      topInfoLayout post UITask(topBlurringArea setHeightTo topInfoLayout)
-      bottomActionBar post UITask(bottomBlurringArea setHeightTo bottomActionBar)
+
+      topInfoLayout post UITask {
+        bottomActionBar post UITask {
+          topBlurringArea setHeightTo topInfoLayout
+          bottomBlurringArea setHeightTo bottomActionBar
+          itemsList.setPadding(itemsList.getPaddingLeft, itemsList.getPaddingTop, itemsList.getPaddingRight, bottomActionBar.getHeight)
+          walletCards.view.setPadding(walletCards.view.getPaddingLeft, topInfoLayout.getHeight, walletCards.view.getPaddingRight, 0)
+        }
+      }
 
       getContentResolver.registerContentObserver(Vibrator.uri, true, vibratorObserver)
       getContentResolver.registerContentObserver(WalletApp.app.sqlPath(PaymentTable.table), true, paymentObserver)
@@ -198,7 +223,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
       val paymentEvents = Rx.uniqueFirstAndLastWithinWindow(paymentEventStream, 1.second).doOnNext(_ => reloadPaymentInfos)
       val relayEvents = Rx.uniqueFirstAndLastWithinWindow(relayEventStream, 1.second).doOnNext(_ => reloadRelayedPreimageInfos)
       val allEvents = txEvents.merge(paymentEvents).merge(relayEvents).doOnNext(_ => updAllInfos).merge(chanEvents)
-      streamSubscription = allEvents.subscribe(_ => UITask(adapter.notifyDataSetChanged).run).toSome
+      streamSubscription = allEvents.subscribe(_ => UITask(paymentsAdapter.notifyDataSetChanged).run).toSome
 
       WalletApp.txDataBag.db txWrap {
         reloadRelayedPreimageInfos
@@ -207,7 +232,11 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
         updAllInfos
       }
 
-      itemsList.setAdapter(adapter)
+      itemsList.addHeaderView(walletCards.view)
+      itemsList.setAdapter(paymentsAdapter)
+      itemsList.setDividerHeight(0)
+      itemsList.setDivider(null)
+
       updateTotalBalance
       updateFiatRates
     } else {
@@ -218,7 +247,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
   // VIEW HANDLERS
 
   def bringSettings(view: View): Unit = {
-    me goTo ClassNames.chainQrActivityClass
+
   }
 
   def bringSearch(view: View): Unit = {

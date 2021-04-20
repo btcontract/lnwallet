@@ -8,6 +8,9 @@
 
     <ListView
         android:id="@+id/itemsList"
+        android:clipToPadding="false"
+        android:footerDividersEnabled="false"
+        android:headerDividersEnabled="false"
         style="@style/StandardLinearLayout"/>
 
     <!-- Top info -->
@@ -56,9 +59,7 @@
             </LinearLayout>
         </RelativeLayout>
 
-        <RelativeLayout
-            android:layout_marginTop="6dp"
-            style="@style/FillingView">
+        <RelativeLayout style="@style/FillingView">
 
             <TextView
                 android:id="@+id/totalBalance"
