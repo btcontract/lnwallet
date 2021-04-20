@@ -6,13 +6,9 @@
 
     <!-- Payment list + header -->
 
-    <androidx.recyclerview.widget.RecyclerView
-        app:layoutManager="androidx.recyclerview.widget.LinearLayoutManager"
-        android:layout_height="wrap_content"
-        android:layout_width="match_parent"
+    <ListView
         android:id="@+id/itemsList"
-        android:paddingStart="15dp"
-        android:paddingEnd="15dp"/>
+        style="@style/StandardLinearLayout"/>
 
     <!-- Top info -->
 

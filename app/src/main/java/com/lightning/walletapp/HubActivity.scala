@@ -11,8 +11,8 @@ import android.os.{Bundle, Handler}
 import android.view.{View, ViewGroup}
 import rx.lang.scala.{Subject, Subscription}
 import com.androidstudy.networkmanager.{Monitor, Tovuti}
-import android.widget.{LinearLayout, RelativeLayout, TextView}
 import immortan.sqlite.{PaymentTable, RelayTable, Table, TxTable}
+import android.widget.{BaseAdapter, LinearLayout, ListView, RelativeLayout, TextView}
 import fr.acinq.eclair.blockchain.electrum.ElectrumWallet.WalletReady
 import com.lightning.walletapp.BaseActivity.StringOps
 import org.ndeftools.util.activity.NfcReaderActivity
@@ -32,7 +32,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
   private[this] lazy val bottomBlurringArea = findViewById(R.id.bottomBlurringArea).asInstanceOf[RealtimeBlurView]
   private[this] lazy val bottomActionBar = findViewById(R.id.bottomActionBar).asInstanceOf[LinearLayout]
 
-  private[this] lazy val itemsList = findViewById(R.id.itemsList).asInstanceOf[RecyclerView]
+  private[this] lazy val itemsList = findViewById(R.id.itemsList).asInstanceOf[ListView]
   private[this] lazy val totalBalance = findViewById(R.id.totalBalance).asInstanceOf[TextView]
   private[this] lazy val totalFiatBalance = findViewById(R.id.totalFiatBalance).asInstanceOf[TextView]
   private[this] lazy val fiatUnitPriceAndChange = findViewById(R.id.fiatUnitPriceAndChange).asInstanceOf[TextView]
@@ -50,21 +50,22 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
   def reloadRelayedPreimageInfos: Unit = relayedPreimageInfos = LNParams.cm.payBag.listRecentRelays(Table.DEFAULT_LIMIT.get).map(LNParams.cm.payBag.toRelayedPreimageInfo)
   def updAllInfos: Unit = allInfos = (paymentInfos ++ relayedPreimageInfos ++ txInfos).toList.sortBy(_.seenAt)(Ordering[Long].reverse)
 
-  val adapter: RecyclerView.Adapter[PaymentLineViewHolder] = new RecyclerView.Adapter[PaymentLineViewHolder] {
-    override def onBindViewHolder(holder: PaymentLineViewHolder, pos: Int): Unit = none
-    override def getItemId(itemPosition: Int): Long = itemPosition
-    override def getItemCount: Int = allInfos.size
+  val adapter: BaseAdapter = new BaseAdapter {
+    override def getItem(pos: Int): TransactionDetails = allInfos(pos)
+    override def getItemId(position: Int): Long = position
+    override def getCount: Int = allInfos.size
 
-    override def onCreateViewHolder(parent: ViewGroup, viewType: Int): PaymentLineViewHolder = {
-      val paymentLineContainer = getLayoutInflater.inflate(R.layout.frag_payment_line, parent, false)
-      new PaymentLineViewHolder(paymentLineContainer)
+    override def getView(position: Int, savedView: View, parent: ViewGroup): View = {
+      val view = if (null == savedView) getLayoutInflater.inflate(R.layout.frag_payment_line, null) else savedView
+      val holder = if (null == view.getTag) new PaymentLineViewHolder(view) else view.getTag.asInstanceOf[PaymentLineViewHolder]
+      view
     }
   }
 
   lazy val paymentTypeIconIds = List(R.id.btcIncoming, R.id.btcOutgoing, R.id.lnIncoming, R.id.lnOutgoing, R.id.lnRouted, R.id.btcLn, R.id.lnBtc)
   def setPaymentTypeVis(views: Map[Int, View], visible: Int): Unit = for (id <- paymentTypeIconIds) views(id) setVisibility BaseActivity.viewMap(id == visible)
 
-  class PaymentLineViewHolder(itemView: View) extends RecyclerView.ViewHolder(itemView) {
+  class PaymentLineViewHolder(itemView: View) extends RecyclerView.ViewHolder(itemView) { self =>
     val cardContainer: LinearLayout = itemView.findViewById(R.id.cardContainer).asInstanceOf[LinearLayout]
     val contentContainer: LinearLayout = itemView.findViewById(R.id.contentContainer).asInstanceOf[LinearLayout]
     val typeAndStatus: TextView = itemView.findViewById(R.id.typeAndStatus).asInstanceOf[TextView]
@@ -73,6 +74,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
 
     val paymentTypeViews: List[View] = paymentTypeIconIds.map(itemView.findViewById)
     val typeMap: Map[Int, View] = paymentTypeIconIds.zip(paymentTypeViews).toMap
+    itemView.setTag(self)
   }
 
   // LISTENERS
@@ -197,7 +199,6 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
         updAllInfos
       }
 
-      itemsList.setHasFixedSize(true)
       itemsList.setAdapter(adapter)
       updateTotalBalance
       updateFiatRates

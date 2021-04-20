@@ -4,7 +4,7 @@ import java.util.concurrent.atomic.AtomicInteger
 
 
 trait Table {
-  var UNIQUE = "UNIQUE"
+  val UNIQUE = "UNIQUE"
   val (id, fts) = "_id" -> "fts4"
   def createStatements: Seq[String]
 }
