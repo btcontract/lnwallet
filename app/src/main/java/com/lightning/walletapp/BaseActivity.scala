@@ -61,8 +61,20 @@ trait ChoiceReceiver {
 }
 
 trait BaseActivity extends AppCompatActivity { me =>
+  var currentSnackbar = Option.empty[Snackbar]
   val btcDenominationWhiteZero = "#33FFFFFF"
   val btcDenominationGrayZero = "#99333333"
+  val timer = new Timer
+
+  val goTo: Class[_] => Any = target => {
+    this startActivity new Intent(me, target)
+    InputParser.DoNotEraseRecordedValue
+  }
+
+  val exitTo: Class[_] => Any = target => {
+    this startActivity new Intent(me, target)
+    runAnd(InputParser.DoNotEraseRecordedValue)(finish)
+  }
 
   override def onCreate(savedActivityState: Bundle): Unit = {
     Thread setDefaultUncaughtExceptionHandler new UncaughtHandler(me)
@@ -75,16 +87,9 @@ trait BaseActivity extends AppCompatActivity { me =>
     timer.cancel
   }
 
-  val timer = new Timer
-
-  val goTo: Class[_] => Any = target => {
-    this startActivity new Intent(this, target)
-    InputParser.DoNotEraseRecordedValue
-  }
-
-  val exitTo: Class[_] => Any = target => {
-    this startActivity new Intent(this, target)
-    runAnd(InputParser.DoNotEraseRecordedValue)(finish)
+  override def onBackPressed: Unit = currentSnackbar match {
+    case Some(bar) => runAnd(bar.dismiss) { currentSnackbar = None }
+    case None => super.onBackPressed
   }
 
   def INIT(state: Bundle): Unit
@@ -103,8 +108,14 @@ trait BaseActivity extends AppCompatActivity { me =>
   def snack(parent: View, msg: CharSequence, actionRes: Int, onTap: Snackbar => Unit): Unit = try {
     val bottomSnackbar: Snackbar = Snackbar.make(parent, msg, BaseTransientBottomBar.LENGTH_INDEFINITE)
     bottomSnackbar.getView.findViewById(com.google.android.material.R.id.snackbar_text).asInstanceOf[TextView].setMaxLines(15)
-    val actionListener = me onButtonTap onTap(bottomSnackbar)
-    bottomSnackbar.setAction(actionRes, actionListener).show
+
+    val listener = me onButtonTap {
+      currentSnackbar = None
+      onTap(bottomSnackbar)
+    }
+
+    bottomSnackbar.setAction(actionRes, listener).show
+    currentSnackbar = Some(bottomSnackbar)
   } catch none
 
   def onButtonTap(exec: => Unit): OnClickListener = new OnClickListener { def onClick(view: View): Unit = exec }

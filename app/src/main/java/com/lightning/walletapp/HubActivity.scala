@@ -278,7 +278,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
 
   def updateTotalBalance: Unit = {
     val chainBalanceMsat = WalletApp.lastChainBalance.toMilliSatoshi
-    totalBalance.setText(LNParams.denomination.parsedWithSign(chainBalanceMsat, btcDenominationGrayZero).html)
     totalFiatBalance.setText(WalletApp.currentMsatInFiatHuman(chainBalanceMsat).html)
+    totalBalance.setText(LNParams.denomination.parsedWithSign(chainBalanceMsat, btcDenominationGrayZero).html)
   }
 }
