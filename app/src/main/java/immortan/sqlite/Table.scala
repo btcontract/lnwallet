@@ -1,16 +1,15 @@
 package immortan.sqlite
 
-import java.util.concurrent.atomic.AtomicInteger
-
 
 trait Table {
-  val UNIQUE = "UNIQUE"
-  val (id, fts) = "_id" -> "fts4"
   def createStatements: Seq[String]
+  val Tuple2(id, fts) = Tuple2("_id", "fts4")
+  val IDAUTOINC = s"$id INTEGER PRIMARY KEY AUTOINCREMENT"
+  val UNIQUE = "UNIQUE"
 }
 
 object Table {
-  val DEFAULT_LIMIT = new AtomicInteger(10)
+  val DEFAULT_LIMIT = new java.util.concurrent.atomic.AtomicInteger(10)
 }
 
 // Database #1, essential data, exportable to backup
@@ -22,12 +21,7 @@ object ChannelTable extends Table {
   val killSql = s"DELETE FROM $table WHERE WHERE $channelId = ?"
   val selectAllSql = s"SELECT * FROM $table ORDER BY $id DESC"
 
-  def createStatements: Seq[String] =
-    s"""CREATE TABLE IF NOT EXISTS $table(
-      $id INTEGER PRIMARY KEY AUTOINCREMENT,
-      $channelId TEXT NOT NULL $UNIQUE,
-      $data BLOB NOT NULL
-    )""" :: Nil
+  def createStatements: Seq[String] = s"CREATE TABLE IF NOT EXISTS $table($IDAUTOINC, $channelId TEXT NOT NULL $UNIQUE, $data BLOB NOT NULL)" :: Nil
 }
 
 object HtlcInfoTable extends Table {
@@ -38,9 +32,8 @@ object HtlcInfoTable extends Table {
 
   def createStatements: Seq[String] = {
     val createTable = s"""CREATE TABLE IF NOT EXISTS $table(
-      $id INTEGER PRIMARY KEY AUTOINCREMENT, $sid INTEGER NOT NULL,
-      $commitNumber INTEGER NOT NULL, $paymentHash160 BLOB NOT NULL,
-      $cltvExpiry INTEGER NOT NULL
+      $IDAUTOINC, $sid INTEGER NOT NULL, $commitNumber INTEGER NOT NULL,
+      $paymentHash160 BLOB NOT NULL, $cltvExpiry INTEGER NOT NULL
     )"""
 
     // Index can not be unique because for each commit we may have same local or remote number
@@ -55,12 +48,7 @@ object PreimageTable extends Table {
   val newSql = s"INSERT OR IGNORE INTO $table ($hash, $preimage) VALUES (?, ?)"
   val selectByHashSql = s"SELECT * FROM $table WHERE $hash = ?"
 
-  def createStatements: Seq[String] =
-    s"""CREATE TABLE IF NOT EXISTS $table(
-      $id INTEGER PRIMARY KEY AUTOINCREMENT,
-      $hash TEXT NOT NULL $UNIQUE,
-      $preimage TEXT NOT NULL
-    )""" :: Nil
+  def createStatements: Seq[String] = s"CREATE TABLE IF NOT EXISTS $table($IDAUTOINC, $hash TEXT NOT NULL $UNIQUE, $preimage TEXT NOT NULL)" :: Nil
 }
 
 // Database #2, graph data, disposable since can be re-synchronized
@@ -75,12 +63,7 @@ abstract class ChannelAnnouncementTable(val table: String) extends Table {
   val selectAllSql = s"SELECT * FROM $table"
   val killAllSql = s"DELETE * FROM $table"
 
-  def createStatements: Seq[String] =
-    s"""CREATE TABLE IF NOT EXISTS $table(
-      $id INTEGER PRIMARY KEY AUTOINCREMENT, $features BLOB NOT NULL,
-      $shortChannelId INTEGER NOT NULL $UNIQUE, $nodeId1 BLOB NOT NULL,
-      $nodeId2 BLOB NOT NULL
-    )""" :: Nil
+  def createStatements: Seq[String] = s"CREATE TABLE IF NOT EXISTS $table($IDAUTOINC, $features BLOB NOT NULL, $shortChannelId INTEGER NOT NULL $UNIQUE, $nodeId1 BLOB NOT NULL, $nodeId2 BLOB NOT NULL)" :: Nil
 }
 
 object NormalChannelAnnouncementTable extends ChannelAnnouncementTable("normal_announcements") {
@@ -106,10 +89,9 @@ abstract class ChannelUpdateTable(val table: String, val useHeuristics: Boolean)
 
   def createStatements: Seq[String] = {
     val createTable = s"""CREATE TABLE IF NOT EXISTS $table(
-      $id INTEGER PRIMARY KEY AUTOINCREMENT, $sid INTEGER NOT NULL, $timestamp INTEGER NOT NULL, $msgFlags INTEGER NOT NULL,
-      $chanFlags INTEGER NOT NULL, $cltvExpiryDelta INTEGER NOT NULL, $minMsat INTEGER NOT NULL, $base INTEGER NOT NULL,
-      $proportional INTEGER NOT NULL, $maxMsat INTEGER NOT NULL, $position INTEGER NOT NULL,
-      $score INTEGER NOT NULL, $crc32 INTEGER NOT NULL
+      $IDAUTOINC, $sid INTEGER NOT NULL, $timestamp INTEGER NOT NULL, $msgFlags INTEGER NOT NULL, $chanFlags INTEGER NOT NULL,
+      $cltvExpiryDelta INTEGER NOT NULL, $minMsat INTEGER NOT NULL, $base INTEGER NOT NULL, $proportional INTEGER NOT NULL,
+      $maxMsat INTEGER NOT NULL, $position INTEGER NOT NULL, $score INTEGER NOT NULL, $crc32 INTEGER NOT NULL
     )"""
 
     // For each channel we have up to two unique updates indexed by nodeId position
@@ -133,7 +115,7 @@ abstract class ExcludedChannelTable(val table: String) extends Table {
   val killOldSql = s"DELETE FROM $table WHERE $until < ?"
 
   def createStatements: Seq[String] = {
-    val createTable = s"CREATE TABLE IF NOT EXISTS $table($id INTEGER PRIMARY KEY AUTOINCREMENT, $shortChannelId INTEGER NOT NULL $UNIQUE, $until INTEGER NOT NULL)"
+    val createTable = s"CREATE TABLE IF NOT EXISTS $table($IDAUTOINC, $shortChannelId INTEGER NOT NULL $UNIQUE, $until INTEGER NOT NULL)"
     // Excluded channels expire to give them second chance (e.g. channels with one update, channels without max sendable amount)
     val addIndex = s"CREATE INDEX IF NOT EXISTS idx1$table ON $table ($until)"
     createTable :: addIndex :: Nil
@@ -158,9 +140,8 @@ object RelayTable extends Table {
 
   def createStatements: Seq[String] = {
     val createTable = s"""CREATE TABLE IF NOT EXISTS $table(
-      $id INTEGER PRIMARY KEY AUTOINCREMENT, $hash TEXT NOT NULL, $secret TEXT NOT NULL,
-      $preimage TEXT NOT NULL, $seenAt INTEGER NOT NULL, $relayed INTEGER NOT NULL,
-      $earned INTEGER NOT NULL
+      $IDAUTOINC, $hash TEXT NOT NULL, $secret TEXT NOT NULL, $preimage TEXT NOT NULL,
+      $seenAt INTEGER NOT NULL, $relayed INTEGER NOT NULL, $earned INTEGER NOT NULL
     )"""
 
     // Account for many relayed payment sets with same hash but different payment secrets
@@ -195,10 +176,9 @@ object PaymentTable extends Table {
 
   def createStatements: Seq[String] = {
     val createTable = s"""CREATE TABLE IF NOT EXISTS $table(
-      $id INTEGER PRIMARY KEY AUTOINCREMENT, $pr TEXT NOT NULL, $preimage TEXT NOT NULL, $status TEXT NOT NULL,
-      $seenAt INTEGER NOT NULL, $description TEXT NOT NULL, $action TEXT NOT NULL, $hash TEXT NOT NULL $UNIQUE, $secret TEXT NOT NULL,
-      $receivedMsat INTEGER NOT NULL, $sentMsat INTEGER NOT NULL, $feeMsat INTEGER NOT NULL, $balanceMsat INTEGER NOT NULL,
-      $fiatRates TEXT NOT NULL, $chainFee INTEGER NOT NULL, $incoming INTEGER NOT NULL
+      $IDAUTOINC, $pr TEXT NOT NULL, $preimage TEXT NOT NULL, $status TEXT NOT NULL, $seenAt INTEGER NOT NULL, $description TEXT NOT NULL,
+      $action TEXT NOT NULL, $hash TEXT NOT NULL $UNIQUE, $secret TEXT NOT NULL, $receivedMsat INTEGER NOT NULL, $sentMsat INTEGER NOT NULL,
+      $feeMsat INTEGER NOT NULL, $balanceMsat INTEGER NOT NULL, $fiatRates TEXT NOT NULL, $chainFee INTEGER NOT NULL, $incoming INTEGER NOT NULL
     )"""
 
     // Once incoming or outgoing payment is settled we can search it by various metadata
@@ -219,15 +199,13 @@ object TxTable extends Table {
   val selectRecentSql = s"SELECT * FROM $table ORDER BY $id DESC LIMIT ?"
 
   // Updating
-  val updDoubleSpentSql = s"UPDATE $table SET $doubleSpent = ? WHERE $txid = ?"
-  val updDepthSql = s"UPDATE $table SET $depth = ? WHERE $txid = ?"
+  val updStatusSql = s"UPDATE $table SET $depth = ?, $doubleSpent = ? WHERE $txid = ?"
 
   def createStatements: Seq[String] =
     s"""CREATE TABLE IF NOT EXISTS $table(
-      $id INTEGER PRIMARY KEY AUTOINCREMENT, $rawTx TEXT NOT NULL, $txid TEXT NOT NULL $UNIQUE, $depth INTEGER NOT NULL,
-      $receivedMsat INTEGER NOT NULL,$sentMsat INTEGER NOT NULL, $feeMsat INTEGER NOT NULL, $firstSeen INTEGER NOT NULL,
-      $description TEXT NOT NULL, $balanceMsat INTEGER NOT NULL, $fiatRates TEXT NOT NULL, $incoming INTEGER NOT NULL,
-      $doubleSpent INTEGER NOT NULL
+      $IDAUTOINC, $rawTx TEXT NOT NULL, $txid TEXT NOT NULL $UNIQUE, $depth INTEGER NOT NULL, $receivedMsat INTEGER NOT NULL, $sentMsat INTEGER NOT NULL,
+      $feeMsat INTEGER NOT NULL, $firstSeen INTEGER NOT NULL, $description TEXT NOT NULL, $balanceMsat INTEGER NOT NULL, $fiatRates TEXT NOT NULL,
+      $incoming INTEGER NOT NULL, $doubleSpent INTEGER NOT NULL
     )""" :: Nil
 }
 
@@ -238,12 +216,7 @@ object DataTable extends Table {
   val selectSql = s"SELECT * FROM $table WHERE $label = ?"
   val killSql = s"DELETE FROM $table WHERE $label = ?"
 
-  def createStatements: Seq[String] =
-    s"""CREATE TABLE IF NOT EXISTS $table(
-      $id INTEGER PRIMARY KEY AUTOINCREMENT,
-      $label TEXT NOT NULL $UNIQUE,
-      $content BLOB NOT NULL
-    )""" :: Nil
+  def createStatements: Seq[String] = s"CREATE TABLE IF NOT EXISTS $table($IDAUTOINC, $label TEXT NOT NULL $UNIQUE, $content BLOB NOT NULL)" :: Nil
 }
 
 object ElectrumHeadersTable extends Table {
@@ -255,11 +228,5 @@ object ElectrumHeadersTable extends Table {
   val selectHeadersSql = s"SELECT * FROM $table WHERE $height >= ? ORDER BY $height LIMIT ?"
   val selectTipSql = s"SELECT * FROM $table INNER JOIN (SELECT MAX($height) AS maxHeight FROM $table) t1 ON $height = t1.maxHeight"
 
-  def createStatements: Seq[String] =
-    s"""CREATE TABLE IF NOT EXISTS $table(
-      $id INTEGER PRIMARY KEY AUTOINCREMENT,
-      $height INTEGER NOT NULL $UNIQUE,
-      $blockHash TEXT NOT NULL,
-      $header BLOB NOT NULL
-    )""" :: Nil
+  def createStatements: Seq[String] = s"CREATE TABLE IF NOT EXISTS $table($IDAUTOINC, $height INTEGER NOT NULL $UNIQUE, $blockHash TEXT NOT NULL, $header BLOB NOT NULL)" :: Nil
 }

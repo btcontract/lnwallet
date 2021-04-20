@@ -10,13 +10,8 @@ import immortan.TxDescription
 
 
 class SQLiteTxExtended(app: WalletApp, val db: DBInterfaceSQLiteAndroidMisc) extends SQLiteTx(db) {
-  override def updConfidence(txid: ByteVector32, depth: Long): Unit = {
-    super.updConfidence(txid, depth)
-    app.sqlNotify(TxTable.table)
-  }
-
-  override def updDoubleSpent(chainTxId: ByteVector32): Unit = {
-    super.updDoubleSpent(chainTxId)
+  override def updStatus(txid: ByteVector32, depth: Long, isDoubleSpent: Boolean): Unit = {
+    super.updStatus(txid, depth, isDoubleSpent)
     app.sqlNotify(TxTable.table)
   }
 

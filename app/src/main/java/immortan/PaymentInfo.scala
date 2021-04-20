@@ -114,6 +114,7 @@ case class TxInfo(txString: String, txidString: String, depth: Long, receivedMsa
   lazy val fiatRateSnapshot: Fiat2Btc = to[Fiat2Btc](fiatRatesString)
   lazy val description: TxDescription = to[TxDescription](descriptionString)
   lazy val txid: ByteVector32 = ByteVector32.fromValidHex(txidString)
+  lazy val tx: Transaction = Transaction.read(txString)
 }
 
 sealed trait TxDescription

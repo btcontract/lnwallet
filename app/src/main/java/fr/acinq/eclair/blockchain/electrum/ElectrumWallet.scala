@@ -439,7 +439,7 @@ class ElectrumWallet(seed: ByteVector, client: ActorRef, params: ElectrumWallet.
         .filter { case (_, height) => computeDepth(data.blockchain.height, height) >= 2 } // we only consider tx that have been confirmed
         .flatMap { case (txid, _) => data.transactions.get(txid) } // we get the full tx
         .exists(spendingTx => spendingTx.txIn.map(_.outPoint).toSet.intersect(tx.txIn.map(_.outPoint).toSet).nonEmpty && spendingTx.txid != tx.txid) // look for a tx that spend the same utxos and has a different txid
-      stay() replying IsDoubleSpentResponse(tx, isDoubleSpent)
+      stay() replying IsDoubleSpentResponse(tx, data.computeTransactionDepth(tx.txid), isDoubleSpent)
 
     case Event(ElectrumClient.ElectrumDisconnected, data) =>
       log.info(s"wallet got disconnected")
@@ -522,11 +522,11 @@ object ElectrumWallet {
   case class GetPrivateKeyResponse(address: String, key: Option[ExtendedPrivateKey]) extends Response
 
   case class IsDoubleSpent(tx: Transaction) extends Request
-  case class IsDoubleSpentResponse(tx: Transaction, isDoubleSpent: Boolean) extends Response
+  case class IsDoubleSpentResponse(tx: Transaction, depth: Long, isDoubleSpent: Boolean) extends Response
 
   sealed trait WalletEvent
   case class TransactionReceived(tx: Transaction, depth: Long, received: Satoshi, sent: Satoshi, feeOpt: Option[Satoshi], timestamp: Option[Long] = None) extends WalletEvent
-  case class WalletReady(confirmedBalance: Satoshi, unconfirmedBalance: Satoshi, height: Long, timestamp: Long, heights: Map[ByteVector32, Int] = Map.empty) extends WalletEvent {
+  case class WalletReady(confirmedBalance: Satoshi, unconfirmedBalance: Satoshi, height: Long, timestamp: Long) extends WalletEvent {
     val totalBalance: Satoshi = confirmedBalance + unconfirmedBalance
   }
 
@@ -677,30 +677,35 @@ object ElectrumWallet {
                   pendingHeadersRequests: Set[GetHeaders],
                   pendingTransactions: List[Transaction],
                   lastReadyMessage: Option[WalletReady]) {
-    val chainHash = blockchain.chainHash
 
-    lazy val accountKeyMap = accountKeys.map(key => computeScriptHashFromPublicKey(key.publicKey) -> key).toMap
+    val chainHash: ByteVector32 = blockchain.chainHash
 
-    lazy val changeKeyMap = changeKeys.map(key => computeScriptHashFromPublicKey(key.publicKey) -> key).toMap
+    lazy val accountKeyMap: Map[ByteVector32, ExtendedPrivateKey] = accountKeys.map(key => computeScriptHashFromPublicKey(key.publicKey) -> key).toMap
 
-    lazy val firstUnusedAccountKeys = accountKeys.view.filter(key => status.get(computeScriptHashFromPublicKey(key.publicKey)).contains("")).take(MAX_RECEIVE_ADDRESSES)
+    lazy val changeKeyMap: Map[ByteVector32, ExtendedPrivateKey] = changeKeys.map(key => computeScriptHashFromPublicKey(key.publicKey) -> key).toMap
 
-    lazy val firstUnusedChangeKeys = changeKeys.find(key => status.get(computeScriptHashFromPublicKey(key.publicKey)).contains(""))
+    private lazy val firstUnusedAccountKeys = accountKeys.view.filter(key => status.get(computeScriptHashFromPublicKey(key.publicKey)).contains("")).take(MAX_RECEIVE_ADDRESSES)
 
-    lazy val publicScriptMap = (accountKeys ++ changeKeys).map(key => Script.write(computePublicKeyScript(key.publicKey)) -> key).toMap
+    private lazy val firstUnusedChangeKeys = changeKeys.find(key => status.get(computeScriptHashFromPublicKey(key.publicKey)).contains(""))
 
-    lazy val utxos = history.keys.toSeq.flatMap(getUtxos)
+    private lazy val publicScriptMap = (accountKeys ++ changeKeys).map(key => Script.write(computePublicKeyScript(key.publicKey)) -> key).toMap
+
+    lazy val utxos: Seq[Utxo] = history.keys.toSeq.flatMap(getUtxos)
 
     /**
      * The wallet is ready if all current keys have an empty status, and we don't have
      * any history/tx request pending
      * NB: swipeRange * 2 because we have account keys and change keys
      */
-    def isReady(swipeRange: Int) = status.count(_._2 == "") >= swipeRange * 2 && pendingHistoryRequests.isEmpty && pendingTransactionRequests.isEmpty
+    def isReady(swipeRange: Int): Boolean =
+      status.values.count(_.isEmpty) >= swipeRange * 2 &&
+        pendingTransactionRequests.isEmpty &&
+        pendingHistoryRequests.isEmpty
+
 
     def readyMessage: WalletReady = {
       val (confirmed, unconfirmed) = balance
-      WalletReady(confirmed, unconfirmed, blockchain.tip.height, blockchain.tip.header.time, heights)
+      WalletReady(confirmed, unconfirmed, blockchain.tip.height, blockchain.tip.header.time)
     }
 
     /**
@@ -731,22 +736,15 @@ object ElectrumWallet {
      *         unused keys and none is available yet. In this case we will return
      *         the latest change key.
      */
-    def currentChangeKey = firstUnusedChangeKeys.getOrElse {
-      // bad luck we are still looking for unused keys
-      // use the first account key
-      changeKeys.head
-    }
+    def currentChangeKey: ExtendedPrivateKey = firstUnusedChangeKeys.getOrElse(changeKeys.head)
 
-    def currentChangeAddress = segwitAddress(currentChangeKey, chainHash)
+    def currentChangeAddress: String = segwitAddress(currentChangeKey, chainHash)
 
-    def isMine(txIn: TxIn): Boolean = extractPubKeySpentFrom(txIn).exists(pub => publicScriptMap.contains(Script.write(computePublicKeyScript(pub))))
+    def isMine(txIn: TxIn): Boolean = extractPubKeySpentFrom(txIn).map(computePublicKeyScript).map(Script.write).exists(publicScriptMap.contains)
 
     def isSpend(txIn: TxIn, publicKey: PublicKey): Boolean = extractPubKeySpentFrom(txIn).contains(publicKey)
 
     /**
-     *
-     * @param txIn
-     * @param scriptHash
      * @return true if txIn spends from an address that matches scriptHash
      */
     def isSpend(txIn: TxIn, scriptHash: ByteVector32): Boolean = extractPubKeySpentFrom(txIn).exists(pub => computeScriptHashFromPublicKey(pub) == scriptHash)

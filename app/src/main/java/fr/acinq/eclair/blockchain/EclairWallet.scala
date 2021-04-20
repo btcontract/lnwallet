@@ -28,11 +28,9 @@ import scodec.bits.ByteVector
  */
 object EclairWallet {
   type Addresses = List[String]
-
   type TxAndFee = (Transaction, Satoshi)
-
+  type DepthAndDoubleSpent = (Long, Boolean)
   final val OPT_IN_FULL_RBF = TxIn.SEQUENCE_FINAL - 2
-
   final val MAX_RECEIVE_ADDRESSES = 4
 }
 
@@ -65,17 +63,9 @@ trait EclairWallet {
 
   def sendPaymentAll(address: String, feeRatePerKw: FeeratePerKw): Future[TxAndFee]
 
-  /**
-   * Cancels this transaction: this probably translates to "release locks on utxos".
-   */
   def rollback(tx: Transaction): Future[Boolean]
 
-  /**
-   * Tests whether the inputs of the provided transaction have been spent by another transaction.
-   *
-   * Implementations may always return false if they don't want to implement it
-   */
-  def doubleSpent(tx: Transaction): Future[Boolean]
+  def doubleSpent(tx: Transaction): Future[DepthAndDoubleSpent]
 }
 
 final case class OnChainBalance(confirmed: Satoshi, unconfirmed: Satoshi)

@@ -16,6 +16,7 @@ import android.widget.{BaseAdapter, LinearLayout, ListView, RelativeLayout, Text
 import fr.acinq.eclair.blockchain.electrum.ElectrumWallet.WalletReady
 import com.lightning.walletapp.BaseActivity.StringOps
 import org.ndeftools.util.activity.NfcReaderActivity
+import concurrent.ExecutionContext.Implicits.global
 import com.github.mmin18.widget.RealtimeBlurView
 import androidx.recyclerview.widget.RecyclerView
 import android.database.ContentObserver
@@ -108,7 +109,14 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
 
   private val chainListener: WalletEventsListener = new WalletEventsListener {
     override def onChainSynchronized(event: WalletReady): Unit = UITask {
+      // This may happen due to another block so check our pending txs
       updateTotalBalance
+
+      for {
+        txInfo <- txInfos if !txInfo.isConfirmed && !txInfo.isDoubleSpent
+        (newDepth, newDoubleSpent) <- LNParams.chainWallet.wallet.doubleSpent(txInfo.tx)
+        if newDepth != txInfo.depth || newDoubleSpent != txInfo.isDoubleSpent
+      } WalletApp.txDataBag.updStatus(txInfo.txid, newDepth, newDoubleSpent)
     }.run
   }
 
