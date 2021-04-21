@@ -1,5 +1,7 @@
 package com.lightning.walletapp
 
+import immortan._
+import immortan.utils._
 import immortan.sqlite._
 import fr.acinq.eclair._
 import com.lightning.walletapp.sqlite._
@@ -9,10 +11,8 @@ import fr.acinq.bitcoin.{Block, Satoshi, SatoshiLong}
 import android.app.{Application, NotificationChannel, NotificationManager}
 import fr.acinq.eclair.blockchain.electrum.{CheckPoint, ElectrumClientPool}
 import android.content.{ClipData, ClipboardManager, Context, Intent, SharedPreferences}
-import com.lightning.walletapp.utils.{AwaitService, DelayedNotification, UsedAddons, WebsocketBus}
-import immortan.utils.{BtcDenomination, FeeRates, FeeRatesInfo, FeeRatesListener, FiatRates, FiatRatesInfo, FiatRatesListener, SatDenomination, WalletEventsListener}
-import immortan.{Channel, ChannelMaster, CommsTower, LNParams, MnemonicExtStorageFormat, PathFinder, RemoteNodeInfo, TestNetSyncParams, TxDescription}
 import fr.acinq.eclair.blockchain.electrum.ElectrumWallet.{TransactionReceived, WalletReady}
+import com.lightning.walletapp.utils.{AwaitService, DelayedNotification, UsedAddons, WebsocketBus}
 import fr.acinq.eclair.channel.CMD_CHECK_FEERATE
 import fr.acinq.eclair.router.Router.RouterConf
 import androidx.appcompat.app.AppCompatDelegate
@@ -87,7 +87,7 @@ object WalletApp { me =>
     }
   }
 
-  def makeOperational(format: MnemonicExtStorageFormat): Unit = {
+  def makeOperational(secret: WalletSecret): Unit = {
     require(isAlive, "Application is not alive, hence can not become operational")
     val essentialInterface = new DBInterfaceSQLiteAndroidEssential(app, dbFileNameEssential)
     val graphInterface = new DBInterfaceSQLiteAndroidGraph(app, dbFileNameGraph)
@@ -97,7 +97,7 @@ object WalletApp { me =>
     val payBag = new SQLitePaymentExtended(app, extDataBag.db, essentialInterface)
     val chanBag = new SQLiteChannel(essentialInterface)
 
-    LNParams.format = format
+    LNParams.secret = secret
     LNParams.syncParams = new TestNetSyncParams
     LNParams.chainHash = Block.TestnetGenesisBlock.hash
     LNParams.routerConf = RouterConf(maxCltvDelta = CltvExpiryDelta(2016), mppMinPartAmount = MilliSatoshi(10000000L), routeHopDistance = 6)
@@ -131,7 +131,7 @@ object WalletApp { me =>
     }
 
     LNParams.cm = new ChannelMaster(payBag, chanBag, extDataBag, pf)
-    LNParams.chainWallet = LNParams.createWallet(extDataBag, format.seed)
+    LNParams.chainWallet = LNParams.createWallet(extDataBag, secret.seed)
 
     // Take care of essential listeners of all kinds
     // Listeners added here will be called first
@@ -280,7 +280,6 @@ class WalletApp extends Application { me =>
 
   def getBufferUnsafe: String = clipboardManager.getPrimaryClip.getItemAt(0).getText.toString
   def clipboardManager: ClipboardManager = getSystemService(Context.CLIPBOARD_SERVICE).asInstanceOf[ClipboardManager]
-  def englishWordList: Array[String] = scala.io.Source.fromInputStream(getAssets.open("bip39_english_wordlist.txt"), "UTF-8").getLines.toArray
   def sqlPath(targetTable: String): Uri = Uri.parse(s"sqlite://com.lightning.walletapp/table/$targetTable")
   def sqlNotify(targetTable: String): Unit = getContentResolver.notifyChange(sqlPath(targetTable), null)
   def notify(uri: Uri): Unit = getContentResolver.notifyChange(uri, null)

@@ -111,7 +111,7 @@ case class CMD_ADD_HTLC(fullTag: FullPaymentTag, firstAmount: MilliSatoshi, cltv
     // Important: LNParams.format must be defined
     val shortTag = ShortPaymentTag(fullTag.paymentSecret, fullTag.tag)
     val plainBytes = PaymentTagTlv.shortPaymentTagCodec.encode(shortTag).require.toByteVector
-    Tools.chaChaEncrypt(LNParams.format.keys.ourNodePrivateKey.value, randomBytes(12), plainBytes)
+    Tools.chaChaEncrypt(LNParams.secret.keys.ourNodePrivateKey.value, randomBytes(12), plainBytes)
   }
 }
 

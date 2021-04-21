@@ -7,8 +7,6 @@ import fr.acinq.eclair.wire.ChannelCodecs._
 import fr.acinq.eclair.wire.LightningMessageCodecs._
 import fr.acinq.eclair.wire.LastCrossSignedState
 import fr.acinq.bitcoin.Crypto.PublicKey
-import scodec.bits.ByteVector
-import scodec.Codec
 
 
 case class HostedState(nodeId1: PublicKey, nodeId2: PublicKey, lastCrossSignedState: LastCrossSignedState)
@@ -27,25 +25,13 @@ object ExtCodecs {
 
   val lightningNodeKeysCodec = {
     (extendedPrivateKeyCodec withContext "extendedNodeKey") ::
-      (text withContext "xpub") ::
       (privateKey withContext "hashingKey")
   }.as[LightningNodeKeys]
 
-  val mnemonicExtStorageFormatCodec = {
+  val walletSecretCodec = {
     (setCodec(nodeAnnouncementCodec) withContext "outstandingProviders") ::
       (lightningNodeKeysCodec withContext "keys") ::
+      (listOfN(uint8, text) withContext "mnemonic") ::
       (varsizebinarydata withContext "seed")
-  }.as[MnemonicExtStorageFormat]
-
-  val passwordStorageFormatCodec = {
-    (setCodec(nodeAnnouncementCodec) withContext "outstandingProviders") ::
-      (lightningNodeKeysCodec withContext "keys") ::
-      (text withContext "user") ::
-      (optionalText withContext "password")
-  }.as[PasswordStorageFormat]
-
-  val storageFormatCodec: Codec[StorageFormat] =
-    discriminated[StorageFormat].by(uint16)
-      .typecase(1, mnemonicExtStorageFormatCodec)
-      .typecase(2, passwordStorageFormatCodec)
+  }.as[WalletSecret]
 }

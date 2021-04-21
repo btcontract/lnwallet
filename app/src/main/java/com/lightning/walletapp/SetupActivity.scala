@@ -4,7 +4,7 @@ import fr.acinq.eclair._
 import scala.util.{Failure, Success}
 import scodec.bits.{BitVector, ByteVector}
 import android.widget.{ArrayAdapter, LinearLayout}
-import immortan.{LNParams, LightningNodeKeys, MnemonicExtStorageFormat}
+import immortan.{LNParams, LightningNodeKeys, WalletSecret}
 import com.lightning.walletapp.BaseActivity.StringOps
 import com.lightning.walletapp.utils.LocalBackup
 import androidx.transition.TransitionManager
@@ -27,6 +27,11 @@ class SetupActivity extends BaseActivity { me =>
   private[this] final val FILE_REQUEST_CODE = 112
   private[this] final val SEPARATOR = " "
 
+  private[this] lazy val englishWordList = {
+    val rawData = getAssets.open("bip39_english_wordlist.txt")
+    scala.io.Source.fromInputStream(rawData, "UTF-8").getLines.toArray
+  }
+
   def INIT(state: Bundle): Unit = if (WalletApp.isAlive) {
     setContentView(R.layout.activity_setup)
   } else {
@@ -34,9 +39,10 @@ class SetupActivity extends BaseActivity { me =>
     me exitTo ClassNames.mainActivityClass
   }
 
-  def makeFromSeed(seed: ByteVector): Unit = {
-    val keys = LightningNodeKeys.makeFromSeed(seed.toArray)
-    val format = MnemonicExtStorageFormat(Set.empty, keys, seed)
+  def makeFromMnemonics(mnemonics: List[String] = Nil): Unit = {
+    val walletSeeed = MnemonicCode.toSeed(mnemonics, passphrase = new String)
+    val keys = LightningNodeKeys.makeFromSeed(seed = walletSeeed.toArray)
+    val secret = WalletSecret(Set.empty, keys, mnemonics, walletSeeed)
 
     try {
       // Implant graph into db file from resources
@@ -46,29 +52,30 @@ class SetupActivity extends BaseActivity { me =>
       LocalBackup.copyPlainDataToDbLocation(me, WalletApp.dbFileNameGraph, plainBytes.require.value)
     } catch none
 
-    WalletApp.extDataBag.putFormat(format)
-    WalletApp.makeOperational(format)
+    WalletApp.extDataBag.putSecret(secret)
+    WalletApp.makeOperational(secret)
   }
 
-  var proceedWithSeed: ByteVector => Unit = seed => {
-    // Make sure this method can be run at most once by replacing it with a dummy right away
-    runInFutureProcessOnUI(makeFromSeed(seed), onFail)(_ => me exitTo ClassNames.hubActivityClass)
+  var proceedWithMnemonics: List[String] => Unit = mnemonics => {
+    // Make sure this method can be run at most once by replacing it with a noop method right away
+    runInFutureProcessOnUI(makeFromMnemonics(mnemonics), onFail)(_ => me exitTo ClassNames.hubActivityClass)
     TransitionManager.beginDelayedTransition(activitySetupMain)
     activitySetupMain.setVisibility(View.GONE)
-    proceedWithSeed = none
+    proceedWithMnemonics = none
   }
 
   override def onActivityResult(requestCode: Int, resultCode: Int, resultData: Intent): Unit =
     if (requestCode == FILE_REQUEST_CODE && resultCode == Activity.RESULT_OK && resultData != null) {
       val cipherBytes = ByteStreams.toByteArray(getContentResolver openInputStream resultData.getData)
 
-      showMnemonicPopup(R.string.action_backup_present_title) { seed =>
-        LocalBackup.decryptBackup(ByteVector.view(cipherBytes), seed) match {
+      showMnemonicPopup(R.string.action_backup_present_title) { mnemonics =>
+        val walletSeeed = MnemonicCode.toSeed(mnemonics, passphrase = new String)
+        LocalBackup.decryptBackup(ByteVector.view(cipherBytes), walletSeeed) match {
 
           case Success(plainBytes) =>
             // We were able to decrypt a file, implant it into db location and proceed
             LocalBackup.copyPlainDataToDbLocation(me, WalletApp.dbFileNameEssential, plainBytes)
-            proceedWithSeed(plainBytes)
+            proceedWithMnemonics(mnemonics)
 
           case Failure(exception) =>
             val msg = getString(R.string.error_could_not_decrypt)
@@ -78,8 +85,9 @@ class SetupActivity extends BaseActivity { me =>
     }
 
   def createNewWallet(view: View): Unit = {
-    val twelveWordsSeed = randomBytes(16)
-    proceedWithSeed(twelveWordsSeed)
+    val twelveWordsEntropy: ByteVector = randomBytes(16)
+    val mnemonic = MnemonicCode.toMnemonics(twelveWordsEntropy, englishWordList)
+    proceedWithMnemonics(mnemonic)
   }
 
   def showRestoreOptions(view: View): Unit = {
@@ -90,24 +98,28 @@ class SetupActivity extends BaseActivity { me =>
 
   def useBackupFile(view: View): Unit = startActivityForResult(new Intent(Intent.ACTION_OPEN_DOCUMENT).setType("*/*"), FILE_REQUEST_CODE)
 
-  def useRecoveryPhrase(view: View): Unit = showMnemonicPopup(R.string.action_recovery_phrase_title)(proceedWithSeed)
+  def useRecoveryPhrase(view: View): Unit = showMnemonicPopup(R.string.action_recovery_phrase_title)(proceedWithMnemonics)
 
-  def showMnemonicPopup(title: Int)(onSeed: ByteVector => Unit): Unit = {
+  def showMnemonicPopup(title: Int)(onMnemonic: List[String] => Unit): Unit = {
     val mnemonicWrap = getLayoutInflater.inflate(R.layout.frag_mnemonic, null).asInstanceOf[LinearLayout]
     val recoveryPhrase = mnemonicWrap.findViewById(R.id.recoveryPhrase).asInstanceOf[com.hootsuite.nachos.NachoTextView]
-
     recoveryPhrase.addChipTerminator(' ', com.hootsuite.nachos.terminator.ChipTerminatorHandler.BEHAVIOR_CHIPIFY_TO_TERMINATOR)
     recoveryPhrase.addChipTerminator(',', com.hootsuite.nachos.terminator.ChipTerminatorHandler.BEHAVIOR_CHIPIFY_TO_TERMINATOR)
     recoveryPhrase.addChipTerminator('\n', com.hootsuite.nachos.terminator.ChipTerminatorHandler.BEHAVIOR_CHIPIFY_TO_TERMINATOR)
-    recoveryPhrase setAdapter new ArrayAdapter(me, android.R.layout.simple_list_item_1, WalletApp.app.englishWordList)
+    recoveryPhrase setAdapter new ArrayAdapter(me, android.R.layout.simple_list_item_1, englishWordList)
     recoveryPhrase setDropDownBackgroundResource R.color.button_material_dark
 
     def maybeProceed(alert: AlertDialog): Unit = {
-      val mnemonic = recoveryPhrase.getText.toString.toLowerCase.trim
-      val pureMnemonic = mnemonic.replaceAll("[^a-zA-Z0-9']+", SEPARATOR).split(SEPARATOR).distinct
-      if (pureMnemonic.length % 12 != 0) WalletApp.app.quickToast(getString(R.string.error_wrong_phrase).html) else {
-        val seed = MnemonicCode.toSeed(pureMnemonic, passphrase = new String)
-        removeAndProceedWithTimeout(alert)(onSeed apply seed)
+      val mnemonic: String = recoveryPhrase.getText.toString.toLowerCase.trim
+      val pureMnemonic = mnemonic.replaceAll("[^a-zA-Z0-9']+", SEPARATOR).split(SEPARATOR).toList
+
+      try {
+        MnemonicCode.validate(pureMnemonic, englishWordList)
+        removeAndProceedWithTimeout(alert)(onMnemonic apply pureMnemonic)
+      } catch {
+        case _: Throwable =>
+          val message = getString(R.string.error_wrong_phrase)
+          WalletApp.app.quickToast(message.html)
       }
     }
 

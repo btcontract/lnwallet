@@ -39,19 +39,23 @@ object ChannelMaster {
       def doProcess(change: Any): Unit = none
     }
 
+  final val NO_PREIMAGE = ByteVector32.One
+
+  final val NO_SECRET = ByteVector32.Zeroes
+
   final val updateCounter = new AtomicLong(0)
 
   final val stateUpdateStream: Subject[Long] = Subject[Long]
 
-  final val statusUpdateStream: Subject[ChannelData] = Subject[ChannelData]
+  final val statusUpdateStream: Subject[Long] = Subject[Long]
 
-  final val NO_SECRET = ByteVector32.Zeroes
+  def notifyStateUpdated: Unit = stateUpdateStream.onNext(updateCounter.incrementAndGet)
 
-  final val NO_PREIMAGE = ByteVector32.One
+  def notifyStatusUpdated: Unit = statusUpdateStream.onNext(updateCounter.incrementAndGet)
 
   def initResolve(ext: UpdateAddHtlcExt): IncomingResolution = IncomingPacket.decrypt(ext.theirAdd, ext.remoteInfo.nodeSpecificPrivKey) match {
     case _ if LNParams.isChainDisconnectedTooLong => CMD_FAIL_HTLC(Right(TemporaryNodeFailure), ext.remoteInfo.nodeSpecificPrivKey, ext.theirAdd)
-    case Left(_: BadOnion) => fallbackResolve(secret = LNParams.format.keys.fakeInvoiceKey(ext.theirAdd.paymentHash), ext.theirAdd)
+    case Left(_: BadOnion) => fallbackResolve(secret = LNParams.secret.keys.fakeInvoiceKey(ext.theirAdd.paymentHash), ext.theirAdd)
     case Left(onionFailure) => CMD_FAIL_HTLC(Right(onionFailure), ext.remoteInfo.nodeSpecificPrivKey, ext.theirAdd)
     case Right(packet: IncomingPacket) => defineResolution(ext.remoteInfo.nodeSpecificPrivKey, packet)
   }
@@ -108,7 +112,6 @@ class ChannelMaster(val payBag: PaymentBag, val chanBag: ChannelBag, val dataBag
 
   val localPaymentListener: OutgoingListener = new OutgoingListener {
     override def gotFirstPreimage(data: OutgoingPaymentSenderData, fulfill: RemoteFulfill): Unit = chanBag.db txWrap {
-      // Note that fully SUCCEEDED outgoing FSM for locally initiated payments won't get removed from OutgoingPaymentMaster
       // also note that this method MAY get called multiple times for multipart payments if fulfills happen between restarts
       payBag.setPreimage(fulfill.ourAdd.paymentHash, fulfill.preimage)
 
@@ -134,7 +137,6 @@ class ChannelMaster(val payBag: PaymentBag, val chanBag: ChannelBag, val dataBag
       val failureReport = data.failuresAsString(LNParams.denomination)
       dataBag.putReport(data.cmd.fullTag.paymentHash, failureReport)
       payBag.updAbortedOutgoing(data.cmd.fullTag.paymentHash)
-      opm process RemoveSenderFSM(data.cmd.fullTag)
     }
   }
 
@@ -145,15 +147,17 @@ class ChannelMaster(val payBag: PaymentBag, val chanBag: ChannelBag, val dataBag
   // CHANNEL MANAGEMENT
 
   override def becomeShutDown: Unit = {
+    // Outgoing FSMs won't receive anything without channel listeners
     for (channel <- all.values) channel.listeners = Set.empty
     for (fsm <- inProcessors.values) fsm.becomeShutDown
     pf.listeners = Set.empty
   }
 
   def implantChannel(cs: Commitments, freshChannel: Channel): Unit = {
-    all += Tuple2(cs.channelId, freshChannel) // Put this channel to vector of established channels
-    freshChannel.listeners = Set(me) // REPLACE with standard channel listeners to new established channel
-    initConnect // Add standard connection listeners for this peer
+    all += Tuple2(cs.channelId, freshChannel)
+    freshChannel.listeners = Set(me)
+    notifyStatusUpdated
+    initConnect
   }
 
   def initConnect: Unit = {
@@ -206,7 +210,10 @@ class ChannelMaster(val payBag: PaymentBag, val chanBag: ChannelBag, val dataBag
     // Incoming FSM may have been created, but now no related payments are left
     // this specific change is used by incoming FSMs to properly finalize themselves
     inProcessors.values.foreach(_ doProcess bag)
-    rejects.foreach(opm.process)
+    // First remove failed outgoing leftovers
+    rejects foreach opm.process
+    // Them maybe remove FSMs
+    opm process bag
   }
 
   // These are executed in Channel context
@@ -214,32 +221,30 @@ class ChannelMaster(val payBag: PaymentBag, val chanBag: ChannelBag, val dataBag
   override def fulfillReceived(fulfill: RemoteFulfill): Unit = opm process fulfill
 
   override def onException: PartialFunction[Malfunction, Unit] = {
-    case (_, error: CMDException) =>
-      opm process error
+    case (_, error: CMDException) => opm process error
   }
 
   override def onBecome: PartialFunction[Transition, Unit] = {
-    case (_, _, data1, OPEN, SLEEPING | SUSPENDED | CLOSING) =>
-      statusUpdateStream.onNext(data1)
-
-    case (_: ChannelNormal, _, data1, SLEEPING, CLOSING) =>
-      statusUpdateStream.onNext(data1)
-
-    case (_, _, data1, SLEEPING | SUSPENDED, OPEN) =>
+    case (_, _, _, WAIT_FUNDING_DONE | SLEEPING | SUSPENDED, OPEN) =>
       opm process OutgoingPaymentMaster.CMDChanGotOnline
-      statusUpdateStream.onNext(data1)
+      notifyStatusUpdated
+
+    case (_, _, _, OPEN, SLEEPING | SUSPENDED | CLOSING) =>
+      notifyStatusUpdated
+
+    case (_: ChannelNormal, _, _, SLEEPING, CLOSING) =>
+      notifyStatusUpdated
   }
 
   override def stateUpdated(rejects: Seq[RemoteReject] = Nil): Unit = {
     // Outgoing FSM should have been created on app startup, here we specifically do not ever recreate it
     notifyFSMs(allInChannelOutgoing, allIncomingResolutions, rejects, makeMissingOutgoingFSM = false)
-    stateUpdateStream.onNext(updateCounter.incrementAndGet)
+    notifyStateUpdated
   }
 
   // Mainly to prolong timeouts
-  override def addReceived(add: UpdateAddHtlcExt): Unit = initResolveMemo.get(add) match {
-    case resolve: ReasonableTrampoline => inProcessors.values.find(_.fullTag == resolve.fullTag).foreach(_ doProcess resolve)
-    case resolve: ReasonableLocal => inProcessors.values.find(_.fullTag == resolve.fullTag).foreach(_ doProcess resolve)
-    case _ => // Do nothing
-  }
+  override def addReceived(add: UpdateAddHtlcExt): Unit = for {
+    resolve <- Option(initResolveMemo get add) collect { case resolve: ReasonableResolution => resolve }
+    incomingFSM <- inProcessors.values.find(incomingFSM => resolve.fullTag == incomingFSM.fullTag)
+  } incomingFSM doProcess resolve
 }

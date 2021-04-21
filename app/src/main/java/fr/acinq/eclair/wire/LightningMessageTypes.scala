@@ -97,7 +97,7 @@ case class UpdateAddHtlc(channelId: ByteVector32, id: Long,
   // Important: LNParams.format must be defined
   private[this] lazy val fullTagOpt: Option[FullPaymentTag] = for {
     cipherBytes <- tlvStream.get[PaymentTagTlv.EncryptedPaymentSecret]
-    plainBytes <- Tools.chaChaDecrypt(LNParams.format.keys.ourNodePrivateKey.value, cipherBytes.data).toOption
+    plainBytes <- Tools.chaChaDecrypt(LNParams.secret.keys.ourNodePrivateKey.value, cipherBytes.data).toOption
     DecodeResult(ShortPaymentTag(secret, tag), _) <- PaymentTagTlv.shortPaymentTagCodec.decode(plainBytes.toBitVector).toOption
   } yield FullPaymentTag(paymentHash, secret, tag)
 

@@ -11,22 +11,23 @@ import java.nio.ByteOrder
 
 
 object LightningNodeKeys {
+  val derivationPath = KeyPath("m/84'/0'/0'")
+
   def makeFromSeed(seed: Bytes): LightningNodeKeys = {
     val master: ExtendedPrivateKey = generate(ByteVector view seed)
     val extendedNodeKey: ExtendedPrivateKey = derivePrivateKey(master, hardened(46L) :: hardened(0L) :: Nil)
     val hashingKey: PrivateKey = derivePrivateKey(master, hardened(138L) :: 0L :: Nil).privateKey
-    LightningNodeKeys(extendedNodeKey, xPub(master), hashingKey)
+    LightningNodeKeys(extendedNodeKey, hashingKey)
   }
 
   // Compatible with Electrum/Phoenix/BLW
   def xPub(parent: ExtendedPrivateKey): String = {
-    val derivationPath: KeyPath = KeyPath("m/84'/0'/0'")
     val privateKey = derivePrivateKey(parent, derivationPath)
     encode(publicKey(privateKey), zpub)
   }
 }
 
-case class LightningNodeKeys(extendedNodeKey: ExtendedPrivateKey, xpub: String, hashingKey: PrivateKey) {
+case class LightningNodeKeys(extendedNodeKey: ExtendedPrivateKey, hashingKey: PrivateKey) {
   lazy val ourNodePrivateKey: PrivateKey = extendedNodeKey.privateKey
 
   // Used for separate key per domain
@@ -53,7 +54,7 @@ case class LightningNodeKeys(extendedNodeKey: ExtendedPrivateKey, xpub: String, 
     Script.write(p2wpkh)
   }
 
-  def makeKeyPath(material: ByteVector): List[Long] = {
+  private def makeKeyPath(material: ByteVector): List[Long] = {
     require(material.size > 15, "Material size must be at least 16")
     val stream = new ByteArrayInputStream(material.slice(0, 16).toArray)
     def getChunk = Protocol.uint32(stream, ByteOrder.BIG_ENDIAN)

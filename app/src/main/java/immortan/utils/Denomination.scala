@@ -36,24 +36,25 @@ object SatDenomination extends Denomination {
   def parsed(msat: MilliSatoshi, zeroColor: String): String = {
     // Zero color is not used in SAT denomination
 
-    val basicFormattedMsatSum = asString(msat)
-    val dotIndex = basicFormattedMsatSum.indexOf(".")
-    val (whole, decimal) = basicFormattedMsatSum.splitAt(dotIndex)
-    if (decimal == basicFormattedMsatSum) basicFormattedMsatSum
-    else s"$whole<small>$decimal</small>"
+    val basicMsatSum = asString(msat)
+    val dotIndex = basicMsatSum.indexOf(".")
+    val (whole, decimal) = basicMsatSum.splitAt(dotIndex)
+    if (decimal == basicMsatSum) s"<font color=#FFFFFF>$basicMsatSum</font>"
+    else s"<font color=#FFFFFF>$whole</font><small>$decimal</small>"
   }
 }
 
 object BtcDenomination extends Denomination {
   val fmt: DecimalFormat = new DecimalFormat("##0.00000000000")
   val factor = 100000000000L
-  val sign = "btc"
+  val sign = "sat"
 
   fmt setDecimalFormatSymbols Denomination.symbols
 
   def parsed(msat: MilliSatoshi, zeroColor: String): String = {
     // Alpha channel does not work on Android when set as HTML attribute
     // hence zero color is supplied to match different backgrounds well
+    if (0L == msat.toLong) return "0"
 
     val basicFormattedMsatSum = asString(msat)
     val dotIndex = basicFormattedMsatSum.indexOf(".")

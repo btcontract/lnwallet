@@ -150,7 +150,6 @@
     </style>
 
     <style name="Emphasized" parent="BoundedView">
-        <item name="android:textColor">@color/colorAccent</item>
         <item name="android:textStyle">bold</item>
         <item name="android:textSize">20sp</item>
         <item name="android:ellipsize">end</item>

@@ -6,7 +6,7 @@ import immortan.utils.ImplicitJsonFormats._
 import fr.acinq.eclair.wire.LightningMessageCodecs.{swapInStateCodec, trampolineOnCodec}
 import fr.acinq.eclair.wire.{HostedChannelBranding, SwapInState, TrampolineOn}
 import fr.acinq.bitcoin.{BlockHeader, ByteVector32, Satoshi}
-import immortan.{DataBag, StorageFormat, SwapInStateExt}
+import immortan.{DataBag, WalletSecret, SwapInStateExt}
 import immortan.utils.{FeeRatesInfo, FiatRatesInfo}
 import java.lang.{Integer => JInt}
 
@@ -14,7 +14,7 @@ import fr.acinq.eclair.blockchain.electrum.db.WalletDb
 import fr.acinq.eclair.blockchain.electrum.ElectrumWallet.PersistentData
 import fr.acinq.eclair.blockchain.electrum.db.sqlite.SqliteWalletDb.persistentDataCodec
 import fr.acinq.eclair.wire.LightningMessageCodecs.hostedChannelBrandingCodec
-import immortan.wire.ExtCodecs.storageFormatCodec
+import immortan.wire.ExtCodecs.walletSecretCodec
 import fr.acinq.bitcoin.Crypto.PublicKey
 import immortan.crypto.Tools.Bytes
 import scodec.bits.ByteVector
@@ -49,9 +49,9 @@ class SQLiteData(val db: DBInterface) extends WalletDb with DataBag {
 
   // StorageFormat
 
-  def putFormat(format: StorageFormat): Unit = put(LABEL_FORMAT, storageFormatCodec.encode(format).require.toByteArray)
+  def putSecret(secret: WalletSecret): Unit = put(LABEL_FORMAT, walletSecretCodec.encode(secret).require.toByteArray)
 
-  def tryGetFormat: Try[StorageFormat] = tryGet(LABEL_FORMAT).map(raw => storageFormatCodec.decode(raw.toBitVector).require.value)
+  def tryGetSecret: Try[WalletSecret] = tryGet(LABEL_FORMAT).map(raw => walletSecretCodec.decode(raw.toBitVector).require.value)
 
   // Trampoline, last balance, fiat rates, fee rates
 

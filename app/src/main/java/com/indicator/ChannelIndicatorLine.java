@@ -71,8 +71,8 @@ public class ChannelIndicatorLine extends LinearLayout {
             indicator = getChildAt(i);
             String state = states[i];
 
-            if (Channel$.MODULE$.SLEEPING().equals(state)) {
-                indicator.setBackgroundResource(R.drawable.indicator_item_open_sleeping);
+            if (Channel$.MODULE$.SLEEPING().equals(state) || Channel$.MODULE$.WAIT_FUNDING_DONE().equals(state)) {
+                indicator.setBackgroundResource(R.drawable.indicator_item_open_sleeping_wait);
                 indicator.setAlpha(0.25f);
             } else if (Channel$.MODULE$.CLOSING().equals(state)) {
                 indicator.setBackgroundResource(R.drawable.indicator_item_closing_suspended);
@@ -81,7 +81,7 @@ public class ChannelIndicatorLine extends LinearLayout {
                 indicator.setBackgroundResource(R.drawable.indicator_item_closing_suspended);
                 indicator.setAlpha(0.6f);
             } else {
-                indicator.setBackgroundResource(R.drawable.indicator_item_open_sleeping);
+                indicator.setBackgroundResource(R.drawable.indicator_item_open_sleeping_wait);
                 indicator.setAlpha(1f);
             }
         }

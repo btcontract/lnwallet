@@ -58,7 +58,7 @@ object LNParams {
 
   var chainHash: ByteVector32 = Block.LivenetGenesisBlock.hash
 
-  var format: StorageFormat = _
+  var secret: WalletSecret = _
   var routerConf: RouterConf = _
   var syncParams: SyncParams = _
   var denomination: Denomination = _
@@ -99,7 +99,7 @@ object LNParams {
   val lastDisconnect: AtomicLong = new AtomicLong(Long.MaxValue)
 
   def isOperational: Boolean =
-    null != chainHash && null != format && null != chainWallet && null != syncParams &&
+    null != chainHash && null != secret && null != chainWallet && null != syncParams &&
       null != trampoline && null != feeRatesInfo && null != fiatRatesInfo && null != denomination &&
       null != cm && null != cm.inProcessors && null != routerConf
 
@@ -157,7 +157,7 @@ class TestNetSyncParams extends SyncParams {
 
 // Important: LNParams.format must be defined
 case class RemoteNodeInfo(nodeId: PublicKey, address: NodeAddress, alias: String) {
-  lazy val nodeSpecificExtendedKey: DeterministicWallet.ExtendedPrivateKey = LNParams.format.keys.ourFakeNodeIdKey(nodeId)
+  lazy val nodeSpecificExtendedKey: DeterministicWallet.ExtendedPrivateKey = LNParams.secret.keys.ourFakeNodeIdKey(nodeId)
 
   lazy val nodeSpecificPrivKey: PrivateKey = nodeSpecificExtendedKey.privateKey
 
@@ -216,6 +216,8 @@ case class RemoteNodeInfo(nodeId: PublicKey, address: NodeAddress, alias: String
   def sign(tx: Transactions.TransactionWithInputInfo, publicKey: ExtendedPublicKey, remoteSecret: PrivateKey, txOwner: Transactions.TxOwner, format: Transactions.CommitmentFormat): ByteVector64 =
     Transactions.sign(tx, Generators.revocationPrivKey(channelPrivateKeysMemo.get(publicKey.path).privateKey, remoteSecret), txOwner, format)
 }
+
+case class WalletSecret(outstandingProviders: Set[NodeAnnouncement], keys: LightningNodeKeys, mnemonic: List[String], seed: ByteVector)
 
 case class WalletExt(wallet: ElectrumEclairWallet, eventsCatcher: ActorRef, clientPool: ActorRef, watcher: ActorRef) extends CanBeShutDown {
   override def becomeShutDown: Unit = List(eventsCatcher, clientPool, watcher).foreach(_ ! PoisonPill)
@@ -278,8 +280,8 @@ trait PaymentBag {
 }
 
 trait DataBag {
-  def putFormat(format: StorageFormat): Unit
-  def tryGetFormat: Try[StorageFormat]
+  def putSecret(secret: WalletSecret): Unit
+  def tryGetSecret: Try[WalletSecret]
 
   def putFeeRatesInfo(data: FeeRatesInfo): Unit
   def tryGetFeeRatesInfo: Try[FeeRatesInfo]

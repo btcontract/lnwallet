@@ -200,6 +200,8 @@ class TrampolinePaymentRelayer(val fullTag: FullPaymentTag, cm: ChannelMaster) e
 
     case (_: OutgoingPaymentSenderData, TrampolineStopping(true), SENDING) =>
       // We were waiting for all outgoing parts to fail on app restart, try again
+      // Note that senderFSM has removed itself on first failure, so we create it again
+      cm.opm process CreateSenderFSM(fullTag, listener = self)
       become(null, RECEIVING)
       cm.stateUpdated(Nil)
 
@@ -301,6 +303,8 @@ class TrampolinePaymentRelayer(val fullTag: FullPaymentTag, cm: ChannelMaster) e
   }
 
   override def becomeShutDown: Unit = {
+    // This will be a redundant call most of the time as outgoing FSMs get cleared up automatically
+    // but it makes sense if trampoline FSM becomes FINALIZED without ever trying to send a payment
     cm.opm process RemoveSenderFSM(fullTag)
     cm.inProcessors -= fullTag
     become(null, SHUTDOWN)

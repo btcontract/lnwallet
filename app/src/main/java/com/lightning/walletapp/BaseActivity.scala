@@ -62,8 +62,8 @@ trait ChoiceReceiver {
 
 trait BaseActivity extends AppCompatActivity { me =>
   var currentSnackbar = Option.empty[Snackbar]
-  val btcDenominationWhiteZero = "#33FFFFFF"
-  val btcDenominationGrayZero = "#99333333"
+  val btcDenominationDarkZero = "#555555"
+  val btcDenominationBtcZero = "#B38722"
   val timer = new Timer
 
   val goTo: Class[_] => Any = target => {

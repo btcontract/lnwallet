@@ -1,13 +1,10 @@
 package com.lightning.walletapp
 
-import fr.acinq.eclair._
-import immortan.{LightningNodeKeys, MnemonicExtStorageFormat}
 import fr.acinq.bitcoin.Crypto.{PrivateKey, PublicKey, curve, one}
 import fr.acinq.bitcoin.{Base58, Base58Check, ByteVector64, Crypto}
 import org.bouncycastle.crypto.params.ECPublicKeyParameters
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.bouncycastle.crypto.signers.ECDSASigner
-import fr.acinq.eclair.channel.Helpers
 import fr.acinq.bitcoin.Base58.Prefix
 import org.bitcoin.Secp256k1Context
 import org.junit.Assert.assertTrue
@@ -69,13 +66,6 @@ class NativeSpec {
     }
 
     assertTrue(fallback / 50 > native)
-  }
-
-  @Test
-  def generatedAddressIsValid: Unit = {
-    val nodeId = PrivateKey(ByteVector.fromValidHex("18E14A7B6A307F426A94F8114701E7C8E774E7F9A47E2C2035DB29A206321725")).publicKey
-    val format = MnemonicExtStorageFormat(outstandingProviders = Set.empty, LightningNodeKeys.makeFromSeed(randomBytes(32).toArray), randomBytes(64))
-    assertTrue(Helpers.Closing.isValidFinalScriptPubkey(format.keys.refundPubKey(nodeId)))
   }
 
   @Test

@@ -3,11 +3,10 @@ package com.lightning.walletapp
 import com.lightning.walletapp.R.string._
 import info.guardianproject.netcipher.proxy.{OrbotHelper, StatusCallback}
 import android.net.{ConnectivityManager, NetworkCapabilities}
-import immortan.{LNParams, MnemonicExtStorageFormat}
 import immortan.crypto.Tools.{none, runAnd}
 import android.content.{Context, Intent}
-import scala.util.{Success, Try}
 
+import scala.util.{Failure, Success, Try}
 import org.ndeftools.util.activity.NfcReaderActivity
 import com.ornach.nobobutton.NoboButton
 import immortan.utils.InputParser
@@ -15,6 +14,7 @@ import android.widget.TextView
 import org.ndeftools.Message
 import android.os.Bundle
 import android.view.View
+import immortan.LNParams
 
 
 object ClassNames {
@@ -73,13 +73,15 @@ class MainActivity extends NfcReaderActivity with BaseActivity { me =>
   }
 
   class EnsureSeed extends Step {
-    def makeAttempt: Unit = WalletApp.extDataBag.tryGetFormat match {
-      case Success(formatWithSeedPresent: MnemonicExtStorageFormat) =>
-        // For now we specifically need a seed to initialize chain wallet
-        WalletApp.makeOperational(formatWithSeedPresent)
+    def makeAttempt: Unit = WalletApp.extDataBag.tryGetSecret match {
+      // Make wallet operational outside of Try to see an error right away
+
+      case Success(secret) =>
+        WalletApp.makeOperational(secret)
         me exitTo ClassNames.hubActivityClass
 
-      case _ =>
+      case Failure(exception) =>
+        exception.printStackTrace()
         // No seed present, wallet is new
         me exitTo classOf[SetupActivity]
     }
