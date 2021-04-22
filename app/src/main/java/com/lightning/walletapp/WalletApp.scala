@@ -1,7 +1,5 @@
 package com.lightning.walletapp
 
-import java.util.Date
-
 import immortan._
 import immortan.utils._
 import immortan.sqlite._
@@ -13,21 +11,21 @@ import fr.acinq.bitcoin.{Block, Satoshi, SatoshiLong}
 import android.app.{Application, NotificationChannel, NotificationManager}
 import fr.acinq.eclair.blockchain.electrum.{CheckPoint, ElectrumClientPool}
 import android.content.{ClipData, ClipboardManager, Context, Intent, SharedPreferences}
-import android.icu.text.SimpleDateFormat
 import fr.acinq.eclair.blockchain.electrum.ElectrumWallet.{TransactionReceived, WalletReady}
 import com.lightning.walletapp.utils.{AwaitService, DelayedNotification, UsedAddons, WebsocketBus}
 import fr.acinq.eclair.channel.CMD_CHECK_FEERATE
 import fr.acinq.eclair.router.Router.RouterConf
 import androidx.appcompat.app.AppCompatDelegate
 import immortan.utils.Denomination.formatFiat
+import android.icu.text.SimpleDateFormat
 import fr.acinq.eclair.wire.TrampolineOn
+import android.text.format.DateFormat
 import androidx.multidex.MultiDex
 import android.provider.Settings
 import android.widget.Toast
 import android.os.Build
 import android.net.Uri
-import android.text.format.DateFormat
-
+import java.util.Date
 import scala.util.Try
 
 

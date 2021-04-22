@@ -4,9 +4,9 @@ import com.lightning.walletapp.R.string._
 import info.guardianproject.netcipher.proxy.{OrbotHelper, StatusCallback}
 import android.net.{ConnectivityManager, NetworkCapabilities}
 import immortan.crypto.Tools.{none, runAnd}
+import scala.util.{Failure, Success, Try}
 import android.content.{Context, Intent}
 
-import scala.util.{Failure, Success, Try}
 import org.ndeftools.util.activity.NfcReaderActivity
 import com.ornach.nobobutton.NoboButton
 import immortan.utils.InputParser
@@ -54,17 +54,16 @@ class MainActivity extends NfcReaderActivity with BaseActivity { me =>
   def readEmptyNdefMessage: Unit = proceed(null)
   def readNonNdefMessage: Unit = proceed(null)
 
-  def proceed(disregard: Any): Unit =
-    WalletApp.isAlive match {
-      case false => runAnd(WalletApp.makeAlive)(me proceed null)
-      case true if LNParams.isOperational => me exitTo ClassNames.hubActivityClass
+  def proceed(empty: Any): Unit = WalletApp.isAlive match {
+    case false => runAnd(WalletApp.makeAlive)(me proceed null)
+    case true if LNParams.isOperational => me exitTo ClassNames.hubActivityClass
 
-      case true =>
-        val step3 = new EnsureSeed
-        val step2 = if (WalletApp.ensureTor) new EnsureTor(step3) else step3
-        val step1 = if (WalletApp.useAuth) new EnsureAuth(step2) else step2
-        step1.makeAttempt
-    }
+    case true =>
+      val step3 = new EnsureSeed
+      val step2 = if (WalletApp.ensureTor) new EnsureTor(step3) else step3
+      val step1 = if (WalletApp.useAuth) new EnsureAuth(step2) else step2
+      step1.makeAttempt
+  }
 
   // Tor and auth
 

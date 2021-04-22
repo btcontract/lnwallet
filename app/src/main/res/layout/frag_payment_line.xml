@@ -182,7 +182,7 @@
                 <!-- Top line -->
 
                 <RelativeLayout
-                    android:id="@+id/topLine"
+                    android:id="@+id/detailsAndStatus"
                     android:layout_marginBottom="10dp"
                     style="@style/FillingView">
 
