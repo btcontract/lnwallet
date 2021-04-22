@@ -15,8 +15,8 @@ class SQLiteTxExtended(app: WalletApp, val db: DBInterfaceSQLiteAndroidMisc) ext
     app.sqlNotify(TxTable.table)
   }
 
-  override def putTx(event: ElectrumWallet.TransactionReceived, description: TxDescription, balanceSnap: MilliSatoshi, fiatRateSnap: Fiat2Btc): Unit = {
-    super.putTx(event, description, balanceSnap, fiatRateSnap)
+  override def putTx(event: ElectrumWallet.TransactionReceived, isIncoming: Long, description: TxDescription, balanceSnap: MilliSatoshi, fiatRateSnap: Fiat2Btc): Unit = {
+    super.putTx(event, isIncoming, description, balanceSnap, fiatRateSnap)
     app.sqlNotify(TxTable.table)
   }
 }

@@ -173,7 +173,6 @@
 
             <LinearLayout
                 style="@style/FillingView"
-                android:id="@+id/contentContainer"
                 android:orientation="vertical"
                 android:paddingBottom="10dp"
                 android:paddingStart="0dp"
@@ -182,41 +181,48 @@
 
                 <!-- Top line -->
 
-                <TextView
-                    style="@style/FillingView"
-                    android:drawablePadding="15dp"
-                    android:id="@+id/typeAndStatus"
-                    android:textStyle="bold"
-                    android:ellipsize="end"
-                    android:maxLines="1"/>
+                <RelativeLayout
+                    android:id="@+id/topLine"
+                    android:layout_marginBottom="10dp"
+                    style="@style/FillingView">
+
+                    <TextView
+                        style="@style/FillingView"
+                        android:id="@+id/description"
+                        android:layout_centerVertical="true"
+                        android:layout_alignParentStart="true"
+                        android:layout_toStartOf="@id/statusIcon"
+                        android:textStyle="bold"
+                        android:ellipsize="end"
+                        android:maxLines="1"/>
+
+                    <ImageView
+                        style="@style/BoundedView"
+                        android:id="@+id/statusIcon"
+                        android:layout_centerVertical="true"
+                        android:layout_alignParentEnd="true"/>
+
+                </RelativeLayout>
 
                 <!-- Bottom line -->
 
-                <LinearLayout
-                    style="@style/FillingView"
-                    android:orientation="horizontal"
-                    android:layout_marginTop="7dp"
-                    android:gravity="center">
+                <RelativeLayout style="@style/FillingView">
 
                     <TextView
+                        style="@style/BoundedView"
+                        android:layout_toStartOf="@+id/meta"
+                        android:layout_alignParentStart="true"
                         android:id="@+id/amount"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="10"
                         android:textStyle="bold"
                         android:maxLines="1"/>
 
                     <TextView
+                        style="@style/BoundedView"
+                        android:layout_alignParentEnd="true"
                         android:id="@+id/meta"
-                        android:textSize="16sp"
-                        android:ellipsize="end"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:textAlignment="textEnd"
-                        android:layout_weight="7"
                         android:maxLines="1"/>
 
-                </LinearLayout>
+                </RelativeLayout>
             </LinearLayout>
         </LinearLayout>
     </androidx.cardview.widget.CardView>

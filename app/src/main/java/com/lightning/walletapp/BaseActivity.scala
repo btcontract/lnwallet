@@ -46,7 +46,7 @@ object BaseActivity {
   implicit class StringOps(source: String) {
     def s2hex: String = ByteVector.view(source getBytes "UTF-8").toHex
     def noSpaces: String = source.replace(" ", "").replace("\u00A0", "")
-    def humanSix: String = source.grouped(6).mkString(s"\u0020")
+    def humanFour: String = source.grouped(4).mkString(s"\u0020")
     def html: Spanned = Html.fromHtml(source)
   }
 }
@@ -62,8 +62,9 @@ trait ChoiceReceiver {
 
 trait BaseActivity extends AppCompatActivity { me =>
   var currentSnackbar = Option.empty[Snackbar]
-  val btcDenominationDarkZero = "#555555"
-  val btcDenominationBtcZero = "#B38722"
+  val semiDarkZero = "#656565"
+  val darkZero = "#555555"
+  val btcZero = "#B38722"
   val timer = new Timer
 
   val goTo: Class[_] => Any = target => {

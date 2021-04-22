@@ -104,9 +104,9 @@
         android:gravity="center">
 
         <com.ornach.nobobutton.NoboButton
+            app:nb_text="@string/dialog_send"
             android:layout_margin="@dimen/chip_default_padding_edge"
             android:onClick="bringSendFromClipboard"
-            app:nb_text="@string/dialog_send"
             android:layout_width="115dp"
             style="@style/GrayButton"/>
 
@@ -116,9 +116,9 @@
             style="@style/GrayButton"/>
 
         <com.ornach.nobobutton.NoboButton
+            app:nb_text="@string/dialog_receive"
             android:layout_margin="@dimen/chip_default_padding_edge"
             android:onClick="bringReceiveOptions"
-            app:nb_text="@string/dialog_receive"
             android:layout_width="115dp"
             style="@style/GrayButton"/>
 

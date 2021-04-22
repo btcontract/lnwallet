@@ -190,12 +190,12 @@ object PaymentTable extends Table {
 
 object TxTable extends Table {
   private val paymentTableFields = ("txs", "raw", "txid", "depth", "received", "sent", "fee", "seen", "desc", "balance", "fiatrates", "incoming", "doublespent")
-  val (table, rawTx, txid, depth, receivedMsat, sentMsat, feeMsat, firstSeen, description, balanceMsat, fiatRates, incoming, doubleSpent) = paymentTableFields
-  val inserts = s"$rawTx, $txid, $depth, $receivedMsat, $sentMsat, $feeMsat, $firstSeen, $description, $balanceMsat, $fiatRates, $incoming, $doubleSpent"
+  val (table, rawTx, txid, depth, receivedSat, sentSat, feeSat, firstSeen, description, balanceMsat, fiatRates, incoming, doubleSpent) = paymentTableFields
+  val inserts = s"$rawTx, $txid, $depth, $receivedSat, $sentSat, $feeSat, $firstSeen, $description, $balanceMsat, $fiatRates, $incoming, $doubleSpent"
   val newSql = s"INSERT OR IGNORE INTO $table ($inserts) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
 
   // Selecting
-  val selectSummarySql = s"SELECT SUM($feeMsat), SUM($receivedMsat), SUM($sentMsat), COUNT($id) FROM $table WHERE $doubleSpent = 0"
+  val selectSummarySql = s"SELECT SUM($feeSat), SUM($receivedSat), SUM($sentSat), COUNT($id) FROM $table WHERE $doubleSpent = 0"
   val selectRecentSql = s"SELECT * FROM $table ORDER BY $id DESC LIMIT ?"
 
   // Updating
@@ -203,8 +203,8 @@ object TxTable extends Table {
 
   def createStatements: Seq[String] =
     s"""CREATE TABLE IF NOT EXISTS $table(
-      $IDAUTOINC, $rawTx TEXT NOT NULL, $txid TEXT NOT NULL $UNIQUE, $depth INTEGER NOT NULL, $receivedMsat INTEGER NOT NULL, $sentMsat INTEGER NOT NULL,
-      $feeMsat INTEGER NOT NULL, $firstSeen INTEGER NOT NULL, $description TEXT NOT NULL, $balanceMsat INTEGER NOT NULL, $fiatRates TEXT NOT NULL,
+      $IDAUTOINC, $rawTx TEXT NOT NULL, $txid TEXT NOT NULL $UNIQUE, $depth INTEGER NOT NULL, $receivedSat INTEGER NOT NULL, $sentSat INTEGER NOT NULL,
+      $feeSat INTEGER NOT NULL, $firstSeen INTEGER NOT NULL, $description TEXT NOT NULL, $balanceMsat INTEGER NOT NULL, $fiatRates TEXT NOT NULL,
       $incoming INTEGER NOT NULL, $doubleSpent INTEGER NOT NULL
     )""" :: Nil
 }

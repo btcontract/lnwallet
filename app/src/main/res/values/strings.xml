@@ -18,10 +18,7 @@
     <string name="setup_recovery_phrase">Recovery phrase only</string>
     <string name="setup_backup_file">Backup + recovery phrase</string>
 
-    <string name="setup_create_new_hint">
-        A fresh Bitcoin wallet with a new BIP-39 recovery phrase will be generated from scratch.
-        Once created, please write that recovery phrase down and secure it in a safe place!
-    </string>
+    <string name="setup_create_new_hint">A fresh Bitcoin wallet with a new BIP-39 recovery phrase will be generated from scratch.</string>
 
     <string name="setup_backup_file_hint">
         Provide a file containing Lightning backup, then provide a recovery
@@ -93,6 +90,16 @@
     <string name="tx_description_commit_claim">Channel force-closing refund</string>
     <string name="tx_description_htlc_claim">Lightning payment refund</string>
     <string name="tx_description_penalty">Channel breach penalty</string>
+
+    <string name="tx_btc_in">Incoming Bitcoin Transaction</string>
+    <string name="tx_btc_out">Outgoing Bitcoin Transaction</string>
+
+    <string name="tx_ln_in">Incoming Lightning Payment</string>
+    <string name="tx_ln_out">Outgoing Lightning Payment</string>
+
+    <string name="tx_state_unconfirmed">unconfirmed</string>
+    <string name="tx_state_double_spent">double spent</string>
+    <string name="tx_state_confs">depth %1$s of %2$s</string>
 
     <!-- /special tx/payment descriptions -->
 

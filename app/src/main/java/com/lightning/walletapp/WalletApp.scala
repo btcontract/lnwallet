@@ -1,5 +1,7 @@
 package com.lightning.walletapp
 
+import java.util.Date
+
 import immortan._
 import immortan.utils._
 import immortan.sqlite._
@@ -11,6 +13,7 @@ import fr.acinq.bitcoin.{Block, Satoshi, SatoshiLong}
 import android.app.{Application, NotificationChannel, NotificationManager}
 import fr.acinq.eclair.blockchain.electrum.{CheckPoint, ElectrumClientPool}
 import android.content.{ClipData, ClipboardManager, Context, Intent, SharedPreferences}
+import android.icu.text.SimpleDateFormat
 import fr.acinq.eclair.blockchain.electrum.ElectrumWallet.{TransactionReceived, WalletReady}
 import com.lightning.walletapp.utils.{AwaitService, DelayedNotification, UsedAddons, WebsocketBus}
 import fr.acinq.eclair.channel.CMD_CHECK_FEERATE
@@ -23,6 +26,8 @@ import android.provider.Settings
 import android.widget.Toast
 import android.os.Build
 import android.net.Uri
+import android.text.format.DateFormat
+
 import scala.util.Try
 
 
@@ -166,10 +171,17 @@ object WalletApp { me =>
       }
 
       override def onTransactionReceived(event: TransactionReceived): Unit = {
-        val txDescription = TxDescription.defineDescription(LNParams.cm.all.values, event.tx)
-        txDataBag.putTx(event, txDescription, lastChainBalance.toMilliSatoshi, LNParams.fiatRatesInfo.rates)
-        // Mainly to prevent multiple vibrations when getting many txs on wallet restoring
+        // Vibrate to let user know this comes from Bitcoin network, so is real
         if (event.depth < 1) app.notify(Vibrator.uri)
+
+        if (event.received >= event.sent) {
+          val description = TxDescription.defineDescription(LNParams.cm.all.values, event.walletAddreses, event.tx)
+          txDataBag.putTx(event, isIncoming = 1L, description, lastChainBalance.toMilliSatoshi, LNParams.fiatRatesInfo.rates)
+        } else {
+          val description = TxDescription.defineDescription(LNParams.cm.all.values, Nil, event.tx)
+          // Outgoing tx should already be present in db so this will fail silently unless sent from other wallet
+          txDataBag.putTx(event, 0L, description, lastChainBalance.toMilliSatoshi, LNParams.fiatRatesInfo.rates)
+        }
       }
 
       override def onChainDisconnected: Unit = {
@@ -229,6 +241,29 @@ class WalletApp extends Application { me =>
   lazy val maxDialog: Double = metrics.densityDpi * 2.2
   lazy val isTablet: Boolean = scrWidth > 3.5
 
+  import android.provider.Settings.System.{getFloat, FONT_SCALE}
+  lazy val bigFont: Boolean = getFloat(getContentResolver, FONT_SCALE, 1) > 1
+
+  lazy val timeFormat: SimpleDateFormat = {
+    val format = DateFormat.is24HourFormat(me) match {
+      case false if scrWidth < 2.2 & bigFont => "MM/dd/yy' <small>'h:mma'</small>'"
+      case false if scrWidth < 2.2 => "MM/dd/yy' <small>'h:mma'</small>'"
+
+      case false if scrWidth < 2.5 & bigFont => "MM/dd/yy' <small>'h:mma'</small>'"
+      case false if scrWidth < 2.5 => "MM/dd/yy' <small>'h:mma'</small>'"
+      case false => "MMM dd, yyyy' <small>'h:mma'</small>'"
+
+      case true if scrWidth < 2.2 & bigFont => "d MMM yyyy' <small>'HH:mm'</small>'"
+      case true if scrWidth < 2.2 => "d MMM yyyy' <small>'HH:mm'</small>'"
+
+      case true if scrWidth < 2.4 & bigFont => "d MMM yyyy' <small>'HH:mm'</small>'"
+      case true if scrWidth < 2.5 => "d MMM yyyy' <small>'HH:mm'</small>'"
+      case true => "d MMM yyyy' <small>'HH:mm'</small>'"
+    }
+
+    new SimpleDateFormat(format)
+  }
+
   lazy val plur: (Array[String], Long) => String = getString(R.string.lang) match {
     case "eng" | "esp" => (opts: Array[String], num: Long) => if (num == 1) opts(1) else opts(2)
     case "chn" | "jpn" => (phraseOptions: Array[String], _: Long) => phraseOptions(1)
@@ -266,6 +301,11 @@ class WalletApp extends Application { me =>
     val bodyText = getString(incoming_notify_body).format(LNParams.denomination.asString(amount) + "\u00A0" + LNParams.denomination.sign)
     val withBodyAction = withTitle.putExtra(AwaitService.BODY_TO_DISPLAY, bodyText).setAction(AwaitService.ACTION_SHOW)
     androidx.core.content.ContextCompat.startForegroundService(me, withBodyAction)
+  }
+
+  def when(thenDate: Date, now: Long = System.currentTimeMillis): String = thenDate.getTime match {
+    case ago if now - ago < 129600000 => android.text.format.DateUtils.getRelativeTimeSpanString(ago, now, 0).toString
+    case _ => timeFormat.format(thenDate)
   }
 
   def quickToast(code: Int): Unit = quickToast(me getString code)

@@ -68,8 +68,8 @@ object ImplicitJsonFormats extends DefaultJsonProtocol {
     }
   }
 
-  implicit val plainTxDescriptionFmt: JsonFormat[PlainTxDescription] = taggedJsonFmt(jsonFormat[Option[String],
-    PlainTxDescription](PlainTxDescription.apply, "label"), tag = "PlainTxDescription")
+  implicit val plainTxDescriptionFmt: JsonFormat[PlainTxDescription] = taggedJsonFmt(jsonFormat[List[String], Option[String],
+    PlainTxDescription](PlainTxDescription.apply, "addresses", "label"), tag = "PlainTxDescription")
 
   implicit val opReturnTxDescriptionFmt: JsonFormat[OpReturnTxDescription] = taggedJsonFmt(jsonFormat[PublicKey, ByteVector32,
     OpReturnTxDescription](OpReturnTxDescription.apply, "nodeId", "preimage"), tag = "OpReturnTxDescription")

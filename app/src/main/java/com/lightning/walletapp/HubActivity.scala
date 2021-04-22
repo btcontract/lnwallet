@@ -62,22 +62,23 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
     override def getView(position: Int, savedView: View, parent: ViewGroup): View = {
       val view = if (null == savedView) getLayoutInflater.inflate(R.layout.frag_payment_line, null) else savedView
       val holder = if (null == view.getTag) new PaymentLineViewHolder(view) else view.getTag.asInstanceOf[PaymentLineViewHolder]
+      updatePaymentLine(getItem(position), holder)
       view
     }
   }
 
-  lazy val paymentTypeIconIds = List(R.id.btcIncoming, R.id.btcOutgoing, R.id.lnIncoming, R.id.lnOutgoing, R.id.lnRouted, R.id.btcLn, R.id.lnBtc)
-  def setPaymentTypeVis(views: Map[Int, View], visible: Int): Unit = for (id <- paymentTypeIconIds) views(id) setVisibility BaseActivity.viewMap(id == visible)
-
   class PaymentLineViewHolder(itemView: View) extends RecyclerView.ViewHolder(itemView) { self =>
-    val cardContainer: LinearLayout = itemView.findViewById(R.id.cardContainer).asInstanceOf[LinearLayout]
-    val contentContainer: LinearLayout = itemView.findViewById(R.id.contentContainer).asInstanceOf[LinearLayout]
-    val typeAndStatus: TextView = itemView.findViewById(R.id.typeAndStatus).asInstanceOf[TextView]
-    val amount: TextView = itemView.findViewById(R.id.amount).asInstanceOf[TextView]
-    val meta: TextView = itemView.findViewById(R.id.meta).asInstanceOf[TextView]
-
+    def setPaymentTypeVisibility(visible: Int): Unit = for (id <- paymentTypeIconIds) typeMap(id) setVisibility BaseActivity.viewMap(id == visible)
+    val paymentTypeIconIds = List(R.id.btcIncoming, R.id.btcOutgoing, R.id.lnIncoming, R.id.lnOutgoing, R.id.lnRouted, R.id.btcLn, R.id.lnBtc)
     val paymentTypeViews: List[View] = paymentTypeIconIds.map(itemView.findViewById)
     val typeMap: Map[Int, View] = paymentTypeIconIds.zip(paymentTypeViews).toMap
+
+    val cardContainer: LinearLayout = itemView.findViewById(R.id.cardContainer).asInstanceOf[LinearLayout]
+    val topLine: RelativeLayout = itemView.findViewById(R.id.topLine).asInstanceOf[RelativeLayout]
+    val description: TextView = itemView.findViewById(R.id.description).asInstanceOf[TextView]
+    val statusIcon: ImageView = itemView.findViewById(R.id.statusIcon).asInstanceOf[ImageView]
+    val amount: TextView = itemView.findViewById(R.id.amount).asInstanceOf[TextView]
+    val meta: TextView = itemView.findViewById(R.id.meta).asInstanceOf[TextView]
     itemView.setTag(self)
   }
 
@@ -149,13 +150,8 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
 
   private val chainListener: WalletEventsListener = new WalletEventsListener {
     override def onChainSynchronized(event: WalletReady): Unit = UITask {
+      updatePendingChainTxStatus
       updateTotalBalance
-
-      for {
-        txInfo <- txInfos if !txInfo.isConfirmed && !txInfo.isDoubleSpent
-        (newDepth, newDoubleSpent) <- LNParams.chainWallet.wallet.doubleSpent(txInfo.tx)
-        if newDepth != txInfo.depth || newDoubleSpent != txInfo.isDoubleSpent
-      } WalletApp.txDataBag.updStatus(txInfo.txid, newDepth, newDoubleSpent)
     }.run
   }
 
@@ -165,6 +161,57 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
       updateFiatRates
     }.run
   }
+
+  def updatePendingChainTxStatus: Unit = for {
+    txInfo <- txInfos if !txInfo.isDeeplyBuried && !txInfo.isDoubleSpent
+    (newDepth, newDoubleSpent) <- LNParams.chainWallet.wallet.doubleSpent(txInfo.tx)
+    if newDepth != txInfo.depth || newDoubleSpent != txInfo.isDoubleSpent
+  } WalletApp.txDataBag.updStatus(txInfo.txid, newDepth, newDoubleSpent)
+
+  def updatePaymentLine(details: TransactionDetails, holder: PaymentLineViewHolder): Unit = details match {
+
+    case txInfo: TxInfo =>
+      holder.topLine setVisibility View.VISIBLE
+      holder.description setText txDescription(txInfo).html
+      holder.statusIcon setImageResource txStatusIcon(txInfo)
+      holder.amount setText txInfo.directedParsedWithSign(LNParams.denomination, semiDarkZero).html
+      holder.cardContainer setBackgroundResource R.drawable.panel_payment_passive_bg
+      holder.meta setText txMeta(txInfo).html
+      setTypeIcon(holder, txInfo)
+  }
+
+  def setTypeIcon(holder: PaymentLineViewHolder, info: TxInfo): Unit = info.description match {
+    case _: PlainTxDescription if info.isIncoming => holder.setPaymentTypeVisibility(visible = R.id.btcIncoming)
+    case _: OpReturnTxDescription => holder.setPaymentTypeVisibility(visible = R.id.btcOutgoing)
+    case _: ChanRefundingTxDescription => holder.setPaymentTypeVisibility(visible = R.id.lnBtc)
+    case _: ChanFundingTxDescription => holder.setPaymentTypeVisibility(visible = R.id.btcLn)
+    case _: CommitClaimTxDescription => holder.setPaymentTypeVisibility(visible = R.id.lnBtc)
+    case _: PlainTxDescription => holder.setPaymentTypeVisibility(visible = R.id.btcOutgoing)
+    case _: HtlcClaimTxDescription => holder.setPaymentTypeVisibility(visible = R.id.lnBtc)
+    case _: PenaltyTxDescription => holder.setPaymentTypeVisibility(visible = R.id.lnBtc)
+  }
+
+  def txDescription(info: TxInfo): String = info.description match {
+    case _: PlainTxDescription if info.isIncoming => getString(tx_btc_in)
+    case _: CommitClaimTxDescription => getString(tx_description_commit_claim)
+    case _: ChanRefundingTxDescription => getString(tx_description_refunding)
+    case _: HtlcClaimTxDescription => getString(tx_description_htlc_claim)
+    case _: ChanFundingTxDescription => getString(tx_description_funding)
+    case _: OpReturnTxDescription => getString(tx_description_op_return)
+    case _: PenaltyTxDescription => getString(tx_description_penalty)
+    case _: PlainTxDescription => getString(tx_btc_out)
+  }
+
+  def txMeta(info: TxInfo): String =
+    if (info.isDeeplyBuried) WalletApp.app.when(info.date)
+    else if (info.isDoubleSpent) getString(tx_state_double_spent)
+    else if (info.depth > 0) getString(tx_state_confs).format(info.depth, LNParams.minDepthBlocks)
+    else getString(tx_state_unconfirmed)
+
+  def txStatusIcon(info: TxInfo): Int =
+    if (info.isDeeplyBuried) R.drawable.baseline_done_24
+    else if (info.isDoubleSpent) R.drawable.baseline_block_24
+    else R.drawable.baseline_hourglass_empty_24
 
   // NFC
 
@@ -310,8 +357,8 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
   def updateTotalBalance: Unit = {
     val chainBalanceMsat = WalletApp.lastChainBalance.toMilliSatoshi
     totalFiatBalance.setText(WalletApp.currentMsatInFiatHuman(chainBalanceMsat).html)
-    totalBalance.setText(LNParams.denomination.parsedWithSign(chainBalanceMsat, btcDenominationDarkZero).html)
-    walletCards.totalBitcoinBalance.setText(LNParams.denomination.parsedWithSign(chainBalanceMsat, btcDenominationBtcZero).html)
+    totalBalance.setText(LNParams.denomination.parsedWithSign(chainBalanceMsat, darkZero).html)
+    walletCards.totalBitcoinBalance.setText(LNParams.denomination.parsedWithSign(chainBalanceMsat, btcZero).html)
   }
 
   def updatePaymentList: Unit = {
