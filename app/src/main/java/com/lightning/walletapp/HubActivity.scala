@@ -71,6 +71,8 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
           holder.cardContainer setBackgroundResource R.drawable.panel_payment_passive_bg
           holder.meta setText txMeta(txInfo).html
           setTypeIcon(holder, txInfo)
+
+        case _ =>
       }
 
       view
@@ -202,7 +204,10 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
     case _: ChanFundingTxDescription => getString(tx_description_funding)
     case _: OpReturnTxDescription => getString(tx_description_op_return)
     case _: PenaltyTxDescription => getString(tx_description_penalty)
-    case plain: PlainTxDescription => getString(tx_btc)
+    case plainTxDescription: PlainTxDescription =>
+      val shortOpt = plainTxDescription.addresses.headOption.map(_.shortAddress)
+      val htmlOpt = shortOpt.map(short => s" <font color=$cardZero>$short</font>")
+      getString(tx_btc) + htmlOpt.getOrElse(new String)
   }
 
   def txMeta(info: TxInfo): String =

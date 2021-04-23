@@ -46,7 +46,8 @@ object BaseActivity {
   implicit class StringOps(source: String) {
     def s2hex: String = ByteVector.view(source getBytes "UTF-8").toHex
     def noSpaces: String = source.replace(" ", "").replace("\u00A0", "")
-    def humanFour(chunks: Int): String = source.grouped(4).take(chunks).mkString(s"\u0020")
+    def shortAddress: String = s"${source take 4} &middot; ${source takeRight 4}"
+    def humanFour: String = source.grouped(4).mkString(s"\u0020")
     def html: Spanned = Html.fromHtml(source)
   }
 }
