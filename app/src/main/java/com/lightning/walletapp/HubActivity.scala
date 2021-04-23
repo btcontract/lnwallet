@@ -5,6 +5,7 @@ import immortan.utils._
 import fr.acinq.eclair._
 import immortan.crypto.Tools._
 import scala.concurrent.duration._
+import com.lightning.walletapp.Colors._
 import com.lightning.walletapp.R.string._
 
 import android.os.{Bundle, Handler}
@@ -26,19 +27,10 @@ import org.ndeftools.Message
 
 
 class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataChecker with ChoiceReceiver { me =>
-  private[this] lazy val contentWindow = findViewById(R.id.contentWindow).asInstanceOf[RelativeLayout]
-  private[this] lazy val offlineIndicator = findViewById(R.id.offlineIndicator).asInstanceOf[TextView]
-
-  private[this] lazy val topInfoLayout = findViewById(R.id.topInfoLayout).asInstanceOf[LinearLayout]
-  private[this] lazy val topBlurringArea = findViewById(R.id.topBlurringArea).asInstanceOf[RealtimeBlurView]
-
   private[this] lazy val bottomBlurringArea = findViewById(R.id.bottomBlurringArea).asInstanceOf[RealtimeBlurView]
   private[this] lazy val bottomActionBar = findViewById(R.id.bottomActionBar).asInstanceOf[LinearLayout]
-
+  private[this] lazy val contentWindow = findViewById(R.id.contentWindow).asInstanceOf[RelativeLayout]
   private[this] lazy val itemsList = findViewById(R.id.itemsList).asInstanceOf[ListView]
-  private[this] lazy val totalBalance = findViewById(R.id.totalBalance).asInstanceOf[TextView]
-  private[this] lazy val totalFiatBalance = findViewById(R.id.totalFiatBalance).asInstanceOf[TextView]
-  private[this] lazy val fiatUnitPriceAndChange = findViewById(R.id.fiatUnitPriceAndChange).asInstanceOf[TextView]
   private[this] lazy val walletCards = new WalletCardsViewHolder
   private val CHOICE_RECEIVE_TAG = "choiceReceiveTag"
 
@@ -66,7 +58,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
       getItem(position) match {
         case relayedInfo: RelayedPreimageInfo =>
           holder.detailsAndStatus setVisibility View.GONE
-          holder.amount setText LNParams.denomination.parsedWithSign(relayedInfo.earned, semiDarkZero).html
+          holder.amount setText LNParams.denomination.parsedWithSign(relayedInfo.earned, cardZero).html
           holder.cardContainer setBackgroundResource R.drawable.panel_payment_passive_bg
           holder.meta setText WalletApp.app.when(relayedInfo.date).html
           holder setPaymentTypeVisibility R.id.lnRouted
@@ -75,7 +67,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
           holder.detailsAndStatus setVisibility View.VISIBLE
           holder.description setText txDescription(txInfo).html
           holder.statusIcon setImageResource txStatusIcon(txInfo)
-          holder.amount setText txInfo.directedParsedWithSign(LNParams.denomination, semiDarkZero).html
+          holder.amount setText txInfo.directedParsedWithSign(LNParams.denomination, cardZero).html
           holder.cardContainer setBackgroundResource R.drawable.panel_payment_passive_bg
           holder.meta setText txMeta(txInfo).html
           setTypeIcon(holder, txInfo)
@@ -102,6 +94,12 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
 
   class WalletCardsViewHolder {
     val view: View = getLayoutInflater.inflate(R.layout.frag_wallet_cards, null)
+
+    val totalBalance: TextView = view.findViewById(R.id.totalBalance).asInstanceOf[TextView]
+    val offlineIndicator: TextView = view.findViewById(R.id.offlineIndicator).asInstanceOf[TextView]
+    val totalFiatBalance: TextView = view.findViewById(R.id.totalFiatBalance).asInstanceOf[TextView]
+    val fiatUnitPriceAndChange: TextView = view.findViewById(R.id.fiatUnitPriceAndChange).asInstanceOf[TextView]
+
     val listCaption: RelativeLayout = view.findViewById(R.id.listCaption).asInstanceOf[RelativeLayout]
     val totalBitcoinBalance: TextView = view.findViewById(R.id.totalBitcoinBalance).asInstanceOf[TextView]
     val totalLightningBalance: TextView = view.findViewById(R.id.totalLightningBalance).asInstanceOf[TextView]
@@ -162,7 +160,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
 
   private val netListener: Monitor.ConnectivityListener = new Monitor.ConnectivityListener {
     override def onConnectivityChanged(ct: Int, isConnected: Boolean, isFast: Boolean): Unit = UITask {
-      offlineIndicator setVisibility BaseActivity.viewMap(!isConnected)
+      walletCards.offlineIndicator setVisibility BaseActivity.viewMap(!isConnected)
     }.run
   }
 
@@ -198,14 +196,13 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
   }
 
   def txDescription(info: TxInfo): String = info.description match {
-    case _: PlainTxDescription if info.isIncoming => getString(tx_btc_in)
     case _: CommitClaimTxDescription => getString(tx_description_commit_claim)
     case _: ChanRefundingTxDescription => getString(tx_description_refunding)
     case _: HtlcClaimTxDescription => getString(tx_description_htlc_claim)
     case _: ChanFundingTxDescription => getString(tx_description_funding)
     case _: OpReturnTxDescription => getString(tx_description_op_return)
     case _: PenaltyTxDescription => getString(tx_description_penalty)
-    case _: PlainTxDescription => getString(tx_btc_out)
+    case plain: PlainTxDescription => getString(tx_btc)
   }
 
   def txMeta(info: TxInfo): String =
@@ -277,13 +274,9 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
     if (WalletApp.isAlive && LNParams.isOperational) {
       setContentView(com.lightning.walletapp.R.layout.activity_hub)
 
-      topInfoLayout post UITask {
-        bottomActionBar post UITask {
-          topBlurringArea setHeightTo topInfoLayout
-          bottomBlurringArea setHeightTo bottomActionBar
-          itemsList.setPadding(itemsList.getPaddingLeft, itemsList.getPaddingTop, itemsList.getPaddingRight, bottomActionBar.getHeight)
-          walletCards.view.setPadding(walletCards.view.getPaddingLeft, topInfoLayout.getHeight, walletCards.view.getPaddingRight, 0)
-        }
+      bottomActionBar post UITask {
+        bottomBlurringArea.setHeightTo(bottomActionBar)
+        itemsList.setPadding(0, 0, 0, bottomActionBar.getHeight)
       }
 
       getContentResolver.registerContentObserver(Vibrator.uri, true, vibratorObserver)
@@ -357,14 +350,14 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
   def updateFiatRates: Unit = {
     val change = LNParams.fiatRatesInfo.pctDifference(WalletApp.fiatCode).map(_ + "<br>").getOrElse(new String)
     val unitPriceAndChange = s"<small>$change</small>" + WalletApp.currentMsatInFiatHuman(100000000000L.msat)
-    fiatUnitPriceAndChange.setText(unitPriceAndChange.html)
+    walletCards.fiatUnitPriceAndChange.setText(unitPriceAndChange.html)
   }
 
   def updateTotalBalance: Unit = {
     val chainBalanceMsat = WalletApp.lastChainBalance.toMilliSatoshi
-    totalFiatBalance.setText(WalletApp.currentMsatInFiatHuman(chainBalanceMsat).html)
-    totalBalance.setText(LNParams.denomination.parsedWithSign(chainBalanceMsat, darkZero).html)
-    walletCards.totalBitcoinBalance.setText(LNParams.denomination.parsedWithSign(chainBalanceMsat, btcZero).html)
+    walletCards.totalFiatBalance.setText(WalletApp.currentMsatInFiatHuman(chainBalanceMsat).html)
+    walletCards.totalBalance.setText(LNParams.denomination.parsedWithSign(chainBalanceMsat, totalZero).html)
+    walletCards.totalBitcoinBalance.setText(LNParams.denomination.parsedWithSign(chainBalanceMsat, btcCardZero).html)
   }
 
   def updatePaymentList: Unit = {

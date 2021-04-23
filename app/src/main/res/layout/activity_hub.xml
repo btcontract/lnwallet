@@ -13,75 +13,6 @@
         android:headerDividersEnabled="false"
         style="@style/StandardLinearLayout"/>
 
-    <!-- Top info -->
-
-    <com.github.mmin18.widget.RealtimeBlurView
-        app:realtimeOverlayColor="@color/bgalpha"
-        android:layout_width="match_parent"
-        android:id="@+id/topBlurringArea"
-        app:realtimeBlurRadius="10dp"
-        android:layout_height="0dp"/>
-
-    <LinearLayout
-        android:padding="15dp"
-        android:clickable="true"
-        android:focusable="true"
-        android:id="@+id/topInfoLayout"
-        android:orientation="vertical"
-        style="@style/FillingView">
-
-        <RelativeLayout style="@style/FillingView">
-
-            <TextView
-                android:text="@string/total_balance"
-                android:layout_centerVertical="true"
-                style="@style/FillingView"/>
-
-            <LinearLayout
-                style="@style/BoundedView"
-                android:layout_alignParentEnd="true"
-                android:gravity="center">
-
-                <TextView
-                    android:visibility="gone"
-                    android:text="@string/offline"
-                    android:id="@+id/offlineIndicator"
-                    style="@style/ChipTextYellowMargin"/>
-
-                <ImageButton
-                    android:padding="6dp"
-                    android:onClick="bringSettings"
-                    android:layout_marginStart="10dp"
-                    android:src="@drawable/baseline_settings_24"
-                    android:background="?android:selectableItemBackground"
-                    style="@style/BoundedView"/>
-
-            </LinearLayout>
-        </RelativeLayout>
-
-        <RelativeLayout style="@style/FillingView">
-
-            <TextView
-                android:id="@+id/totalBalance"
-                style="@style/Emphasized"/>
-
-            <TextView
-                android:textStyle="bold"
-                android:layout_marginTop="6dp"
-                android:layout_below="@id/totalBalance"
-                android:id="@+id/totalFiatBalance"
-                style="@style/BoundedView"/>
-
-            <TextView
-                android:id="@+id/fiatUnitPriceAndChange"
-                android:layout_alignParentEnd="true"
-                android:layout_centerVertical="true"
-                android:textAlignment="textEnd"
-                style="@style/ChipTextGray"/>
-
-        </RelativeLayout>
-    </LinearLayout>
-
     <!-- Bottom menu -->
 
     <com.github.mmin18.widget.RealtimeBlurView
@@ -89,7 +20,7 @@
         android:layout_alignParentBottom="true"
         android:id="@+id/bottomBlurringArea"
         android:layout_width="match_parent"
-        app:realtimeBlurRadius="10dp"
+        app:realtimeBlurRadius="15dp"
         android:layout_height="0dp"/>
 
     <LinearLayout

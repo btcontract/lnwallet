@@ -91,11 +91,8 @@
     <string name="tx_description_htlc_claim">Lightning payment refund</string>
     <string name="tx_description_penalty">Channel breach penalty</string>
 
-    <string name="tx_btc_in">Incoming Bitcoin Transaction</string>
-    <string name="tx_btc_out">Outgoing Bitcoin Transaction</string>
-
-    <string name="tx_ln_in">Incoming Lightning Payment</string>
-    <string name="tx_ln_out">Outgoing Lightning Payment</string>
+    <string name="tx_btc">Bitcoin Transaction</string>
+    <string name="tx_ln">Lightning Payment</string>
 
     <string name="tx_state_unconfirmed">unconfirmed</string>
     <string name="tx_state_double_spent">double spent</string>
