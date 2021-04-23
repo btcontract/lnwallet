@@ -5,12 +5,68 @@
     android:paddingStart="15dp"
     android:paddingEnd="15dp">
 
-    <!-- Bitcoin -->
+    <!-- Total balance, settings -->
+
+    <RelativeLayout
+        style="@style/FillingView">
+
+        <TextView
+            android:text="@string/total_balance"
+            android:layout_centerVertical="true"
+            style="@style/FillingView"/>
+
+        <LinearLayout
+            style="@style/BoundedView"
+            android:layout_alignParentEnd="true"
+            android:gravity="center">
+
+            <TextView
+                android:visibility="gone"
+                android:text="@string/offline"
+                android:id="@+id/offlineIndicator"
+                style="@style/ChipTextYellowMargin"/>
+
+            <ImageButton
+                android:padding="6dp"
+                android:onClick="bringSettings"
+                android:layout_marginStart="10dp"
+                android:src="@drawable/baseline_settings_24"
+                android:background="?android:selectableItemBackground"
+                style="@style/BoundedView"/>
+
+        </LinearLayout>
+    </RelativeLayout>
+
+    <!-- Wallet balance, fiat price -->
+
+    <RelativeLayout
+        style="@style/FillingView">
+
+        <TextView
+            android:id="@+id/totalBalance"
+            style="@style/Emphasized"/>
+
+        <TextView
+            android:textStyle="bold"
+            android:layout_marginTop="6dp"
+            android:layout_below="@id/totalBalance"
+            android:id="@+id/totalFiatBalance"
+            style="@style/BoundedView"/>
+
+        <TextView
+            android:id="@+id/fiatUnitPriceAndChange"
+            android:layout_alignParentEnd="true"
+            android:layout_centerVertical="true"
+            android:textAlignment="textEnd"
+            style="@style/ChipTextGray"/>
+
+    </RelativeLayout>
+
+    <!-- Bitcoin card -->
 
     <androidx.cardview.widget.CardView
         card_view:cardCornerRadius="@dimen/search_view_corner_radius"
-        android:layout_marginBottom="5dp"
-        android:layout_marginTop="5dp"
+        android:layout_marginTop="15dp"
         style="@style/Card">
 
         <RelativeLayout
@@ -31,11 +87,11 @@
         </RelativeLayout>
     </androidx.cardview.widget.CardView>
 
-    <!-- Lightning -->
+    <!-- Lightning card -->
 
     <androidx.cardview.widget.CardView
         card_view:cardCornerRadius="@dimen/search_view_corner_radius"
-        android:layout_marginBottom="5dp"
+        android:layout_marginBottom="10dp"
         android:layout_marginTop="5dp"
         style="@style/Card">
 
@@ -103,10 +159,9 @@
         </RelativeLayout>
     </androidx.cardview.widget.CardView>
 
-    <!-- Search bar -->
+    <!-- Caption and search bar -->
 
     <RelativeLayout
-        android:layout_marginTop="10dp"
         android:id="@+id/listCaption"
         style="@style/FillingView">
 
