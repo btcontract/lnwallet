@@ -13,10 +13,6 @@
         <item name="windowNoTitle">true</item>
     </style>
 
-    <style name="AppThemeNoActionBarMain" parent="AppThemeNoActionBar">
-        <item name="android:windowBackground">@drawable/splash</item>
-    </style>
-
     <!-- item styles -->
 
     <style name="BlueButton">
