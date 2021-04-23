@@ -1,4 +1,6 @@
 <resources>
+    <dimen name="corner_radius">3dp</dimen>
+    <dimen name="large_button_margin">45dp</dimen>
     <dimen name="bitmap_qr_size">120dp</dimen>
     <dimen name="header_size">22sp</dimen>
 
@@ -30,6 +32,7 @@
     <dimen name="bottom_navigation_text_size_forced_inactive">10sp</dimen>
 
     <!-- bottom navigation Small -->
+
     <dimen name="bottom_navigation_small_active_min_width">96dp</dimen>
     <dimen name="bottom_navigation_small_active_max_width">168dp</dimen>
     <dimen name="bottom_navigation_small_inactive_min_width">64dp</dimen>
@@ -42,6 +45,7 @@
     <dimen name="bottom_navigation_small_selected_width_difference">10dp</dimen>
 
     <!-- bottom navigation Notifications -->
+
     <dimen name="bottom_navigation_notification_width">8dp</dimen>
     <dimen name="bottom_navigation_notification_height">8dp</dimen>
     <dimen name="bottom_navigation_notification_radius">4dp</dimen>
@@ -53,23 +57,4 @@
     <dimen name="bottom_navigation_notification_margin_top">14dp</dimen>
     <dimen name="bottom_navigation_notification_margin_top_active">3dp</dimen>
     <dimen name="bottom_navigation_notification_text_size">4sp</dimen>
-
-    <!-- floating search view -->
-
-    <dimen name="search_bar_height">48dp</dimen>
-    <dimen name="search_bar_left_icon_left_margin">4dp</dimen>
-    <dimen name="search_bar_right_icon_right_margin">4dp</dimen>
-    <dimen name="search_bar_search_input_left_margin">20dp</dimen>
-    <dimen name="search_bar_search_input_right_margin">68dp</dimen>
-    <dimen name="search_bar_filter_section_marin_left">64dp</dimen>
-    <dimen name="text_content_margin">16dp</dimen>
-    <dimen name="search_view_corner_radius">3dp</dimen>
-
-    <!-- floating search view Sizes for a square button with a system icon on it -->
-    <dimen name="square_button_icon_size">24dp</dimen>
-    <dimen name="square_button_size">48dp</dimen>
-    <dimen name="square_button_padding">12dp</dimen>
-
-    <dimen name="suggestion_body_text_size">18sp</dimen>
-    <dimen name="search_bar_text_size">16sp</dimen>
 </resources>

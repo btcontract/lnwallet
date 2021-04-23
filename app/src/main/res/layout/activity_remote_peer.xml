@@ -90,7 +90,7 @@
                 <com.ornach.nobobutton.NoboButton
                     app:nb_text="@string/rpa_request_hc"
                     android:id="@+id/optionHostedChannel"
-                    android:layout_marginTop="@dimen/square_button_size"
+                    android:layout_marginTop="@dimen/large_button_margin"
                     android:onClick="requestHostedChannel"
                     style="@style/GrayButton"/>
 

@@ -17,7 +17,7 @@
 
         <com.ornach.nobobutton.NoboButton
             app:nb_text="@string/setup_create_new"
-            android:layout_marginTop="@dimen/square_button_size"
+            android:layout_marginTop="@dimen/large_button_margin"
             android:onClick="createNewWallet"
             style="@style/GreenButton"/>
 
@@ -28,7 +28,7 @@
 
         <com.ornach.nobobutton.NoboButton
             app:nb_text="@string/setup_restore_existing"
-            android:layout_marginTop="@dimen/square_button_size"
+            android:layout_marginTop="@dimen/large_button_margin"
             android:id="@+id/restoreOptionsButton"
             android:onClick="showRestoreOptions"
             style="@style/GrayButton"/>
@@ -41,7 +41,7 @@
             <!-- backup file + recovery phrase -->
 
             <com.ornach.nobobutton.NoboButton
-                android:layout_marginTop="@dimen/square_button_size"
+                android:layout_marginTop="@dimen/large_button_margin"
                 app:nb_text="@string/setup_backup_file"
                 android:onClick="useBackupFile"
                 style="@style/BlueButton"/>
@@ -54,7 +54,7 @@
             <!-- recovery phrase only -->
 
             <com.ornach.nobobutton.NoboButton
-                android:layout_marginTop="@dimen/square_button_size"
+                android:layout_marginTop="@dimen/large_button_margin"
                 app:nb_text="@string/setup_recovery_phrase"
                 android:onClick="useRecoveryPhrase"
                 style="@style/BlueButton"/>

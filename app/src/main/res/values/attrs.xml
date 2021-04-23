@@ -89,48 +89,6 @@
         <attr name="coloredInactive" format="color" />
     </declare-styleable>
 
-    <!-- floating search view -->
-
-    <declare-styleable name="FloatingSearchView">
-        <attr name="floatingSearch_searchBarWidth" format="dimension"/>
-        <attr name="floatingSearch_searchBarMarginTop" format="dimension"/>
-        <attr name="floatingSearch_searchBarMarginLeft" format="dimension"/>
-        <attr name="floatingSearch_searchBarMarginRight" format="dimension"/>
-        <attr name="floatingSearch_searchSuggestionTextSize" format="dimension"/>
-        <attr name="floatingSearch_searchInputTextSize" format="dimension"/>
-        <attr name="floatingSearch_showMenuAction" format="boolean"/>
-        <attr name="floatingSearch_dismissFocusOnItemSelection" format="boolean"/>
-        <attr name="floatingSearch_leftActionMode">
-            <enum name="showHamburger" value="1" />
-            <enum name="showSearch" value="2" />
-            <enum name="showHome" value="3" />
-            <enum name="noLeftAction" value="4" />
-        </attr>
-        <attr name="floatingSearch_showVoiceInput" format="boolean"/>
-        <attr name="floatingSearch_showSearchKey" format="boolean"/>
-        <attr name="floatingSearch_voiceRecHint" format="string"/>
-        <attr name="floatingSearch_searchHint" format="string"/>
-        <attr name="floatingSearch_dismissOnOutsideTouch" format="boolean"/>
-        <attr name="floatingSearch_showMoveSuggestionUp" format="boolean"/>
-        <attr name="floatingSearch_suggestionsListAnimDuration" format="integer"/>
-        <attr name="floatingSearch_hideOverflowMenuWhenFocused" format="boolean"/>
-        <attr name="floatingSearch_showOverFlowMenu" format="boolean"/>
-        <attr name="floatingSearch_close_search_on_keyboard_dismiss" format="boolean"/>
-        <attr name="floatingSearch_menu" format="reference"/>
-        <attr name="floatingSearch_leftActionColor" format="color"/>
-        <attr name="floatingSearch_viewTextColor" format="color"/>
-        <attr name="floatingSearch_viewSearchInputTextColor" format="color"/>
-        <attr name="floatingSearch_hintTextColor" format="color"/>
-        <attr name="floatingSearch_viewSuggestionItemTextColor" format="color"/>
-        <attr name="floatingSearch_menuItemIconColor" format="color"/>
-        <attr name="floatingSearch_actionMenuOverflowColor" format="color"/>
-        <attr name="floatingSearch_clearBtnColor" format="color"/>
-        <attr name="floatingSearch_backgroundColor" format="color"/>
-        <attr name="floatingSearch_dividerColor" format="color"/>
-        <attr name="floatingSearch_dimBackground" format="boolean"/>
-        <attr name="floatingSearch_suggestionRightIconColor" format="color"/>
-    </declare-styleable>
-
     <!-- flow layout -->
 
     <declare-styleable name="FlowLayout">
@@ -150,7 +108,7 @@
         <attr name="android:layout_gravity"/>
     </declare-styleable>
 
-    <!-- blur view -->
+    <!-- Blur view -->
 
     <declare-styleable name="RealtimeBlurView">
         <attr name="realtimeBlurRadius" format="dimension"/>

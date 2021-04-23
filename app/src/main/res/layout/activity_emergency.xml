@@ -10,7 +10,7 @@
         android:textSize="@dimen/header_size"/>
 
     <com.ornach.nobobutton.NoboButton
-        android:layout_marginTop="@dimen/square_button_size"
+        android:layout_marginTop="@dimen/large_button_margin"
         app:nb_text="@string/emergency_share"
         android:onClick="shareErrorReport"
         style="@style/BlueButton"/>

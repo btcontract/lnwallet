@@ -66,7 +66,7 @@
     <!-- Bitcoin card -->
 
     <androidx.cardview.widget.CardView
-        card_view:cardCornerRadius="@dimen/search_view_corner_radius"
+        card_view:cardCornerRadius="@dimen/corner_radius"
         android:layout_marginTop="15dp"
         style="@style/Card">
 
@@ -91,7 +91,7 @@
     <!-- Lightning card -->
 
     <androidx.cardview.widget.CardView
-        card_view:cardCornerRadius="@dimen/search_view_corner_radius"
+        card_view:cardCornerRadius="@dimen/corner_radius"
         android:layout_marginBottom="10dp"
         android:layout_marginTop="5dp"
         style="@style/Card">
