@@ -117,17 +117,17 @@ object Features {
   }
 
   case object VariableLengthOnion extends Feature {
-    val rfcName = "Variable length onion"
+    val rfcName = "Advanced onion"
     val mandatory = 8
   }
 
   case object ChannelRangeQueriesExtended extends Feature {
-    val rfcName = "Advanced gossip queries"
+    val rfcName = "Fast graph sync"
     val mandatory = 10
   }
 
   case object StaticRemoteKey extends Feature {
-    val rfcName = "Static remote key"
+    val rfcName = "Direct balance refund"
     val mandatory = 12
   }
 

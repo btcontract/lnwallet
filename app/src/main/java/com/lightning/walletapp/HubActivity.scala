@@ -256,14 +256,13 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
     super.onDestroy
   }
 
-  override def checkExternalData(whenNone: Runnable): Unit =
-    InputParser.checkAndMaybeErase {
-      case _: RemoteNodeInfo => me goTo ClassNames.remotePeerActivityClass
-      case _: PaymentRequestExt =>
-      case _: BitcoinUri =>
-      case _: LNUrl =>
-      case _ => whenNone.run
-    }
+  override def checkExternalData(whenNone: Runnable): Unit = InputParser.checkAndMaybeErase {
+    case _: RemoteNodeInfo => me goTo ClassNames.remotePeerActivityClass
+    case _: PaymentRequestExt =>
+    case uri: BitcoinUri if uri.isValid =>
+    case _: LNUrl =>
+    case _ => whenNone.run
+  }
 
   override def onChoiceMade(tag: String, pos: Int): Unit = (tag, pos) match {
     case (CHOICE_RECEIVE_TAG, 0) => me goTo ClassNames.chainQrActivityClass
@@ -336,10 +335,14 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
 
   }
 
-  def bringSendFromClipboard(view: View): Unit = {
-    def explain: Unit = snack(contentWindow, getString(error_nothing_in_clipboard).html, dialog_ok, _.dismiss)
-    runInFutureProcessOnUI(InputParser.recordValue(WalletApp.app.getBufferUnsafe), _ => explain)(_ => me checkExternalData explain)
+  private def explainClipboardFailure = UITask {
+    val message = getString(error_nothing_in_clipboard).html
+    snack(contentWindow, message, dialog_ok, _.dismiss)
   }
+
+  def bringSendFromClipboard(view: View): Unit =
+    runInFutureProcessOnUI(InputParser.recordValue(WalletApp.app.getBufferUnsafe),
+      _ => explainClipboardFailure.run)(_ => me checkExternalData explainClipboardFailure)
 
   def bringScanner(view: View): Unit = callScanner(me)
 

@@ -174,14 +174,6 @@
         <item name="android:textStyle">bold</item>
     </style>
 
-    <style name="ChipTextYellowMargin" parent="ChipTextGrayMargin">
-        <item name="android:background">@drawable/border_yellow</item>
-    </style>
-
-    <style name="ChipTextRedMargin" parent="ChipTextGrayMargin">
-        <item name="android:background">@drawable/border_red</item>
-    </style>
-
     <!-- nachos -->
 
     <style name="DefaultChipSuggestionTextView">

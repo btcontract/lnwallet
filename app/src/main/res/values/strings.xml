@@ -142,11 +142,12 @@
         Please inform peer that only private channel requests will be accepted.
     </string>
 
+    <string name="rpa_title">Remote peer connection</string>
+    <string name="rpa_disconnect">Remote peer disconnected</string>
     <string name="rpa_no_feature_support">Can not request channels since some important features are not supported by remote peer.</string>
 
-    <string name="rpa_supported_features">Supported features</string>
     <string name="rpa_request_hc">Request hosted channel</string>
-    <string name="rpa_share_node_id">Share our node ID</string>
+    <string name="rpa_share_node_id">Share node ID</string>
     <string name="rpa_open_nc">Open new channel</string>
 
     <!-- /Remote peer activity -->

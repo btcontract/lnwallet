@@ -39,6 +39,7 @@ object CommsTower {
   // Add or remove listeners to a connection where our nodeId is stable, not a randomly generated one (one which makes us seen as a constant peer by remote)
   def listenNative(listeners1: Set[ConnectionListener], remoteInfo: RemoteNodeInfo): Unit = listen(listeners1, remoteInfo.nodeSpecificPair, remoteInfo)
   def rmListenerNative(info: RemoteNodeInfo, listener: ConnectionListener): Unit = listeners(info.nodeSpecificPair) -= listener
+  def disconnectNative(info: RemoteNodeInfo): Unit = workers.get(info.nodeSpecificPair).foreach(_.disconnect)
 
   def forget(pair: KeyPairAndPubKey): Unit = {
     // First remove all listeners, then disconnect

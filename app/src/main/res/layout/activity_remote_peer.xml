@@ -4,18 +4,22 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:f="http://schemas.android.com/tools">
 
-    <LinearLayout style="@style/StandardXYMarginLinearLayout">
+    <LinearLayout
+        android:id="@+id/remotePeerMain"
+        style="@style/StandardXYMarginLinearLayout">
 
         <!-- Remote peer info -->
 
         <TextView
-            style="@style/Emphasized"
-            android:id="@+id/peerAlias"
+            style="@style/FillingView"
+            android:text="@string/rpa_title"
             android:textSize="@dimen/header_size"/>
 
         <TextView
             style="@style/BoundedView"
             android:id="@+id/peerNodeKey"
+            android:layout_marginTop="15dp"
+            android:layout_marginBottom="15dp"
             android:textColor="@color/colorAccent"/>
 
         <TextView
@@ -38,21 +42,20 @@
             android:id="@+id/peerDetails"
             android:visibility="gone">
 
-            <TextView
-                style="@style/YMarginFillingView"
-                android:text="@string/rpa_supported_features"
-                android:layout_width="wrap_content"/>
+            <org.apmem.tools.layouts.FlowLayout
+                android:layout_marginTop="25dp"
+                style="@style/BoundedView"
+                f:layout_newLine="true">
 
-            <org.apmem.tools.layouts.FlowLayout style="@style/BoundedView" f:layout_newLine="true">
                 <TextView style="@style/ChipTextGrayMargin" android:id="@+id/ChannelRangeQueriesExtended"/>
                 <TextView style="@style/ChipTextGrayMargin" android:id="@+id/OptionDataLossProtect"/>
                 <TextView style="@style/ChipTextGrayMargin" android:id="@+id/BasicMultiPartPayment"/>
-                <TextView style="@style/ChipTextGrayMargin" android:id="@+id/VariableLengthOnion"/>
                 <TextView style="@style/ChipTextGrayMargin" android:id="@+id/TrampolineRouting"/>
                 <TextView style="@style/ChipTextGrayMargin" android:id="@+id/StaticRemoteKey"/>
                 <TextView style="@style/ChipTextGrayMargin" android:id="@+id/HostedChannels"/>
                 <TextView style="@style/ChipTextGrayMargin" android:id="@+id/ChainSwap"/>
                 <TextView style="@style/ChipTextGrayMargin" android:id="@+id/Wumbo"/>
+
             </org.apmem.tools.layouts.FlowLayout>
 
             <TextView
@@ -64,18 +67,18 @@
             <!-- Actions -->
 
             <LinearLayout
-                android:layout_marginTop="@dimen/square_button_size"
                 android:id="@+id/viewYesFeatureSupport"
                 style="@style/StandardLinearLayout">
 
                 <com.ornach.nobobutton.NoboButton
                     app:nb_text="@string/rpa_open_nc"
-                    android:layout_marginTop="@dimen/square_button_size"
                     android:onClick="openNewChannel"
+                    android:layout_marginTop="25dp"
                     style="@style/GreenButton"/>
 
                 <TextView
                     style="@style/BoundedView"
+                    android:layout_marginTop="25dp"
                     android:text="@string/rpa_request_channel"/>
 
                 <com.ornach.nobobutton.NoboButton

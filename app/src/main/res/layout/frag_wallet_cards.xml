@@ -21,10 +21,11 @@
             android:gravity="center">
 
             <TextView
-                android:visibility="gone"
-                android:text="@string/offline"
+                style="@style/ChipTextGrayMargin"
+                android:background="@drawable/border_yellow"
                 android:id="@+id/offlineIndicator"
-                style="@style/ChipTextYellowMargin"/>
+                android:text="@string/offline"
+                android:visibility="gone"/>
 
             <ImageButton
                 android:padding="6dp"
