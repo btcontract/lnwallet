@@ -18,9 +18,10 @@ object Denomination {
 }
 
 trait Denomination { me =>
+  protected def parsed(msat: MilliSatoshi, zeroColor: String): String
   def asString(msat: MilliSatoshi): String = fmt.format(BigDecimal(msat.toLong) / factor)
   def parsedWithSign(msat: MilliSatoshi, zeroColor: String): String = parsed(msat, zeroColor) + "\u00A0" + sign
-  protected def parsed(msat: MilliSatoshi, zeroColor: String): String
+  def directedWithSign(incoming: MilliSatoshi, outgoing: MilliSatoshi, zeroColor: String, isPlus: Boolean): String
 
   val fmt: DecimalFormat
   val factor: Long
@@ -42,6 +43,10 @@ object SatDenomination extends Denomination {
     if (decimal == basicMsatSum) s"<font color=#FFFFFF>$basicMsatSum</font>"
     else s"<font color=#FFFFFF>$whole</font><small>$decimal</small>"
   }
+
+  def directedWithSign(incoming: MilliSatoshi, outgoing: MilliSatoshi, zeroColor: String, isPlus: Boolean): String =
+    if (isPlus) "+" + parsedWithSign(incoming, zeroColor)
+    else "-" + parsedWithSign(outgoing, zeroColor)
 }
 
 object BtcDenomination extends Denomination {
@@ -71,4 +76,8 @@ object BtcDenomination extends Denomination {
     new StringBuilder("<font color=").append(zeroColor).append('>').append(finalWhole).append("</font>")
       .append("<font color=#FFFFFF>").append(finalDecimal).append("</font>").toString
   }
+
+  def directedWithSign(incoming: MilliSatoshi, outgoing: MilliSatoshi, zeroColor: String, isPlus: Boolean): String =
+    if (isPlus) s"<font color=$zeroColor>+</font>" + parsedWithSign(incoming, zeroColor)
+    else s"<font color=$zeroColor>-</font>" + parsedWithSign(outgoing, zeroColor)
 }

@@ -58,7 +58,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
       getItem(position) match {
         case relayedInfo: RelayedPreimageInfo =>
           holder.detailsAndStatus setVisibility View.GONE
-          holder.amount setText LNParams.denomination.parsedWithSign(relayedInfo.earned, cardZero).html
+          holder.amount setText LNParams.denomination.directedWithSign(relayedInfo.earned, 0L.msat, cardZero, isPlus = true).html
           holder.cardContainer setBackgroundResource R.drawable.panel_payment_passive_bg
           holder.meta setText WalletApp.app.when(relayedInfo.date).html
           holder setPaymentTypeVisibility R.id.lnRouted
@@ -67,7 +67,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
           holder.detailsAndStatus setVisibility View.VISIBLE
           holder.description setText txDescription(txInfo).html
           holder.statusIcon setImageResource txStatusIcon(txInfo)
-          holder.amount setText txInfo.directedParsedWithSign(LNParams.denomination, cardZero).html
+          holder.amount setText LNParams.denomination.directedWithSign(txInfo.receivedSat.toMilliSatoshi, txInfo.sentSat.toMilliSatoshi, cardZero, txInfo.isIncoming).html
           holder.cardContainer setBackgroundResource R.drawable.panel_payment_passive_bg
           holder.meta setText txMeta(txInfo).html
           setTypeIcon(holder, txInfo)
