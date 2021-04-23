@@ -5,6 +5,7 @@ import immortan.utils._
 import fr.acinq.eclair._
 import immortan.crypto.Tools._
 import scala.concurrent.duration._
+import com.lightning.walletapp.Colors._
 import com.lightning.walletapp.R.string._
 
 import android.os.{Bundle, Handler}
@@ -66,7 +67,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
       getItem(position) match {
         case relayedInfo: RelayedPreimageInfo =>
           holder.detailsAndStatus setVisibility View.GONE
-          holder.amount setText LNParams.denomination.parsedWithSign(relayedInfo.earned, semiDarkZero).html
+          holder.amount setText LNParams.denomination.parsedWithSign(relayedInfo.earned, cardZero).html
           holder.cardContainer setBackgroundResource R.drawable.panel_payment_passive_bg
           holder.meta setText WalletApp.app.when(relayedInfo.date).html
           holder setPaymentTypeVisibility R.id.lnRouted
@@ -75,7 +76,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
           holder.detailsAndStatus setVisibility View.VISIBLE
           holder.description setText txDescription(txInfo).html
           holder.statusIcon setImageResource txStatusIcon(txInfo)
-          holder.amount setText txInfo.directedParsedWithSign(LNParams.denomination, semiDarkZero).html
+          holder.amount setText txInfo.directedParsedWithSign(LNParams.denomination, cardZero).html
           holder.cardContainer setBackgroundResource R.drawable.panel_payment_passive_bg
           holder.meta setText txMeta(txInfo).html
           setTypeIcon(holder, txInfo)
@@ -198,14 +199,13 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
   }
 
   def txDescription(info: TxInfo): String = info.description match {
-    case _: PlainTxDescription if info.isIncoming => getString(tx_btc_in)
     case _: CommitClaimTxDescription => getString(tx_description_commit_claim)
     case _: ChanRefundingTxDescription => getString(tx_description_refunding)
     case _: HtlcClaimTxDescription => getString(tx_description_htlc_claim)
     case _: ChanFundingTxDescription => getString(tx_description_funding)
     case _: OpReturnTxDescription => getString(tx_description_op_return)
     case _: PenaltyTxDescription => getString(tx_description_penalty)
-    case _: PlainTxDescription => getString(tx_btc_out)
+    case plain: PlainTxDescription => getString(tx_btc)
   }
 
   def txMeta(info: TxInfo): String =
@@ -363,8 +363,8 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
   def updateTotalBalance: Unit = {
     val chainBalanceMsat = WalletApp.lastChainBalance.toMilliSatoshi
     totalFiatBalance.setText(WalletApp.currentMsatInFiatHuman(chainBalanceMsat).html)
-    totalBalance.setText(LNParams.denomination.parsedWithSign(chainBalanceMsat, darkZero).html)
-    walletCards.totalBitcoinBalance.setText(LNParams.denomination.parsedWithSign(chainBalanceMsat, btcZero).html)
+    totalBalance.setText(LNParams.denomination.parsedWithSign(chainBalanceMsat, totalZero).html)
+    walletCards.totalBitcoinBalance.setText(LNParams.denomination.parsedWithSign(chainBalanceMsat, btcCardZero).html)
   }
 
   def updatePaymentList: Unit = {
