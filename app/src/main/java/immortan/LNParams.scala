@@ -243,7 +243,7 @@ trait NetworkBag {
   def listChannelsWithOneUpdate: ShortChanIdSet
   def listExcludedChannels: Set[Long]
 
-  def incrementScore(cu: ChannelUpdate): Unit
+  def incrementScore(cu: ChannelUpdateExt): Unit
   def getRoutingData: Map[ShortChannelId, PublicChannel]
   def removeGhostChannels(ghostIds: ShortChanIdSet, oneSideIds: ShortChanIdSet): Unit
   def processCompleteHostedData(pure: CompleteHostedRoutingData): Unit

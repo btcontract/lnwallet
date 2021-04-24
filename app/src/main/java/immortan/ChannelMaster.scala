@@ -110,7 +110,18 @@ class ChannelMaster(val payBag: PaymentBag, val chanBag: ChannelBag, val dataBag
     }
   }
 
-  val localPaymentListener: OutgoingListener = new OutgoingListener {
+  val localPaymentListener: OutgoingPaymentListener = new OutgoingPaymentListener {
+    override def wholePaymentSucceeded(data: OutgoingPaymentSenderData): Unit =
+      opm process RemoveSenderFSM(data.cmd.fullTag)
+
+    override def wholePaymentFailed(data: OutgoingPaymentSenderData): Unit = chanBag.db txWrap {
+      // This method gets called after NO payment parts are left in system, irregardless of restarts
+      val failureReport = data.failuresAsString(LNParams.denomination)
+      dataBag.putReport(data.cmd.fullTag.paymentHash, failureReport)
+      payBag.updAbortedOutgoing(data.cmd.fullTag.paymentHash)
+      opm process RemoveSenderFSM(data.cmd.fullTag)
+    }
+
     override def gotFirstPreimage(data: OutgoingPaymentSenderData, fulfill: RemoteFulfill): Unit = chanBag.db txWrap {
       // also note that this method MAY get called multiple times for multipart payments if fulfills happen between restarts
       payBag.setPreimage(fulfill.ourAdd.paymentHash, fulfill.preimage)
@@ -123,20 +134,13 @@ class ChannelMaster(val payBag: PaymentBag, val chanBag: ChannelBag, val dataBag
         if (data.inFlightParts.nonEmpty) {
           // Sender FSM won't have in-flight parts after restart
           val usedRoutesReport = data.usedRoutesAsString(LNParams.denomination)
-          for (ext <- data.successfulUpdates) pf.normalBag.incrementScore(ext.update)
           dataBag.putReport(fulfill.ourAdd.paymentHash, usedRoutesReport)
+          data.successfulUpdates.foreach(pf.normalBag.incrementScore)
         }
       }
 
       getPaymentInfoMemo.invalidate(fulfill.ourAdd.paymentHash)
       getPreimageMemo.invalidate(fulfill.ourAdd.paymentHash)
-    }
-
-    override def wholePaymentFailed(data: OutgoingPaymentSenderData): Unit = chanBag.db txWrap {
-      // This method gets called after NO payment parts are left in system, irregardless of restarts
-      val failureReport = data.failuresAsString(LNParams.denomination)
-      dataBag.putReport(data.cmd.fullTag.paymentHash, failureReport)
-      payBag.updAbortedOutgoing(data.cmd.fullTag.paymentHash)
     }
   }
 
@@ -154,6 +158,7 @@ class ChannelMaster(val payBag: PaymentBag, val chanBag: ChannelBag, val dataBag
   }
 
   def implantChannel(cs: Commitments, freshChannel: Channel): Unit = {
+    // Note that this removes all listeners this channel previously had
     all += Tuple2(cs.channelId, freshChannel)
     freshChannel.listeners = Set(me)
     notifyStatusUpdated
@@ -207,12 +212,10 @@ class ChannelMaster(val payBag: PaymentBag, val chanBag: ChannelBag, val dataBag
       case _ => // Do nothing
     }
 
-    // Incoming FSM may have been created, but now no related payments are left
-    // this specific change is used by incoming FSMs to properly finalize themselves
-    inProcessors.values.foreach(_ doProcess bag)
-    // First remove failed outgoing leftovers
-    rejects foreach opm.process
-    // Them maybe remove FSMs
+    // An FSM may have been created, but now no related payments are left
+    // this specific change is used by FSMs to properly finalize themselves
+    for (inFSM <- inProcessors.values) inFSM doProcess bag
+    for (reject <- rejects) opm process reject
     opm process bag
   }
 
@@ -221,7 +224,7 @@ class ChannelMaster(val payBag: PaymentBag, val chanBag: ChannelBag, val dataBag
   override def fulfillReceived(fulfill: RemoteFulfill): Unit = opm process fulfill
 
   override def onException: PartialFunction[Malfunction, Unit] = {
-    case (_, error: CMDException) => opm process error
+    case (_, commandError: CMDException) => opm process commandError
   }
 
   override def onBecome: PartialFunction[Transition, Unit] = {

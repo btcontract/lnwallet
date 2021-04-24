@@ -159,7 +159,7 @@ case class TrampolineStopping(retryOnceFinalized: Boolean) extends IncomingProce
 case class TrampolineRevealed(preimage: ByteVector32, senderData: Option[OutgoingPaymentSenderData] = None) extends IncomingProcessorData // SENDING | FINALIZING
 case class TrampolineAborted(failure: FailureMessage) extends IncomingProcessorData // FINALIZING
 
-class TrampolinePaymentRelayer(val fullTag: FullPaymentTag, cm: ChannelMaster) extends IncomingPaymentProcessor with OutgoingListener { self =>
+class TrampolinePaymentRelayer(val fullTag: FullPaymentTag, cm: ChannelMaster) extends IncomingPaymentProcessor with OutgoingPaymentListener { self =>
   // Important: we may have outgoing leftovers on restart, so we always need to create a sender FSM right away, which will be firing events once leftovers get finalized
   override def gotFirstPreimage(data: OutgoingPaymentSenderData, fulfill: RemoteFulfill): Unit = self doProcess TrampolineRevealed(fulfill.preimage, data.toSome)
   override def wholePaymentFailed(data: OutgoingPaymentSenderData): Unit = self doProcess data
@@ -201,7 +201,6 @@ class TrampolinePaymentRelayer(val fullTag: FullPaymentTag, cm: ChannelMaster) e
     case (_: OutgoingPaymentSenderData, TrampolineStopping(true), SENDING) =>
       // We were waiting for all outgoing parts to fail on app restart, try again
       // Note that senderFSM has removed itself on first failure, so we create it again
-      cm.opm process CreateSenderFSM(fullTag, listener = self)
       become(null, RECEIVING)
       cm.stateUpdated(Nil)
 
@@ -303,8 +302,6 @@ class TrampolinePaymentRelayer(val fullTag: FullPaymentTag, cm: ChannelMaster) e
   }
 
   override def becomeShutDown: Unit = {
-    // This will be a redundant call most of the time as outgoing FSMs get cleared up automatically
-    // but it makes sense if trampoline FSM becomes FINALIZED without ever trying to send a payment
     cm.opm process RemoveSenderFSM(fullTag)
     cm.inProcessors -= fullTag
     become(null, SHUTDOWN)

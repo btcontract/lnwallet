@@ -132,7 +132,7 @@ object Features {
   }
 
   case object PaymentSecret extends Feature {
-    val rfcName = "Payment secrets"
+    val rfcName = "Payment secret"
     val mandatory = 14
   }
 
@@ -152,7 +152,7 @@ object Features {
   }
 
   case object TrampolinePayment extends Feature {
-    val rfcName = "Trampoline payment"
+    val rfcName = "Trampoline payments"
     val mandatory = 50
   }
 
