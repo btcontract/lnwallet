@@ -5,7 +5,6 @@ import fr.acinq.eclair.channel.{ChannelVersion, DATA_WAIT_FOR_FUNDING_CONFIRMED,
 import fr.acinq.eclair.wire.{HasChannelId, HasTemporaryChannelId, Init, LightningMessage, OpenChannel}
 import immortan.Channel.{WAIT_FOR_ACCEPT, WAIT_FUNDING_DONE}
 import immortan.ChannelListener.{Malfunction, Transition}
-import fr.acinq.eclair.io.Peer
 
 
 // Important: this must be initiated when chain tip is actually known
@@ -28,8 +27,8 @@ abstract class NCFundeeOpenHandler(info: RemoteNodeInfo, theirOpen: OpenChannel,
     }
 
     override def onOperational(worker: CommsTower.Worker, theirInit: Init): Unit = {
-      val params = Peer.makeChannelParams(info, freshChannel.chainWallet.wallet, funder = false, theirOpen.fundingSatoshis, ChannelVersion.STATIC_REMOTEKEY)
-      freshChannel process INPUT_INIT_FUNDEE(remoteInfo = info, localParams = params, remoteInit = theirInit, ChannelVersion.STATIC_REMOTEKEY, theirOpen)
+      val localParams = LNParams.makeChannelParams(info, freshChannel.chainWallet, isFunder = false, theirOpen.fundingSatoshis)
+      freshChannel process INPUT_INIT_FUNDEE(info, localParams, theirInit, ChannelVersion.STATIC_REMOTEKEY, theirOpen)
     }
 
     override def onDisconnect(worker: CommsTower.Worker): Unit = {

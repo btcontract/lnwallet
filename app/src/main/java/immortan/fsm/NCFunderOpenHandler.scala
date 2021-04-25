@@ -7,7 +7,6 @@ import fr.acinq.eclair.wire.{HasChannelId, HasTemporaryChannelId, Init, Lightnin
 import immortan.Channel.{WAIT_FOR_ACCEPT, WAIT_FUNDING_DONE}
 import immortan.ChannelListener.{Malfunction, Transition}
 import fr.acinq.bitcoin.{ByteVector32, Satoshi}
-import fr.acinq.eclair.io.Peer
 
 
 // Important: this must be initiated when chain tip is actually known
@@ -30,13 +29,10 @@ abstract class NCFunderOpenHandler(info: RemoteNodeInfo, tempChannelId: ByteVect
     }
 
     override def onOperational(worker: CommsTower.Worker, theirInit: Init): Unit = {
-      val initialFeeratePerKw = LNParams.feeRatesInfo.onChainFeeConf.getCommitmentFeerate(ChannelVersion.STATIC_REMOTEKEY, None)
-      val fundingTxFeeratePerKw = LNParams.feeRatesInfo.onChainFeeConf.feeEstimator.getFeeratePerKw(LNParams.feeRatesInfo.onChainFeeConf.feeTargets.fundingBlockTarget)
-      val params = Peer.makeChannelParams(info, freshChannel.chainWallet.wallet, funder = true, fundingAmount, ChannelVersion.STATIC_REMOTEKEY)
-
       val cmd = INPUT_INIT_FUNDER(info, tempChannelId, fundingAmount, pushAmount = 0L.msat,
-        initialFeeratePerKw, fundingTxFeeratePerKw, localParams = params, theirInit,
-        channelFlags = 0.toByte, ChannelVersion.STATIC_REMOTEKEY)
+        initialFeeratePerKw = LNParams.feeRatesInfo.onChainFeeConf.getCommitmentFeerate(ChannelVersion.STATIC_REMOTEKEY, None),
+        fundingTxFeeratePerKw = LNParams.feeRatesInfo.onChainFeeConf.feeEstimator.getFeeratePerKw(LNParams.feeRatesInfo.onChainFeeConf.feeTargets.fundingBlockTarget),
+        localParams = LNParams.makeChannelParams(info, freshChannel.chainWallet, isFunder = true, fundingAmount), theirInit, channelFlags = 0.toByte, ChannelVersion.STATIC_REMOTEKEY)
 
       freshChannel process cmd
     }

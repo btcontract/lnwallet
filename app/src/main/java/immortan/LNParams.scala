@@ -10,6 +10,7 @@ import fr.acinq.eclair.blockchain.electrum._
 import fr.acinq.bitcoin.DeterministicWallet._
 import scodec.bits.{ByteVector, HexStringSyntax}
 import fr.acinq.bitcoin.Crypto.{PrivateKey, PublicKey}
+import scala.concurrent.{Await, ExecutionContextExecutor}
 import immortan.sqlite.{DBInterface, PreparedQuery, RichCursor}
 import fr.acinq.eclair.router.Router.{PublicChannel, RouterConf}
 import fr.acinq.eclair.channel.{LocalParams, PersistentChannelData}
@@ -17,7 +18,6 @@ import fr.acinq.eclair.transactions.{DirectedHtlc, RemoteFulfill, Transactions}
 import akka.actor.{ActorRef, ActorSystem, PoisonPill, Props, SupervisorStrategy}
 import immortan.utils.{Denomination, FeeRatesInfo, FiatRatesInfo, PaymentRequestExt, WalletEventsCatcher}
 import fr.acinq.eclair.blockchain.electrum.db.WalletDb
-import scala.concurrent.ExecutionContextExecutor
 import fr.acinq.eclair.router.ChannelUpdateExt
 import java.util.concurrent.atomic.AtomicLong
 import immortan.SyncMaster.ShortChanIdSet
@@ -115,6 +115,20 @@ object LNParams {
     val eclairWallet = new ElectrumEclairWallet(wallet, chainHash)
     WalletExt(eclairWallet, catcher, clientPool, watcher)
   }
+
+  def makeChannelParams(remoteInfo: RemoteNodeInfo, chainWallet: WalletExt, isFunder: Boolean, fundingAmount: Satoshi): LocalParams = {
+    val walletKey: PublicKey = Await.result(chainWallet.wallet.getReceiveAddresses, atMost = 40.seconds).values.head.publicKey
+    makeChannelParams(remoteInfo, Script write Script.pay2wpkh(walletKey), walletKey.toSome, isFunder, fundingAmount)
+  }
+
+  // We make sure that funder and fundee key path end differently
+  def makeChannelParams(remoteInfo: RemoteNodeInfo, defaultFinalScriptPubkey: ByteVector, walletStaticPaymentBasepoint: Option[PublicKey], isFunder: Boolean, fundingAmount: Satoshi): LocalParams =
+    makeChannelParams(defaultFinalScriptPubkey, walletStaticPaymentBasepoint, isFunder, fundingAmount, remoteInfo newFundingKeyPath isFunder)
+
+  def makeChannelParams(defaultFinalScriptPubkey: ByteVector, walletStaticPaymentBasepoint: Option[PublicKey], isFunder: Boolean, fundingAmount: Satoshi, fundingKeyPath: DeterministicWallet.KeyPath): LocalParams =
+    LocalParams(fundingKeyPath, minDustLimit, maxHtlcValueInFlightMsat = UInt64(fundingAmount.toMilliSatoshi.toLong), channelReserve = (fundingAmount * reserveToFundingRatio).max(minDustLimit),
+      htlcMinimum = minPayment, toSelfDelay = maxToLocalDelay, maxAcceptedHtlcs = maxAcceptedHtlcs, isFunder = isFunder, defaultFinalScriptPubKey = defaultFinalScriptPubkey,
+      walletStaticPaymentBasepoint = walletStaticPaymentBasepoint)
 
   def currentBlockDay: Long = blockCount.get / blocksPerDay
 

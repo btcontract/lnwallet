@@ -44,13 +44,12 @@ class QRChainActivity extends QRActivity { me =>
 
   def INIT(state: Bundle): Unit =
     if (WalletApp.isAlive && LNParams.isOperational) {
-      runFutureProcessOnUI(LNParams.chainWallet.wallet.getReceiveAddresses, onFail) { freshAddresses =>
+      runFutureProcessOnUI(LNParams.chainWallet.wallet.getReceiveAddresses, onFail) { freshAddressMap =>
         val layoutManager = new CarouselLayoutManager(CarouselLayoutManager.HORIZONTAL, false)
         layoutManager.setPostLayoutListener(new CarouselZoomPostLayoutListener)
         layoutManager.setMaxVisibleItems(MAX_RECEIVE_ADDRESSES)
-
-        allAddresses = freshAddresses
-        addresses = freshAddresses.take(1)
+        allAddresses = freshAddressMap.keys.toList
+        addresses = allAddresses.take(1)
 
         chainQrMore setOnClickListener onButtonTap {
           // Show all remaining QR images right away

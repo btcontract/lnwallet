@@ -16,14 +16,13 @@
 
 package fr.acinq.eclair.blockchain
 
-import akka.actor.ActorRef
-import fr.acinq.bitcoin.Crypto.PublicKey
-import fr.acinq.bitcoin.{ByteVector32, Script, ScriptWitness, Transaction}
-import fr.acinq.eclair.channel.BitcoinEvent
-import fr.acinq.eclair.wire.ChannelAnnouncement
-import scodec.bits.ByteVector
-
 import scala.util.{Failure, Success, Try}
+import fr.acinq.bitcoin.{ByteVector32, Script, ScriptWitness, Transaction}
+import fr.acinq.eclair.wire.ChannelAnnouncement
+import fr.acinq.eclair.channel.BitcoinEvent
+import fr.acinq.bitcoin.Crypto.PublicKey
+import scodec.bits.ByteVector
+import akka.actor.ActorRef
 
 /**
  * Created by PM on 19/01/2016.
@@ -46,17 +45,15 @@ sealed trait Watch {
  * @param event           channel event related to the transaction.
  */
 final case class WatchConfirmed(replyTo: ActorRef, txId: ByteVector32, publicKeyScript: ByteVector, minDepth: Long, event: BitcoinEvent) extends Watch
+
 object WatchConfirmed {
   // if we have the entire transaction, we can get the publicKeyScript from any of the outputs
-  def apply(replyTo: ActorRef, tx: Transaction, minDepth: Long, event: BitcoinEvent): WatchConfirmed = WatchConfirmed(replyTo, tx.txid, tx.txOut.map(_.publicKeyScript).headOption.getOrElse(ByteVector.empty), minDepth, event)
+  def apply(replyTo: ActorRef, tx: Transaction, minDepth: Long, event: BitcoinEvent): WatchConfirmed =
+    WatchConfirmed(replyTo, tx.txid, tx.txOut.map(_.publicKeyScript).headOption.getOrElse(ByteVector.empty), minDepth, event)
 
-  def extractPublicKeyScript(witness: ScriptWitness): ByteVector = Try(PublicKey(witness.stack.last)) match {
-    case Success(pubKey) =>
-      // if last element of the witness is a public key, then this is a p2wpkh
-      Script.write(Script.pay2wpkh(pubKey))
-    case Failure(_) =>
-      // otherwise this is a p2wsh
-      Script.write(Script.pay2wsh(witness.stack.last))
+  def extractPublicKeyScript(witness: ScriptWitness): ByteVector = Try(PublicKey fromBin witness.stack.last) match {
+    case Success(pubKey) => Script.write(Script pay2wpkh pubKey) // if last element of the witness is a public key, then this is a p2wpkh
+    case _ => Script.write(Script pay2wsh witness.stack.last) // otherwise this is a p2wsh
   }
 }
 
@@ -76,6 +73,7 @@ object WatchConfirmed {
  *                        This argument can safely be ignored by watcher implementations.
  */
 final case class WatchSpent(replyTo: ActorRef, txId: ByteVector32, outputIndex: Int, publicKeyScript: ByteVector, event: BitcoinEvent, hints: Set[ByteVector32] = Set.empty) extends Watch
+
 object WatchSpent {
   // if we have the entire transaction, we can get the publicKeyScript from the relevant output
   def apply(replyTo: ActorRef, tx: Transaction, outputIndex: Int, event: BitcoinEvent): WatchSpent =
@@ -96,15 +94,13 @@ object WatchSpent {
  * @param event           channel event related to the outpoint.
  */
 final case class WatchSpentBasic(replyTo: ActorRef, txId: ByteVector32, outputIndex: Int, publicKeyScript: ByteVector, event: BitcoinEvent) extends Watch
+
 object WatchSpentBasic {
   // if we have the entire transaction, we can get the publicKeyScript from the relevant output
-  def apply(replyTo: ActorRef, tx: Transaction, outputIndex: Int, event: BitcoinEvent): WatchSpentBasic = WatchSpentBasic(replyTo, tx.txid, outputIndex, tx.txOut(outputIndex).publicKeyScript, event)
+  def apply(replyTo: ActorRef, tx: Transaction, outputIndex: Int, event: BitcoinEvent): WatchSpentBasic =
+    WatchSpentBasic(replyTo, tx.txid, outputIndex, tx.txOut(outputIndex).publicKeyScript, event)
 }
 
-// TODO: not implemented yet: notify me if confirmation number gets below minDepth?
-final case class WatchLost(replyTo: ActorRef, txId: ByteVector32, minDepth: Long, event: BitcoinEvent) extends Watch
-
-/** Even triggered when a watch condition is met. */
 trait WatchEvent {
   def event: BitcoinEvent
 }
@@ -134,22 +130,7 @@ final case class WatchEventSpent(event: BitcoinEvent, tx: Transaction) extends W
  */
 final case class WatchEventSpentBasic(event: BitcoinEvent) extends WatchEvent
 
-// TODO: not implemented yet.
-final case class WatchEventLost(event: BitcoinEvent) extends WatchEvent
-
-/** Publish the provided tx as soon as possible depending on locktime and csv */
 final case class PublishAsap(tx: Transaction)
-
-sealed trait UtxoStatus
-object UtxoStatus {
-  case object Unspent extends UtxoStatus
-  case class Spent(spendingTxConfirmed: Boolean) extends UtxoStatus
-}
-
-final case class ValidateRequest(ann: ChannelAnnouncement)
-final case class ValidateResult(c: ChannelAnnouncement, fundingTx: Either[Throwable, (Transaction, UtxoStatus)])
 
 final case class GetTxWithMeta(txid: ByteVector32)
 final case class GetTxWithMetaResponse(txid: ByteVector32, tx_opt: Option[Transaction], lastBlockTimestamp: Long)
-
-// @formatter:on

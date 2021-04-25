@@ -189,9 +189,11 @@ case class NormalCommits(channelVersion: ChannelVersion, remoteInfo: RemoteNodeI
 
     // we allowed mismatches between our feerates and our remote's as long as commitments didn't contain any HTLC at risk
     // we need to verify that we're not disagreeing on feerates anymore before offering new HTLCs
-    val localFeeratePerKw = feeConf.feeEstimator.getFeeratePerKw(target = feeConf.feeTargets.commitmentBlockTarget)
-    val isTooHigh = Helpers.isFeeDiffTooHigh(localFeeratePerKw, localCommit.spec.feeratePerKw, feeConf maxFeerateMismatchFor remoteInfo.nodeId)
-    if (isTooHigh) throw CMDException(new RuntimeException, cmd)
+    // NB: there may be a pending update_fee that hasn't been applied yet that needs to be taken into account
+    val localFeeratePerKw = feeConf.getCommitmentFeerate(channelVersion, None)
+    val remoteFeeratePerKw = localCommit.spec.feeratePerKw +: remoteChanges.all.collect { case f: UpdateFee => f.feeratePerKw }
+    val isFeeDiffTooHigh = feeConf.feerateTolerance.isFeeDiffTooHigh(channelVersion, localFeeratePerKw, _: FeeratePerKw)
+    if (remoteFeeratePerKw exists isFeeDiffTooHigh) throw CMDException(new RuntimeException, cmd)
 
     // let's compute the current commitment *as seen by them* with this change taken into account
     val encryptedTag: TlvStream[Tlv] = TlvStream(PaymentTagTlv.EncryptedPaymentSecret(cmd.encryptedTag) :: Nil)
@@ -210,18 +212,9 @@ case class NormalCommits(channelVersion: ChannelVersion, remoteInfo: RemoteNodeI
       channelVersion.commitmentFormat) + htlcOutputFee(reduced.feeratePerKw * 2, channelVersion.commitmentFormat)
     // NB: increasing the feerate can actually remove htlcs from the commit tx (if they fall below the trim threshold)
     // which may result in a lower commit tx fee; this is why we take the max of the two.
-    val missingForSender = reduced.toRemote - commitments1.remoteParams.channelReserve - (if (commitments1.localParams.isFunder) fees.max(funderFeeBuffer.truncateToSatoshi) else 0.sat)
-    val missingForReceiver = reduced.toLocal - commitments1.localParams.channelReserve - (if (commitments1.localParams.isFunder) 0.sat else fees)
-    if (missingForSender < 0.msat) {
-      throw CMDException(new RuntimeException, cmd)
-    } else if (missingForReceiver < 0.msat) {
-      if (localParams.isFunder) {
-        // receiver is fundee; it is ok if it can't maintain its channel_reserve for now, as long as its balance is increasing, which is the case if it is receiving a payment
-      } else {
-        throw CMDException(new RuntimeException, cmd)
-      }
-    }
-
+    val missingForReceiver = reduced.toLocal - commitments1.localParams.channelReserve - { if (commitments1.localParams.isFunder) 0.sat else fees }
+    val missingForSender = reduced.toRemote - commitments1.remoteParams.channelReserve - { if (commitments1.localParams.isFunder) fees.max(funderFeeBuffer.truncateToSatoshi) else 0.sat }
+    if (missingForSender < 0.sat) throw CMDException(new RuntimeException, cmd) else if (missingForReceiver < 0.sat && localParams.isFunder) throw CMDException(new RuntimeException, cmd)
     if (outgoingHtlcs.size > commitments1.remoteParams.maxAcceptedHtlcs) throw CMDException(new RuntimeException, cmd)
     if (commitments1.inFlightLeft < 0L.msat) throw CMDException(new RuntimeException, cmd)
     (commitments1, add)
@@ -235,10 +228,12 @@ case class NormalCommits(channelVersion: ChannelVersion, remoteInfo: RemoteNodeI
     if (add.amountMsat < htlcMinimum) throw new RuntimeException
 
     // we allowed mismatches between our feerates and our remote's as long as commitments didn't contain any HTLC at risk
-    // we need to verify that we're not disagreeing on feerates anymore before accepting new HTLCs
-    val localFeeratePerKw = feeConf.feeEstimator.getFeeratePerKw(target = feeConf.feeTargets.commitmentBlockTarget)
-    val isTooHigh = Helpers.isFeeDiffTooHigh(localFeeratePerKw, localCommit.spec.feeratePerKw, feeConf maxFeerateMismatchFor remoteInfo.nodeId)
-    if (isTooHigh) throw new RuntimeException
+    // we need to verify that we're not disagreeing on feerates anymore before offering new HTLCs
+    // NB: there may be a pending update_fee that hasn't been applied yet that needs to be taken into account
+    val localFeeratePerKw = feeConf.getCommitmentFeerate(channelVersion, None)
+    val remoteFeeratePerKw = localCommit.spec.feeratePerKw +: remoteChanges.all.collect { case f: UpdateFee => f.feeratePerKw }
+    val isFeeDiffTooHigh = feeConf.feerateTolerance.isFeeDiffTooHigh(channelVersion, localFeeratePerKw, _: FeeratePerKw)
+    if (remoteFeeratePerKw exists isFeeDiffTooHigh) throw new RuntimeException
 
     // let's compute the current commitment *as seen by us* including this change
     val commitments1 = addRemoteProposal(add).copy(remoteNextHtlcId = remoteNextHtlcId + 1)
@@ -248,20 +243,10 @@ case class NormalCommits(channelVersion: ChannelVersion, remoteInfo: RemoteNodeI
     // note that the funder pays the fee, so if sender != funder, both sides will have to afford this payment
     val fees = commitTxFee(commitments1.remoteParams.dustLimit, reduced, channelVersion.commitmentFormat)
     // NB: we don't enforce the funderFeeReserve (see sendAdd) because it would confuse a remote funder that doesn't have this mitigation in place
-    // We could enforce it once we're confident a large portion of the network implements it.
-    val missingForSender = reduced.toRemote - commitments1.localParams.channelReserve - (if (commitments1.localParams.isFunder) 0.sat else fees)
-    val missingForReceiver = reduced.toLocal - commitments1.remoteParams.channelReserve - (if (commitments1.localParams.isFunder) fees else 0.sat)
-    if (missingForSender < 0.sat) {
-      throw new RuntimeException
-    } else if (missingForReceiver < 0.sat) {
-      if (localParams.isFunder) {
-        throw new RuntimeException
-      } else {
-        // receiver is fundee; it is ok if it can't maintain its channel_reserve for now, as long as its balance is increasing, which is the case if it is receiving a payment
-      }
-    }
+    val missingForSender = reduced.toRemote - commitments1.localParams.channelReserve - { if (commitments1.localParams.isFunder) 0.sat else fees }
+    val missingForReceiver = reduced.toLocal - commitments1.remoteParams.channelReserve - { if (commitments1.localParams.isFunder) fees else 0.sat }
+    if (missingForSender < 0.sat) throw new RuntimeException else if (missingForReceiver < 0.sat && localParams.isFunder) throw new RuntimeException
 
-    // NB: we need the `toSeq` because otherwise duplicate amountMsat would be removed (since incomingHtlcs is a Set).
     val htlcValueInFlight = incomingHtlcs.foldLeft(0L.msat) { case (accumulator, inAdd) => accumulator + inAdd.amountMsat }
     if (commitments1.localParams.maxHtlcValueInFlightMsat < htlcValueInFlight) throw new RuntimeException
     if (incomingHtlcs.size > commitments1.localParams.maxAcceptedHtlcs) throw new RuntimeException
@@ -301,7 +286,7 @@ case class NormalCommits(channelVersion: ChannelVersion, remoteInfo: RemoteNodeI
       throw new RuntimeException
     } else {
       val localFeeratePerKw = feeConf.feeEstimator.getFeeratePerKw(target = feeConf.feeTargets.commitmentBlockTarget)
-      if (Helpers.isFeeDiffTooHigh(localFeeratePerKw, fee.feeratePerKw, feeConf maxFeerateMismatchFor remoteInfo.nodeId) && hasPendingOrProposedHtlcs) {
+      if (Helpers.isFeeDiffTooHigh(localFeeratePerKw, fee.feeratePerKw, feeConf.feerateTolerance) && hasPendingOrProposedHtlcs) {
         throw new RuntimeException
       } else {
         // NB: we check that the funder can afford this new fee even if spec allows to do it at next signature

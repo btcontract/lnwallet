@@ -20,7 +20,6 @@ import fr.acinq.eclair._
 import fr.acinq.bitcoin._
 import fr.acinq.eclair.wire._
 import fr.acinq.bitcoin.Script._
-import scala.concurrent.duration._
 import fr.acinq.eclair.transactions._
 import fr.acinq.eclair.blockchain.fee._
 import fr.acinq.eclair.transactions.Scripts._
@@ -30,10 +29,8 @@ import fr.acinq.eclair.transactions.Transactions._
 import scala.util.{Success, Try}
 import immortan.{ChannelBag, LNParams, RemoteNodeInfo}
 import fr.acinq.bitcoin.Crypto.{PrivateKey, PublicKey, ripemd160, sha256}
-import fr.acinq.eclair.blockchain.EclairWallet
 import fr.acinq.eclair.crypto.Generators
 import scodec.bits.ByteVector
-import scala.concurrent.Await
 
 /**
  * Created by PM on 20/05/2016.
@@ -43,15 +40,17 @@ object Helpers {
   /**
    * Called by the fundee
    */
-  def validateParamsFundee(features: Features, open: OpenChannel, remoteNodeId: PublicKey, conf: OnChainFeeConf): Unit = {
+  def validateParamsFundee(features: Features, open: OpenChannel, conf: OnChainFeeConf): Unit = {
     // BOLT #2: if the chain_hash value, within the open_channel, message is set to a hash of a chain that is unknown to the receiver:
     // MUST reject the channel.
     if (LNParams.chainHash != open.chainHash) throw InvalidChainHash(open.temporaryChannelId, local = LNParams.chainHash, remote = open.chainHash)
 
-    if (open.fundingSatoshis < LNParams.minFundingSatoshis || open.fundingSatoshis > LNParams.maxFundingSatoshis) throw InvalidFundingAmount(open.temporaryChannelId, open.fundingSatoshis, LNParams.minFundingSatoshis, LNParams.maxFundingSatoshis)
+    if (open.fundingSatoshis < LNParams.minFundingSatoshis || open.fundingSatoshis > LNParams.maxFundingSatoshis)
+      throw InvalidFundingAmount(open.temporaryChannelId, open.fundingSatoshis, LNParams.minFundingSatoshis, LNParams.maxFundingSatoshis)
 
     // BOLT #2: Channel funding limits
-    if (open.fundingSatoshis >= LNParams.maxFundingSatoshis && !features.hasFeature(Features.Wumbo)) throw InvalidFundingAmount(open.temporaryChannelId, open.fundingSatoshis, LNParams.minFundingSatoshis, LNParams.maxFundingSatoshis)
+    if (open.fundingSatoshis >= LNParams.maxFundingSatoshis && !features.hasFeature(Features.Wumbo))
+      throw InvalidFundingAmount(open.temporaryChannelId, open.fundingSatoshis, LNParams.minFundingSatoshis, LNParams.maxFundingSatoshis)
 
     // BOLT #2: The receiving node MUST fail the channel if: push_msat is greater than funding_satoshis * 1000.
     if (open.pushMsat > open.fundingSatoshis) throw InvalidPushAmount(open.temporaryChannelId, open.pushMsat, open.fundingSatoshis.toMilliSatoshi)
@@ -77,7 +76,7 @@ object Helpers {
 
     // BOLT #2: The receiving node MUST fail the channel if: it considers feerate_per_kw too small for timely processing or unreasonably large.
     val localFeeratePerKw = conf.feeEstimator.getFeeratePerKw(target = conf.feeTargets.commitmentBlockTarget)
-    if (isFeeDiffTooHigh(localFeeratePerKw, open.feeratePerKw, conf.maxFeerateMismatchFor(remoteNodeId))) throw FeerateTooDifferent(open.temporaryChannelId, localFeeratePerKw, open.feeratePerKw)
+    if (isFeeDiffTooHigh(localFeeratePerKw, open.feeratePerKw, conf.feerateTolerance)) throw FeerateTooDifferent(open.temporaryChannelId, localFeeratePerKw, open.feeratePerKw)
     // only enforce dust limit check on mainnet
     if (LNParams.chainHash == Block.LivenetGenesisBlock.hash) {
       if (open.dustLimitSatoshis < LNParams.minDustLimit) throw DustLimitTooSmall(open.temporaryChannelId, open.dustLimitSatoshis, LNParams.minDustLimit)
@@ -162,20 +161,7 @@ object Helpers {
     result
   }
 
-  /** NB: this is a blocking call, use carefully! */
-  def getFinalScriptPubKey(wallet: EclairWallet, chainHash: ByteVector32): ByteVector = {
-    import scala.concurrent.duration._
-    val finalAddress = Await.result(wallet.getReceiveAddresses, 40.seconds).head
-    Script.write(addressToPublicKeyScript(finalAddress, chainHash))
-  }
-
-  /** NB: this is a blocking call, use carefully! */
-  def getWalletPaymentBasepoint(wallet: EclairWallet): PublicKey = {
-    Await.result(wallet.getReceivePubkey(), 40.seconds)
-  }
-
   object Funding {
-
     def makeFundingInputInfo(fundingTxId: ByteVector32, fundingTxOutputIndex: Int, fundingSatoshis: Satoshi, fundingPubkey1: PublicKey, fundingPubkey2: PublicKey): InputInfo = {
       val fundingScript = multiSig2of2(fundingPubkey1, fundingPubkey2)
       val fundingTxOut = TxOut(fundingSatoshis, pay2wsh(fundingScript))
@@ -404,14 +390,8 @@ object Helpers {
     }
 
     /** Wraps transaction generation in a Try and filters failures to avoid one transaction negatively impacting a whole commitment. */
-    private def generateTx(desc: String)(attempt: => Either[TxGenerationSkipped, TransactionWithInputInfo]): Option[TransactionWithInputInfo] = {
-      Try {
-        attempt
-      } match {
-        case Success(Right(txinfo)) => Some(txinfo)
-        case _ => None
-      }
-    }
+    private def generateTx(desc: String)(attempt: => Either[TxGenerationSkipped, TransactionWithInputInfo]): Option[TransactionWithInputInfo] =
+      Try(attempt) map { case Right(txinfo) => Some(txinfo) case _ => None } getOrElse None
 
     /**
      * Claim all the HTLCs that we've received from our current commit tx. This will be
@@ -979,7 +959,8 @@ object Helpers {
         .flatMap(_.txIn.map(_.outPoint)).toSet -- localCommitPublished.irrevocablySpent.keys
       // which htlc delayed txes can we expect to be confirmed?
       val unconfirmedHtlcDelayedTxes = localCommitPublished.claimHtlcDelayedTxs
-        .filter(tx => (tx.txIn.map(_.outPoint.txid).toSet -- localCommitPublished.irrevocablySpent.values).isEmpty) // only the txes which parents are already confirmed may get confirmed (note that this also eliminates outputs that have been double-spent by a competing tx)
+        // only the txes which parents are already confirmed may get confirmed (note that this also eliminates outputs that have been double-spent by a competing tx)
+        .filter(tx => (tx.txIn.map(_.outPoint.txid).toSet -- localCommitPublished.irrevocablySpent.values).isEmpty)
         .filterNot(tx => localCommitPublished.irrevocablySpent.values.toSet.contains(tx.txid)) // has the tx already been confirmed?
       isCommitTxConfirmed && commitOutputsSpendableByUs.isEmpty && unconfirmedHtlcDelayedTxes.isEmpty
     }
@@ -1016,15 +997,7 @@ object Helpers {
       isCommitTxConfirmed && commitOutputsSpendableByUs.isEmpty && unconfirmedHtlcDelayedTxs.isEmpty
     }
 
-    /**
-     * This helper function tells if some of the utxos consumed by the given transaction have already been irrevocably spent (possibly by this very transaction).
-     *
-     * It can be useful to:
-     *   - not attempt to publish this tx when we know this will fail
-     *   - not watch for confirmations if we know the tx is already confirmed
-     *   - not watch the corresponding utxo when we already know the final spending tx
-     */
-    def inputsAlreadySpent(tx: Transaction, irrevocablySpent: Map[OutPoint, ByteVector32]): Boolean =
-      tx.txIn.exists(txIn => irrevocablySpent.contains(txIn.outPoint))
+    def inputsAlreadySpent(irrevocablySpent: Map[OutPoint, ByteVector32] = Map.empty)(tx: Transaction): Boolean =
+      tx.txIn.exists(txIn => irrevocablySpent contains txIn.outPoint)
   }
 }

@@ -18,18 +18,16 @@ package fr.acinq.eclair.blockchain
 
 import fr.acinq.eclair.blockchain.EclairWallet._
 import fr.acinq.bitcoin.{ByteVector32, Satoshi, Transaction, TxIn}
+import fr.acinq.bitcoin.DeterministicWallet.ExtendedPrivateKey
 import fr.acinq.eclair.blockchain.fee.FeeratePerKw
-import fr.acinq.bitcoin.Crypto.PublicKey
 import scala.concurrent.Future
 import scodec.bits.ByteVector
 
-/**
- * Created by PM on 06/07/2017.
- */
+
 object EclairWallet {
-  type Addresses = List[String]
   type TxAndFee = (Transaction, Satoshi)
   type DepthAndDoubleSpent = (Long, Boolean)
+  type Address2PrivKey = Map[String, ExtendedPrivateKey]
   final val OPT_IN_FULL_RBF = TxIn.SEQUENCE_FINAL - 2
   final val MAX_RECEIVE_ADDRESSES = 4
 }
@@ -37,31 +35,19 @@ object EclairWallet {
 trait EclairWallet {
   def getBalance: Future[OnChainBalance]
 
-  def getReceiveAddresses: Future[Addresses]
-
-  def getReceivePubkey(receiveAddress: Option[String] = None): Future[PublicKey]
+  def getReceiveAddresses: Future[Address2PrivKey]
 
   def makeFundingTx(pubkeyScript: ByteVector, amount: Satoshi, feeRatePerKw: FeeratePerKw): Future[MakeFundingTxResponse]
 
   def makeAllFundingTx(pubkeyScript: ByteVector, feeRatePerKw: FeeratePerKw): Future[MakeFundingTxResponse]
-
-  /**
-   * Committing *must* include publishing the transaction on the network.
-   *
-   * We need to be very careful here, we don't want to consider a commit 'failed' if we are not absolutely sure that the
-   * funding tx won't end up on the blockchain: if that happens and we have cancelled the channel, then we would lose our
-   * funds!
-   *
-   * @return true if success
-   *         false IF AND ONLY IF *HAS NOT BEEN PUBLISHED* otherwise funds are at risk!!!
-   */
-  def commit(tx: Transaction): Future[Boolean]
 
   def sendPreimageBroadcast(preimages: Set[ByteVector32], feeRatePerKw: FeeratePerKw): Future[TxAndFee]
 
   def sendPayment(amount: Satoshi, address: String, feeRatePerKw: FeeratePerKw): Future[TxAndFee]
 
   def sendPaymentAll(address: String, feeRatePerKw: FeeratePerKw): Future[TxAndFee]
+
+  def commit(tx: Transaction): Future[Boolean]
 
   def rollback(tx: Transaction): Future[Boolean]
 

@@ -26,91 +26,43 @@ import fr.acinq.eclair.blockchain.fee.OnChainFeeConf
 import fr.acinq.eclair.channel.Helpers.Closing
 import scala.collection.immutable.Queue
 
-/**
- * Created by PM on 20/08/2015.
- */
 
 trait Handlers { me: ChannelNormal =>
   def doPublish(closingTx: Transaction): Unit = {
-    chainWallet.watcher ! WatchConfirmed(receiver, closingTx, LNParams.minDepthBlocks, BITCOIN_TX_CONFIRMED(closingTx))
+    val replyEvent: BitcoinEvent = BITCOIN_TX_CONFIRMED(closingTx)
+    chainWallet.watcher ! WatchConfirmed(receiver, closingTx, LNParams.minDepthBlocks, replyEvent)
     chainWallet.watcher ! PublishAsap(closingTx)
   }
 
-  /**
-   * This helper method will publish txes only if they haven't yet reached minDepth
-   */
-  def publishIfNeeded(txes: Iterable[Transaction], irrevocablySpent: Map[OutPoint, ByteVector32]): Unit = {
-    val (_, process) = txes.partition(Closing.inputsAlreadySpent(_, irrevocablySpent))
-    process.foreach(tx => chainWallet.watcher ! PublishAsap(tx))
+  def publishIfNeeded(txes: Iterable[Transaction], irrevocablySpent: Map[OutPoint, ByteVector32] = Map.empty): Unit =
+    txes.filterNot(Closing inputsAlreadySpent irrevocablySpent).map(PublishAsap).foreach(event => chainWallet.watcher ! event)
+
+  def watchConfirmedIfNeeded(txes: Iterable[Transaction], irrevocablySpent: Map[OutPoint, ByteVector32] = Map.empty): Unit =
+    txes.filterNot(Closing inputsAlreadySpent irrevocablySpent).map(BITCOIN_TX_CONFIRMED).foreach { replyEvent =>
+      chainWallet.watcher ! WatchConfirmed(receiver, replyEvent.tx, LNParams.minDepthBlocks, replyEvent)
+    }
+
+  def watchSpentIfNeeded(parentTx: Transaction, txes: Iterable[Transaction], irrevocablySpent: Map[OutPoint, ByteVector32] = Map.empty): Unit =
+    txes.filterNot(Closing inputsAlreadySpent irrevocablySpent).map(_.txIn.head.outPoint.index.toInt).foreach { outPointIndex =>
+      chainWallet.watcher ! WatchSpent(receiver, parentTx, outPointIndex, BITCOIN_OUTPUT_SPENT)
+    }
+
+  def doPublish(lcp: LocalCommitPublished): Unit = {
+    publishIfNeeded(List(lcp.commitTx) ++ lcp.claimMainDelayedOutputTx ++ lcp.htlcSuccessTxs ++ lcp.htlcTimeoutTxs ++ lcp.claimHtlcDelayedTxs, lcp.irrevocablySpent)
+    watchConfirmedIfNeeded(List(lcp.commitTx) ++ lcp.claimMainDelayedOutputTx ++ lcp.claimHtlcDelayedTxs, lcp.irrevocablySpent)
+    watchSpentIfNeeded(lcp.commitTx, lcp.htlcSuccessTxs ++ lcp.htlcTimeoutTxs, lcp.irrevocablySpent)
   }
 
-  /**
-   * This helper method will watch txes only if they haven't yet reached minDepth
-   */
-  def watchConfirmedIfNeeded(txes: Iterable[Transaction], irrevocablySpent: Map[OutPoint, ByteVector32]): Unit = {
-    val (_, process) = txes.partition(Closing.inputsAlreadySpent(_, irrevocablySpent))
-    process.foreach(tx => chainWallet.watcher ! WatchConfirmed(receiver, tx, LNParams.minDepthBlocks, BITCOIN_TX_CONFIRMED(tx)))
-
+  def doPublish(rcp: RemoteCommitPublished): Unit = {
+    publishIfNeeded(rcp.claimMainOutputTx ++ rcp.claimHtlcSuccessTxs ++ rcp.claimHtlcTimeoutTxs, rcp.irrevocablySpent)
+    watchSpentIfNeeded(rcp.commitTx, rcp.claimHtlcTimeoutTxs ++ rcp.claimHtlcSuccessTxs, rcp.irrevocablySpent)
+    watchConfirmedIfNeeded(List(rcp.commitTx) ++ rcp.claimMainOutputTx, rcp.irrevocablySpent)
   }
 
-  /**
-   * This helper method will watch txes only if the utxo they spend hasn't already been irrevocably spent
-   */
-  def watchSpentIfNeeded(parentTx: Transaction, txes: Iterable[Transaction], irrevocablySpent: Map[OutPoint, ByteVector32]): Unit = {
-    val (_, process) = txes.partition(Closing.inputsAlreadySpent(_, irrevocablySpent))
-    process.foreach(tx => chainWallet.watcher ! WatchSpent(receiver, parentTx, tx.txIn.head.outPoint.index.toInt, BITCOIN_OUTPUT_SPENT))
-
-  }
-
-  def doPublish(localCommitPublished: LocalCommitPublished): Unit = {
-    import localCommitPublished._
-
-    val publishQueue = List(commitTx) ++ claimMainDelayedOutputTx ++ htlcSuccessTxs ++ htlcTimeoutTxs ++ claimHtlcDelayedTxs
-    publishIfNeeded(publishQueue, irrevocablySpent)
-
-    // we watch:
-    // - the commitment tx itself, so that we can handle the case where we don't have any outputs
-    // - 'final txes' that send funds to our wallet and that spend outputs that only us control
-    val watchConfirmedQueue = List(commitTx) ++ claimMainDelayedOutputTx ++ claimHtlcDelayedTxs
-    watchConfirmedIfNeeded(watchConfirmedQueue, irrevocablySpent)
-
-    // we watch outputs of the commitment tx that both parties may spend
-    val watchSpentQueue = htlcSuccessTxs ++ htlcTimeoutTxs
-    watchSpentIfNeeded(commitTx, watchSpentQueue, irrevocablySpent)
-  }
-
-  def doPublish(remoteCommitPublished: RemoteCommitPublished): Unit = {
-    import remoteCommitPublished._
-
-    val publishQueue = claimMainOutputTx ++ claimHtlcSuccessTxs ++ claimHtlcTimeoutTxs
-    publishIfNeeded(publishQueue, irrevocablySpent)
-
-    // we watch:
-    // - the commitment tx itself, so that we can handle the case where we don't have any outputs
-    // - 'final txes' that send funds to our wallet and that spend outputs that only us control
-    val watchConfirmedQueue = List(commitTx) ++ claimMainOutputTx
-    watchConfirmedIfNeeded(watchConfirmedQueue, irrevocablySpent)
-
-    // we watch outputs of the commitment tx that both parties may spend
-    val watchSpentQueue = claimHtlcTimeoutTxs ++ claimHtlcSuccessTxs
-    watchSpentIfNeeded(commitTx, watchSpentQueue, irrevocablySpent)
-  }
-
-  def doPublish(revokedCommitPublished: RevokedCommitPublished): Unit = {
-    import revokedCommitPublished._
-
-    val publishQueue = claimMainOutputTx ++ mainPenaltyTx ++ htlcPenaltyTxs ++ claimHtlcDelayedPenaltyTxs
-    publishIfNeeded(publishQueue, irrevocablySpent)
-
-    // we watch:
-    // - the commitment tx itself, so that we can handle the case where we don't have any outputs
-    // - 'final txes' that send funds to our wallet and that spend outputs that only us control
-    val watchConfirmedQueue = List(commitTx) ++ claimMainOutputTx
-    watchConfirmedIfNeeded(watchConfirmedQueue, irrevocablySpent)
-
-    // we watch outputs of the commitment tx that both parties may spend
-    val watchSpentQueue = mainPenaltyTx ++ htlcPenaltyTxs
-    watchSpentIfNeeded(commitTx, watchSpentQueue, irrevocablySpent)
+  def doPublish(rcp: RevokedCommitPublished): Unit = {
+    publishIfNeeded(rcp.claimMainOutputTx ++ rcp.mainPenaltyTx ++ rcp.htlcPenaltyTxs ++ rcp.claimHtlcDelayedPenaltyTxs, rcp.irrevocablySpent)
+    watchSpentIfNeeded(rcp.commitTx, rcp.mainPenaltyTx ++ rcp.htlcPenaltyTxs, rcp.irrevocablySpent)
+    watchConfirmedIfNeeded(List(rcp.commitTx) ++ rcp.claimMainOutputTx, rcp.irrevocablySpent)
   }
 
   def handleNormalSync(d: DATA_NORMAL, channelReestablish: ChannelReestablish): Unit = {
@@ -154,14 +106,16 @@ trait Handlers { me: ChannelNormal =>
     }
   }
 
-  def handleNegotiationsSync(d: DATA_NEGOTIATING, conf: OnChainFeeConf): Unit = if (d.commitments.localParams.isFunder) {
-    // we could use the last closing_signed we sent, but network fees may have changed while we were offline so it is better to restart from scratch
-    val (closingTx, closingSigned) = Closing.makeFirstClosingTx(d.commitments, d.localShutdown.scriptPubKey, d.remoteShutdown.scriptPubKey, conf.feeEstimator, conf.feeTargets)
-    StoreBecomeSend(d.copy(closingTxProposed = d.closingTxProposed :+ List(ClosingTxProposed(closingTx.tx, closingSigned))), OPEN, d.localShutdown, closingSigned)
-  } else {
-    // we start a new round of negotiation
-    val closingTxProposed1 = if (d.closingTxProposed.last.isEmpty) d.closingTxProposed else d.closingTxProposed :+ Nil
-    StoreBecomeSend(d.copy(closingTxProposed = closingTxProposed1), OPEN, d.localShutdown)
+  def handleNegotiationsSync(d: DATA_NEGOTIATING, conf: OnChainFeeConf): Unit = {
+    if (d.commitments.localParams.isFunder) {
+      // we could use the last closing_signed we sent, but network fees may have changed while we were offline so it is better to restart from scratch
+      val (closingTx, closingSigned) = Closing.makeFirstClosingTx(d.commitments, d.localShutdown.scriptPubKey, d.remoteShutdown.scriptPubKey, conf.feeEstimator, conf.feeTargets)
+      StoreBecomeSend(d.copy(closingTxProposed = d.closingTxProposed :+ List(ClosingTxProposed(closingTx.tx, closingSigned))), OPEN, d.localShutdown, closingSigned)
+    } else {
+      // we start a new round of negotiation
+      val closingTxProposed1 = if (d.closingTxProposed.last.isEmpty) d.closingTxProposed else d.closingTxProposed :+ Nil
+      StoreBecomeSend(d.copy(closingTxProposed = closingTxProposed1), OPEN, d.localShutdown)
+    }
   }
 
   def handleSync(channelReestablish: ChannelReestablish, d: HasNormalCommitments): (NormalCommits, Queue[LightningMessage]) = {
@@ -215,21 +169,6 @@ trait Handlers { me: ChannelNormal =>
   }
 
   def handleRemoteShutdown(d: DATA_NORMAL, remote: Shutdown, conf: OnChainFeeConf): (HasNormalCommitments, List[ChannelMessage]) = {
-    // they have pending unsigned htlcs         => they violated the spec, close the channel
-    // they don't have pending unsigned htlcs
-    //    we have pending unsigned htlcs
-    //      we already sent a shutdown message  => spec violation (we can't send htlcs after having sent shutdown)
-    //      we did not send a shutdown message
-    //        we are ready to sign              => we stop sending further htlcs, we initiate a signature
-    //        we are waiting for a rev          => we stop sending further htlcs, we wait for their revocation, will resign immediately after, and then we will send our shutdown message
-    //    we have no pending unsigned htlcs
-    //      we already sent a shutdown message
-    //        there are pending signed changes  => send our shutdown message, go to SHUTDOWN
-    //        there are no htlcs                => send our shutdown message, go to NEGOTIATING
-    //      we did not send a shutdown message
-    //        there are pending signed changes  => go to SHUTDOWN
-    //        there are no htlcs                => go to NEGOTIATING
-
     if (!Closing.isValidFinalScriptPubkey(remote.scriptPubKey)) {
       throw new RuntimeException
     } else if (d.commitments.remoteHasUnsignedOutgoingHtlcs) {

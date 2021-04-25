@@ -118,7 +118,7 @@ abstract class ChannelNormal(bag: ChannelBag) extends Channel with Handlers { me
         val localFundingPubKey = init.remoteInfo.fundingPublicKey(init.localParams.fundingKeyPath).publicKey
         val emptyUpfrontShutdown: TlvStream[AcceptChannelTlv] = TlvStream(ChannelTlv UpfrontShutdownScript ByteVector.empty)
 
-        Helpers.validateParamsFundee(LNParams.ourInit.features, init.theirOpen, init.remoteInfo.nodeId, LNParams.feeRatesInfo.onChainFeeConf)
+        Helpers.validateParamsFundee(LNParams.ourInit.features, init.theirOpen, LNParams.feeRatesInfo.onChainFeeConf)
 
         val basePoint = init.localParams.walletStaticPaymentBasepoint.getOrElse(init.remoteInfo.paymentPoint(channelKeyPath).publicKey)
         val accept = AcceptChannel(init.theirOpen.temporaryChannelId, init.localParams.dustLimit, init.localParams.maxHtlcValueInFlightMsat, init.localParams.channelReserve, init.localParams.htlcMinimum,

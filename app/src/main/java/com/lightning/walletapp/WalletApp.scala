@@ -109,7 +109,7 @@ object WalletApp { me =>
     extDataBag.db txWrap {
       LNParams.fiatRatesInfo = extDataBag.tryGetFiatRatesInfo getOrElse FiatRatesInfo(Map.empty, Map.empty, stamp = 0L)
       LNParams.feeRatesInfo = extDataBag.tryGetFeeRatesInfo getOrElse FeeRatesInfo(FeeRates.defaultFeerates, stamp = 0L)
-      LNParams.trampoline = extDataBag.tryGetTrampolineOn getOrElse TrampolineOn.default(LNParams.minPayment, LNParams.routingCltvExpiryDelta)
+      LNParams.trampoline = extDataBag.tryGetTrampolineOn getOrElse TrampolineOn.byDefault(LNParams.minPayment, LNParams.routingCltvExpiryDelta)
     }
 
     val pf = new PathFinder(normalBag, hostedBag) {

@@ -61,9 +61,11 @@ case class FeeRatesInfo(perKb: FeeratesPerKB, stamp: Long) {
     override def getFeeratePerKw(target: Int): FeeratePerKw = feeratesPerKw.feePerBlock(target)
   }
 
-  val onChainFeeConf: OnChainFeeConf =
-    OnChainFeeConf(FeeTargets(fundingBlockTarget = 12, commitmentBlockTarget = 6, mutualCloseBlockTarget = 36, claimMainBlockTarget = 36),
-      feeEstimator, closeOnOfflineMismatch = false, updateFeeMinDiffRatio = 0.1, FeerateTolerance(0.2, 20), perNodeFeerateTolerance = Map.empty)
+  val onChainFeeConf: OnChainFeeConf = {
+    val feerateTolerance = FeerateTolerance(0.2, 20)
+    val feeTargets = FeeTargets(fundingBlockTarget = 12, commitmentBlockTarget = 6, mutualCloseBlockTarget = 36, claimMainBlockTarget = 36)
+    OnChainFeeConf(feeTargets, feeEstimator, closeOnOfflineMismatch = false, updateFeeMinDiffRatio = 0.1, feerateTolerance)
+  }
 }
 
 trait FeeRatesListener {

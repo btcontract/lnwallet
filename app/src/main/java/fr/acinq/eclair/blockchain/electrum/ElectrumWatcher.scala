@@ -16,36 +16,19 @@
 
 package fr.acinq.eclair.blockchain.electrum
 
-import akka.actor.{Actor, ActorLogging, ActorRef, Stash, Terminated}
-import fr.acinq.bitcoin.{BlockHeader, ByteVector32, SatoshiLong, Script, Transaction, TxIn, TxOut}
 import fr.acinq.eclair.blockchain._
-import fr.acinq.eclair.blockchain.electrum.ElectrumClient.computeScriptHash
-import fr.acinq.eclair.channel.{BITCOIN_FUNDING_DEPTHOK, BITCOIN_PARENT_TX_CONFIRMED}
-import fr.acinq.eclair.transactions.Scripts
-import fr.acinq.eclair.{ShortChannelId, TxCoordinates}
-
-import java.util.concurrent.atomic.AtomicLong
 import scala.collection.immutable.{Queue, SortedMap}
+import fr.acinq.bitcoin.{BlockHeader, ByteVector32, Transaction}
+import akka.actor.{Actor, ActorLogging, ActorRef, Stash, Terminated}
+import fr.acinq.eclair.channel.{BITCOIN_FUNDING_DEPTHOK, BITCOIN_PARENT_TX_CONFIRMED}
+import fr.acinq.eclair.blockchain.electrum.ElectrumClient.computeScriptHash
+import java.util.concurrent.atomic.AtomicLong
+import fr.acinq.eclair.transactions.Scripts
 
 
 class ElectrumWatcher(blockCount: AtomicLong, client: ActorRef) extends Actor with Stash with ActorLogging {
 
   client ! ElectrumClient.AddStatusListener(self)
-
-  override def unhandled(message: Any): Unit = message match {
-    case ValidateRequest(c) =>
-      log.info("blindly validating channel={}", c)
-      val pubkeyScript = Script.write(Script.pay2wsh(Scripts.multiSig2of2(c.bitcoinKey1, c.bitcoinKey2)))
-      val TxCoordinates(_, _, outputIndex) = ShortChannelId.coordinates(c.shortChannelId)
-      val fakeFundingTx = Transaction(
-        version = 2,
-        txIn = Seq.empty[TxIn],
-        txOut = List.fill(outputIndex + 1)(TxOut(0.sat, pubkeyScript)), // quick and dirty way to be sure that the outputIndex'th output is of the expected format
-        lockTime = 0)
-      sender ! ValidateResult(c, Right((fakeFundingTx, UtxoStatus.Unspent)))
-
-    case _ => log.warning("unhandled message {}", message)
-  }
 
   def receive: Receive = disconnected(Set.empty, Queue.empty, SortedMap.empty, Queue.empty)
 
