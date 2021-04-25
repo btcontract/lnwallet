@@ -219,15 +219,9 @@ object WalletApp { me =>
 }
 
 object Vibrator {
-  var lastVibrated: Long = 0L
   val uri: Uri = Settings.System.getUriFor(Settings.System.VIBRATE_ON)
-  val vibrator: android.os.Vibrator = WalletApp.app.getSystemService(Context.VIBRATOR_SERVICE).asInstanceOf[android.os.Vibrator]
-  def canVibrate: Boolean = null != vibrator && vibrator.hasVibrator && lastVibrated < System.currentTimeMillis - 3000L
-
-  def vibrate: Unit = if (canVibrate) {
-    lastVibrated = System.currentTimeMillis
-    vibrator.vibrate(Array(0L, 85, 200), -1)
-  }
+  private val vibrator = WalletApp.app.getSystemService(Context.VIBRATOR_SERVICE).asInstanceOf[android.os.Vibrator]
+  def vibrate: Unit = if (null != vibrator && vibrator.hasVibrator) vibrator.vibrate(Array(0L, 85, 200), -1)
 }
 
 class WalletApp extends Application { me =>
