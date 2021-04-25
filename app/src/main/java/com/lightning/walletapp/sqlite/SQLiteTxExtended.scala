@@ -1,8 +1,8 @@
 package com.lightning.walletapp.sqlite
 
 import immortan.sqlite.{SQLiteTx, TxTable}
+import com.lightning.walletapp.{Vibrator, WalletApp}
 import fr.acinq.eclair.blockchain.electrum.ElectrumWallet
-import com.lightning.walletapp.WalletApp
 import immortan.crypto.Tools.Fiat2Btc
 import fr.acinq.bitcoin.ByteVector32
 import fr.acinq.eclair.MilliSatoshi
@@ -17,6 +17,7 @@ class SQLiteTxExtended(app: WalletApp, val db: DBInterfaceSQLiteAndroidMisc) ext
 
   override def putTx(event: ElectrumWallet.TransactionReceived, isIncoming: Long, description: TxDescription, balanceSnap: MilliSatoshi, fiatRateSnap: Fiat2Btc): Unit = {
     super.putTx(event, isIncoming, description, balanceSnap, fiatRateSnap)
+    if (event.depth < 1) app.notify(Vibrator.uri)
     app.sqlNotify(TxTable.table)
   }
 }

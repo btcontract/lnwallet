@@ -168,18 +168,13 @@ object WalletApp { me =>
         }
       }
 
-      override def onTransactionReceived(event: TransactionReceived): Unit = {
-        // Vibrate to let user know this comes from Bitcoin network, so is real
-        if (event.depth < 1) app.notify(Vibrator.uri)
-
-        if (event.received >= event.sent) {
-          val description = TxDescription.defineDescription(LNParams.cm.all.values, event.walletAddreses, event.tx)
-          txDataBag.putTx(event, isIncoming = 1L, description, lastChainBalance.toMilliSatoshi, LNParams.fiatRatesInfo.rates)
-        } else {
-          val description = TxDescription.defineDescription(LNParams.cm.all.values, Nil, event.tx)
-          // Outgoing tx should already be present in db so this will fail silently unless sent from other wallet
-          txDataBag.putTx(event, 0L, description, lastChainBalance.toMilliSatoshi, LNParams.fiatRatesInfo.rates)
-        }
+      override def onTransactionReceived(event: TransactionReceived): Unit = if (event.received >= event.sent) {
+        val txDescription = TxDescription.defineDescription(LNParams.cm.all.values, event.walletAddreses, event.tx)
+        txDataBag.putTx(event, isIncoming = 1L, txDescription, lastChainBalance.toMilliSatoshi, LNParams.fiatRatesInfo.rates)
+      } else {
+        val txDescription = TxDescription.defineDescription(LNParams.cm.all.values, Nil, event.tx)
+        // Outgoing tx should already be present in db so this will fail silently unless sent from other wallet
+        txDataBag.putTx(event, 0L, txDescription, lastChainBalance.toMilliSatoshi, LNParams.fiatRatesInfo.rates)
       }
 
       override def onChainDisconnected: Unit = {

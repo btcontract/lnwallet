@@ -143,7 +143,6 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
   private val paymentEventStream = Subject[Long]
   private val relayEventStream = Subject[Long]
   private val txEventStream = Subject[Long]
-  private val vibrateStream = Subject[Long]
 
   private val paymentObserver: ContentObserver = new ContentObserver(new Handler) {
     override def onChange(self: Boolean): Unit = paymentEventStream.onNext(ChannelMaster.updateCounter.incrementAndGet)
@@ -158,7 +157,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
   }
 
   private val vibratorObserver: ContentObserver = new ContentObserver(new Handler) {
-    override def onChange(self: Boolean): Unit = vibrateStream.onNext(ChannelMaster.updateCounter.incrementAndGet)
+    override def onChange(self: Boolean): Unit = Vibrator.vibrate
   }
 
   private val netListener: Monitor.ConnectivityListener = new Monitor.ConnectivityListener {
@@ -294,14 +293,13 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
       Tovuti.from(me).monitor(netListener)
 
       // Throttle all types of burst updates, but make sure the last one is always called
-      val vibrateEvents = Rx.uniqueFirstAndLastWithinWindow(vibrateStream, 1.second).doOnNext(_ => Vibrator.vibrate)
       val statusEvents = Rx.uniqueFirstAndLastWithinWindow(ChannelMaster.statusUpdateStream, 1.second)
       val stateEvents = Rx.uniqueFirstAndLastWithinWindow(ChannelMaster.stateUpdateStream, 1.second)
 
       val txEvents = Rx.uniqueFirstAndLastWithinWindow(txEventStream, 1.second).doOnNext(_ => reloadTxInfos)
       val paymentEvents = Rx.uniqueFirstAndLastWithinWindow(paymentEventStream, 1.second).doOnNext(_ => reloadPaymentInfos)
       val relayEvents = Rx.uniqueFirstAndLastWithinWindow(relayEventStream, 1.second).doOnNext(_ => reloadRelayedPreimageInfos)
-      val allEvents = txEvents.merge(paymentEvents).merge(relayEvents).doOnNext(_ => updAllInfos).merge(stateEvents).merge(vibrateEvents)
+      val allEvents = txEvents.merge(paymentEvents).merge(relayEvents).doOnNext(_ => updAllInfos).merge(stateEvents)
 
       statusSubscription = statusEvents.merge(stateEvents).subscribe(_ => UITask(walletCards.updateLnCardView).run).toSome
       streamSubscription = allEvents.subscribe(_ => UITask(updatePaymentList).run).toSome
