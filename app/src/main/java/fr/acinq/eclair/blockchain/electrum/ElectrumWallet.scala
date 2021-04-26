@@ -107,10 +107,9 @@ class ElectrumWallet(seed: ByteVector, client: ActorRef, params: ElectrumWallet.
           heights = persisted.heights,
           history = persisted.history,
           proofs = persisted.proofs,
-          locks = persisted.locks,
-          pendingHistoryRequests = Set(),
-          pendingHeadersRequests = Set(),
-          pendingTransactionRequests = Set(),
+          pendingHistoryRequests = Set.empty,
+          pendingHeadersRequests = Set.empty,
+          pendingTransactionRequests = Set.empty,
           pendingTransactions = persisted.pendingTransactions,
           lastReadyMessage = None)
       case Success(None) =>
@@ -301,8 +300,8 @@ class ElectrumWallet(seed: ByteVector, client: ActorRef, params: ElectrumWallet.
 
       // we now have updated height for all our transactions,
       heights1.collect {
-        case (txid, height) =>
-          (data.heights.get(txid), height) match {
+        case (txid, height0) =>
+          (data.heights.get(txid), height0) match {
             case (None, height) if height <= 0 =>
             // height=0 => unconfirmed, height=-1 => unconfirmed and one input is unconfirmed
             case (None, height) if height > 0 =>
@@ -396,7 +395,7 @@ class ElectrumWallet(seed: ByteVector, client: ActorRef, params: ElectrumWallet.
 
     case Event(CompleteTransaction(tx, feeRatePerKw, sequenceFlag), data) =>
       Try(data.completeTransaction(tx, feeRatePerKw, minimumFee, dustLimit, allowSpendUnconfirmed, sequenceFlag)) match {
-        case Success((data1, tx1, fee1)) => stay using data1 replying CompleteTransactionResponse(Some(tx1, fee1))
+        case Success((tx1, fee1)) => stay replying CompleteTransactionResponse(Some(tx1, fee1))
         case _ => stay replying CompleteTransactionResponse(None)
       }
 
@@ -415,11 +414,7 @@ class ElectrumWallet(seed: ByteVector, client: ActorRef, params: ElectrumWallet.
       val (received, sent, Some(fee)) = data.computeTransactionDelta(tx).get
       // we notify here because the tx won't be downloaded again (it has been added to the state at commit)
       context.system.eventStream.publish(data1.transactionReceived(tx, Some(fee), received, sent))
-      stay using persistAndNotify(data1) replying CommitTransactionResponse(tx) // goto instead of stay because we want to fire transitions
-
-    case Event(CancelTransaction(tx), data) =>
-      log.info(s"cancelling txid=${tx.txid}")
-      stay using persistAndNotify(data.cancelTransaction(tx)) replying CancelTransactionResponse(tx)
+      stay using persistAndNotify(data1) replying true
 
     case Event(bc@ElectrumClient.BroadcastTransaction(tx), _) =>
       log.info(s"broadcasting txid=${tx.txid}")
@@ -503,13 +498,9 @@ object ElectrumWallet {
   case class SendAllResponse(result: Option[TxAndFee] = None) extends Response
 
   case class CommitTransaction(tx: Transaction) extends Request
-  case class CommitTransactionResponse(tx: Transaction) extends Response
 
   case class SendTransaction(tx: Transaction) extends Request
   case class SendTransactionReponse(tx: Transaction) extends Response
-
-  case class CancelTransaction(tx: Transaction) extends Request
-  case class CancelTransactionResponse(tx: Transaction) extends Response
 
   case object InsufficientFunds extends Response
   case class AmountBelowDustLimit(dustLimit: Satoshi) extends Response
@@ -654,7 +645,6 @@ object ElectrumWallet {
    * @param transactions               wallet transactions
    * @param heights                    transactions heights
    * @param history                    script hash -> history
-   * @param locks                      transactions which lock some of our utxos.
    * @param pendingHistoryRequests     requests pending a response from the electrum server
    * @param pendingTransactionRequests requests pending a response from the electrum server
    * @param pendingTransactions        transactions received but not yet connected to their parents
@@ -667,7 +657,6 @@ object ElectrumWallet {
                   heights: Map[ByteVector32, Int],
                   history: Map[ByteVector32, List[ElectrumClient.TransactionHistoryItem]],
                   proofs: Map[ByteVector32, GetMerkleResponse],
-                  locks: Set[Transaction],
                   pendingHistoryRequests: Set[ByteVector32],
                   pendingTransactionRequests: Set[ByteVector32],
                   pendingHeadersRequests: Set[GetHeaders],
@@ -876,19 +865,14 @@ object ElectrumWallet {
      *         our utxos spent by this tx are locked and won't be available for spending
      *         until the tx has been cancelled. If the tx is committed, they will be removed
      */
-    def completeTransaction(tx: Transaction, feeRatePerKw: FeeratePerKw, minimumFee: Satoshi, dustLimit: Satoshi, allowSpendUnconfirmed: Boolean, sequenceFlag: Long): (Data, Transaction, Satoshi) = {
+    def completeTransaction(tx: Transaction, feeRatePerKw: FeeratePerKw, minimumFee: Satoshi, dustLimit: Satoshi, allowSpendUnconfirmed: Boolean, sequenceFlag: Long): (Transaction, Satoshi) = {
       require(tx.txIn.isEmpty, "cannot complete a tx that already has inputs")
       val amount = tx.txOut.map(_.amount).sum
       require(amount > dustLimit, "amount to send is below dust limit")
 
       val unlocked = {
-        // select utxos that are not locked by pending txs
-        val lockedOutputs = locks.flatMap(_.txIn.map(_.outPoint))
-        val unlocked1 = utxos.filterNot(utxo => lockedOutputs.contains(utxo.outPoint))
-        val unlocked2 = if (allowSpendUnconfirmed) unlocked1 else unlocked1.filter(_.item.height > 0)
-        // sort utxos by amount, in increasing order
-        // this way we minimize the number of utxos in the wallet, and so we minimize the fees we'll pay for them
-        unlocked2.sortBy(_.item.value)
+        val usable = if (allowSpendUnconfirmed) utxos else utxos.filter(_.item.height > 0)
+        usable.sortBy(_.item.value)
       }
 
       // computes the fee what we would have to pay for our tx with our candidate utxos and an optional change output
@@ -933,10 +917,8 @@ object ElectrumWallet {
       val tx3 = signTransaction(tx2)
 
       // and add the completed tx to the locks
-      val data1 = this.copy(locks = this.locks + tx3)
       val fee = selected.map(s => Satoshi(s.item.value)).sum - tx3.txOut.map(_.amount).sum
-
-      (data1, tx3, fee)
+      (tx3, fee)
     }
 
     def signTransaction(tx: Transaction): Transaction = {
@@ -949,14 +931,6 @@ object ElectrumWallet {
         txIn.copy(signatureScript = sigScript, witness = witness)
       })
     }
-
-    /**
-     * unlocks input locked by a pending tx. call this method if the tx will not be used after all
-     *
-     * @param tx pending transaction
-     * @return an updated state
-     */
-    def cancelTransaction(tx: Transaction): Data = this.copy(locks = this.locks - tx)
 
     /**
      * remove all our utxos spent by this tx. call this method if the tx was broadcast successfully
@@ -979,7 +953,7 @@ object ElectrumWallet {
             }
             h + (scriptHash -> entry)
         }
-      copy(locks = locks - tx, transactions = transactions + (tx.txid -> tx), heights = heights + (tx.txid -> 0), history = history1)
+      copy(transactions = transactions + (tx.txid -> tx), heights = heights + (tx.txid -> 0), history = history1)
     }
 
     /**
@@ -1010,8 +984,8 @@ object ElectrumWallet {
   }
 
   object Data {
-    def apply(params: ElectrumWallet.WalletParameters, blockchain: Blockchain, accountKeys: Vector[ExtendedPrivateKey], changeKeys: Vector[ExtendedPrivateKey]): Data =
-      Data(blockchain, accountKeys, changeKeys, Map.empty, Map.empty, Map.empty, Map.empty, Map.empty, Set.empty, Set.empty, Set.empty, Set.empty, List.empty, None)
+    def apply(params: ElectrumWallet.WalletParameters, blockchain: Blockchain, accountKeys: Vector[ExtendedPrivateKey], changeKeys: Vector[ExtendedPrivateKey] = Vector.empty): Data =
+      Data(blockchain, accountKeys, changeKeys, Map.empty, Map.empty, Map.empty, Map.empty, Map.empty, Set.empty, Set.empty, Set.empty, List.empty, None)
   }
 
   case class InfiniteLoopException(data: Data, tx: Transaction) extends Exception
@@ -1023,10 +997,9 @@ object ElectrumWallet {
                             heights: Map[ByteVector32, Int],
                             history: Map[ByteVector32, List[ElectrumClient.TransactionHistoryItem]],
                             proofs: Map[ByteVector32, GetMerkleResponse],
-                            pendingTransactions: List[Transaction],
-                            locks: Set[Transaction])
+                            pendingTransactions: List[Transaction])
 
   object PersistentData {
-    def apply(data: Data) = new PersistentData(data.accountKeys.length, data.changeKeys.length, data.status, data.transactions, data.heights, data.history, data.proofs, data.pendingTransactions, data.locks)
+    def apply(data: Data) = new PersistentData(data.accountKeys.length, data.changeKeys.length, data.status, data.transactions, data.heights, data.history, data.proofs, data.pendingTransactions)
   }
 }

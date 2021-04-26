@@ -39,21 +39,20 @@ trait EclairWallet {
 
   def makeFundingTx(pubkeyScript: ByteVector, amount: Satoshi, feeRatePerKw: FeeratePerKw): Future[MakeFundingTxResponse]
 
-  def makeAllFundingTx(pubkeyScript: ByteVector, feeRatePerKw: FeeratePerKw): Future[MakeFundingTxResponse]
-
   def sendPreimageBroadcast(preimages: Set[ByteVector32], feeRatePerKw: FeeratePerKw): Future[TxAndFee]
 
   def sendPayment(amount: Satoshi, address: String, feeRatePerKw: FeeratePerKw): Future[TxAndFee]
 
-  def sendPaymentAll(address: String, feeRatePerKw: FeeratePerKw): Future[TxAndFee]
-
   def commit(tx: Transaction): Future[Boolean]
-
-  def rollback(tx: Transaction): Future[Boolean]
 
   def doubleSpent(tx: Transaction): Future[DepthAndDoubleSpent]
 }
 
-final case class OnChainBalance(confirmed: Satoshi, unconfirmed: Satoshi)
+case class OnChainBalance(confirmed: Satoshi, unconfirmed: Satoshi) {
+  val totalBalance: Satoshi = confirmed + unconfirmed
+}
 
-final case class MakeFundingTxResponse(fundingTx: Transaction, fundingTxOutputIndex: Int, fee: Satoshi)
+case class MakeFundingTxResponse(fundingTx: Transaction, fundingTxOutputIndex: Int, fee: Satoshi) {
+  val fundingPubkeyScript: ByteVector = fundingTx.txOut(fundingTxOutputIndex).publicKeyScript
+  val fundingAmount: Satoshi = fundingTx.txOut(fundingTxOutputIndex).amount
+}

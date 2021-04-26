@@ -140,7 +140,7 @@ object ChannelCodecs {
       ("maxAcceptedHtlcs" | uint16) ::
       ("isFunder" | bool8) ::
       ("defaultFinalScriptPubKey" | lengthDelimited(bytes)) ::
-      ("walletStaticPaymentBasepoint" | optional(provide(channelVersion.paysDirectlyToWallet), publicKey))
+      ("walletStaticPaymentBasepoint" | publicKey)
   }.as[LocalParams]
 
   val remoteParamsCodec: Codec[RemoteParams] = {
@@ -157,7 +157,7 @@ object ChannelCodecs {
       ("htlcBasepoint" | publicKey)
   }.as[RemoteParams]
 
-  val remoteNodeInfoCodec = {
+  val remoteNodeInfoCodec: Codec[RemoteNodeInfo] = {
     (publicKey withContext "nodeId") ::
       (nodeaddress withContext "address") ::
       (zeropaddedstring(32) withContext "alias")

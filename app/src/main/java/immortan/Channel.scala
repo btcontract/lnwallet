@@ -59,7 +59,7 @@ object Channel {
 
 trait Channel extends StateMachine[ChannelData] with CanBeRepliedTo { me =>
   def process(changeMsg: Any): Unit = Future(me doProcess changeMsg).onComplete {
-    case Failure(reason) => events.onException(me -> reason)
+    case Failure(reason) => events onException Tuple3(me, data, reason)
     case _ => // Do nothing
   }
 
@@ -99,7 +99,7 @@ trait Channel extends StateMachine[ChannelData] with CanBeRepliedTo { me =>
 }
 
 object ChannelListener {
-  type Malfunction = (Channel, Throwable)
+  type Malfunction = (Channel, ChannelData, Throwable)
   type Transition = (Channel, ChannelData, ChannelData, String, String)
 }
 

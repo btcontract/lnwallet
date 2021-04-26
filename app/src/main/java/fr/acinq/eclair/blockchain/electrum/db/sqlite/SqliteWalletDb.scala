@@ -87,7 +87,7 @@ object SqliteWalletDb {
     */
   val version = 0x0000
 
-  val persistentDataCodec: Codec[PersistentData] = (
+  val persistentDataCodec: Codec[PersistentData] = {
     ("version" | constant(BitVector.fromInt(version))) ::
       ("accountKeysCount" | int32) ::
       ("changeKeysCount" | int32) ::
@@ -96,6 +96,6 @@ object SqliteWalletDb {
       ("heights" | heightsCodec) ::
       ("history" | historyCodec) ::
       ("proofs" | proofsCodec) ::
-      ("pendingTransactions" | listOfN(uint16, txCodec)) ::
-      ("locks" | provide(Set.empty[Transaction]))).as[PersistentData]
+      ("pendingTransactions" | listOfN(uint16, txCodec))
+  }.as[PersistentData]
 }

@@ -3,10 +3,10 @@ package com.lightning.walletapp
 import R.string._
 import fr.acinq.eclair._
 import java.util.{Timer, TimerTask}
-import scala.util.{Failure, Success}
 import android.view.{View, ViewGroup}
 import java.io.{File, FileOutputStream}
 import android.graphics.{Bitmap, Color}
+import scala.util.{Failure, Success, Try}
 import android.graphics.Color.{BLACK, WHITE}
 import android.content.{DialogInterface, Intent}
 import immortan.utils.{Denomination, InputParser}
@@ -21,6 +21,7 @@ import com.google.android.material.textfield.TextInputLayout
 import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
 import com.lightning.walletapp.BaseActivity.StringOps
 import concurrent.ExecutionContext.Implicits.global
+import fr.acinq.eclair.blockchain.fee.FeeratePerKw
 import androidx.appcompat.widget.AppCompatButton
 import androidx.recyclerview.widget.RecyclerView
 import android.graphics.Bitmap.Config.ARGB_8888
@@ -239,9 +240,9 @@ trait BaseActivity extends AppCompatActivity { me =>
 
   val bigDecimalValue: CurrencyEditText => BigDecimal = _.getNumericValueBigDecimal
 
-  class RateManager(val content: View, extraHint: Option[String], rates: Fiat2Btc, fiatCode: String) {
-    val inputAmount: CurrencyEditText = content.findViewById(R.id.inputAmount).asInstanceOf[CurrencyEditText]
+  class RateManager(val content: View, extraHint: Option[String], rates: Fiat2Btc, fiatCode: String, asMsat: Boolean) {
     val fiatInputAmount: CurrencyEditText = content.findViewById(R.id.fiatInputAmount).asInstanceOf[CurrencyEditText]
+    val inputAmount: CurrencyEditText = content.findViewById(R.id.inputAmount).asInstanceOf[CurrencyEditText]
     val hintFiatDenom: TextView = clickableTextField(content findViewById R.id.hintFiatDenom)
     val hintDenom: TextView = clickableTextField(content findViewById R.id.hintDenom)
 
@@ -249,15 +250,15 @@ trait BaseActivity extends AppCompatActivity { me =>
     val fiatInputAmountHint: TextView = content.findViewById(R.id.fiatInputAmountHint).asInstanceOf[TextView]
     val extraInputLayout: TextInputLayout = content.findViewById(R.id.extraInputLayout).asInstanceOf[TextInputLayout]
     val extraInput: EditText = content.findViewById(R.id.fiatInputAmount).asInstanceOf[EditText]
+
     def result: MilliSatoshi = MilliSatoshi(bigDecimalValue(inputAmount).toLong * 1000L)
+    def updatedSatBase: Try[MilliSatoshi] = WalletApp.currentRate(rates, fiatCode).map(bigDecimalValue(fiatInputAmount) / _).filter(0D.!=).map(Denomination.btcBigDecimal2MSat)
+    def updatedFiat: String = WalletApp.msatInFiat(rates, fiatCode)(result).filter(0D.!=).map(Denomination.formatFiatPrecise.format).getOrElse(null)
 
-    def updatedSat: String =
-      WalletApp.currentRate(rates, fiatCode).map(bigDecimalValue(fiatInputAmount) / _).filter(0D.!=)
-        .map(Denomination.btcBigDecimal2MSat).map(LNParams.denomination.asString).getOrElse(null)
-
-    def updatedFiat: String =
-      WalletApp.msatInFiat(rates, fiatCode)(result).filter(0D.!=)
-        .map(Denomination.formatFiat.format).getOrElse(null)
+    def updatedSat: String = {
+      if (asMsat) updatedSatBase.map(LNParams.denomination.asString).getOrElse(null)
+      else updatedSatBase.map(_.truncateToSatoshi.toMilliSatoshi).map(LNParams.denomination.asString).getOrElse(null)
+    }
 
     extraHint match { case Some(hint) => extraInputLayout setHint hint case None => extraInputLayout setVisibility View.GONE }
     fiatInputAmount addTextChangedListener onTextChange { _ => if (fiatInputAmount.hasFocus) inputAmount setText updatedSat }
@@ -265,6 +266,25 @@ trait BaseActivity extends AppCompatActivity { me =>
     inputAmountHint setText LNParams.denomination.sign.toUpperCase
     fiatInputAmountHint setText fiatCode.toUpperCase
     inputAmount.requestFocus
+  }
+
+  class FeeView(val content: View) {
+    val feeRate: TextView = content.findViewById(R.id.feeRate).asInstanceOf[TextView]
+    val txIssues: TextView = content.findViewById(R.id.txIssues).asInstanceOf[TextView]
+    val bitcoinFee: TextView = content.findViewById(R.id.bitcoinFee).asInstanceOf[TextView]
+    val fiatFee: TextView = content.findViewById(R.id.fiatFee).asInstanceOf[TextView]
+
+    def update(rate: FeeratePerKw, feeOpt: Option[MilliSatoshi], showIssue: Boolean): TimerTask = UITask {
+      feeRate setText getString(dialog_sat_vbyte).format(rate.toLong / 1000).html
+      txIssues setVisibility BaseActivity.viewMap(feeOpt.isEmpty && showIssue)
+      bitcoinFee setVisibility BaseActivity.viewMap(feeOpt.isDefined)
+      fiatFee setVisibility BaseActivity.viewMap(feeOpt.isDefined)
+
+      feeOpt.foreach { fee =>
+        bitcoinFee setText LNParams.denomination.parsedWithSign(fee, Colors.cardZero).html
+        fiatFee setText WalletApp.currentMsatInFiatHuman(fee).html
+      }
+    }
   }
 
   class SpinnerPopup(lg: Option[CharSequence], sm: Option[CharSequence] = None) {

@@ -116,16 +116,18 @@ object LNParams {
     WalletExt(eclairWallet, catcher, clientPool, watcher)
   }
 
+  // We make sure force-close pays directly to wallet
   def makeChannelParams(remoteInfo: RemoteNodeInfo, chainWallet: WalletExt, isFunder: Boolean, fundingAmount: Satoshi): LocalParams = {
     val walletKey: PublicKey = Await.result(chainWallet.wallet.getReceiveAddresses, atMost = 40.seconds).values.head.publicKey
-    makeChannelParams(remoteInfo, Script write Script.pay2wpkh(walletKey), walletKey.toSome, isFunder, fundingAmount)
+    makeChannelParams(remoteInfo, Script write Script.pay2wpkh(walletKey), walletKey, isFunder, fundingAmount)
   }
 
   // We make sure that funder and fundee key path end differently
-  def makeChannelParams(remoteInfo: RemoteNodeInfo, defaultFinalScriptPubkey: ByteVector, walletStaticPaymentBasepoint: Option[PublicKey], isFunder: Boolean, fundingAmount: Satoshi): LocalParams =
+  def makeChannelParams(remoteInfo: RemoteNodeInfo, defaultFinalScriptPubkey: ByteVector, walletStaticPaymentBasepoint: PublicKey, isFunder: Boolean, fundingAmount: Satoshi): LocalParams =
     makeChannelParams(defaultFinalScriptPubkey, walletStaticPaymentBasepoint, isFunder, fundingAmount, remoteInfo newFundingKeyPath isFunder)
 
-  def makeChannelParams(defaultFinalScriptPubkey: ByteVector, walletStaticPaymentBasepoint: Option[PublicKey], isFunder: Boolean, fundingAmount: Satoshi, fundingKeyPath: DeterministicWallet.KeyPath): LocalParams =
+  // Note: we send local maxHtlcValueInFlightMsat to channel capacity to simplify calculations
+  def makeChannelParams(defaultFinalScriptPubkey: ByteVector, walletStaticPaymentBasepoint: PublicKey, isFunder: Boolean, fundingAmount: Satoshi, fundingKeyPath: DeterministicWallet.KeyPath): LocalParams =
     LocalParams(fundingKeyPath, minDustLimit, maxHtlcValueInFlightMsat = UInt64(fundingAmount.toMilliSatoshi.toLong), channelReserve = (fundingAmount * reserveToFundingRatio).max(minDustLimit),
       htlcMinimum = minPayment, toSelfDelay = maxToLocalDelay, maxAcceptedHtlcs = maxAcceptedHtlcs, isFunder = isFunder, defaultFinalScriptPubKey = defaultFinalScriptPubkey,
       walletStaticPaymentBasepoint = walletStaticPaymentBasepoint)

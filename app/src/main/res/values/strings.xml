@@ -49,10 +49,15 @@
     <string name="dialog_share">Share</string>
     <string name="dialog_send">Send</string>
     <string name="dialog_copy">Copy</string>
+    <string name="dialog_max">Max</string>
 
     <string name="dialog_receive_btc"><![CDATA[Receive to <strong>Bitcoin</strong> Address]]></string>
     <string name="dialog_receive_ln"><![CDATA[Receive to <strong>Lightning</strong> Invoice]]></string>
     <string name="dialog_receive_ln_title">Lightning Invoice Amount</string>
+
+    <string name="dialog_can_send"><![CDATA[<strong>can send</strong> %1$s]]></string>
+    <string name="dialog_can_receive"><![CDATA[<strong>can receive</strong> %1$s]]></string>
+    <string name="dialog_sat_vbyte"><![CDATA[fee %1$s <strong>sat/vB</strong>]]></string>
 
     <!-- errors -->
 
@@ -144,11 +149,12 @@
 
     <string name="rpa_title">Remote peer connection</string>
     <string name="rpa_disconnect">Remote peer disconnected</string>
-    <string name="rpa_no_feature_support">Can not request channels since some important features are not supported by remote peer.</string>
+    <string name="rpa_funding_too_small">Minimal funding amount is %1$s</string>
+    <string name="rpa_no_feature_support">Can not proceed with channels since some important features are not supported by remote peer.</string>
 
     <string name="rpa_request_hc">Request hosted channel</string>
     <string name="rpa_share_node_id">Share node ID</string>
-    <string name="rpa_open_nc">Open new channel</string>
+    <string name="rpa_open_nc">Fund new channel</string>
 
     <!-- /Remote peer activity -->
 </resources>

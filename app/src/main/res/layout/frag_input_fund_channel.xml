@@ -1,0 +1,5 @@
+<LinearLayout style="@style/StandardLinearLayout">
+    <include layout="@layout/frag_input_fiat_converter"/>
+    <include layout="@layout/frag_fees"/>
+    <View style="@style/GrayDivider"/>
+</LinearLayout>

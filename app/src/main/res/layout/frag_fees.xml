@@ -1,0 +1,12 @@
+<org.apmem.tools.layouts.FlowLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:f="http://schemas.android.com/tools"
+    style="@style/XYMarginFillingView"
+    f:layout_newLine="true">
+
+    <TextView style="@style/ChipTextGrayMargin" android:id="@+id/feeRate"/>
+    <TextView style="@style/ChipTextGrayMargin" android:background="@drawable/border_yellow" android:id="@+id/txIssues" android:text="try other amount" android:visibility="invisible"/>
+    <TextView style="@style/ChipTextGrayMargin" android:id="@+id/bitcoinFee" android:visibility="invisible"/>
+    <TextView style="@style/ChipTextGrayMargin" android:id="@+id/fiatFee" android:visibility="invisible"/>
+
+</org.apmem.tools.layouts.FlowLayout>

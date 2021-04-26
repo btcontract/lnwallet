@@ -1,24 +1,39 @@
 package immortan.fsm
 
+import immortan._
 import fr.acinq.eclair._
-import immortan.{ChannelListener, ChannelMaster, ChannelNormal, CommsTower, ConnectionListener, LNParams, RemoteNodeInfo, WalletExt}
-import fr.acinq.eclair.channel.{ChannelVersion, DATA_WAIT_FOR_FUNDING_CONFIRMED, INPUT_INIT_FUNDER, PersistentChannelData}
-import fr.acinq.eclair.wire.{HasChannelId, HasTemporaryChannelId, Init, LightningMessage}
-import immortan.Channel.{WAIT_FOR_ACCEPT, WAIT_FUNDING_DONE}
+import fr.acinq.eclair.wire._
+import fr.acinq.eclair.channel._
+import scala.util.{Failure, Success}
+import fr.acinq.bitcoin.{ByteVector32, Satoshi, Script}
 import immortan.ChannelListener.{Malfunction, Transition}
-import fr.acinq.bitcoin.{ByteVector32, Satoshi}
+import immortan.Channel.{WAIT_FOR_ACCEPT, WAIT_FUNDING_DONE}
+import fr.acinq.eclair.blockchain.MakeFundingTxResponse
+import concurrent.ExecutionContext.Implicits.global
+import fr.acinq.eclair.blockchain.fee.FeeratePerKw
+import fr.acinq.eclair.transactions.Scripts
+import fr.acinq.bitcoin.Crypto.PublicKey
+import scala.concurrent.Future
 
+
+object NCFunderOpenHandler {
+  val defFeerate: FeeratePerKw = LNParams.feeRatesInfo.onChainFeeConf.feeEstimator.getFeeratePerKw(LNParams.feeRatesInfo.onChainFeeConf.feeTargets.fundingBlockTarget)
+  def makeFunding(chainWallet: WalletExt, local: PublicKey, remote: PublicKey, fundingAmount: Satoshi, fundingTxFeeratePerKw: FeeratePerKw = defFeerate): Future[MakeFundingTxResponse] =
+    chainWallet.wallet.makeFundingTx(Script.write(Script pay2wsh Scripts.multiSig2of2(local, remote).toList), fundingAmount, fundingTxFeeratePerKw)
+}
 
 // Important: this must be initiated when chain tip is actually known
-abstract class NCFunderOpenHandler(info: RemoteNodeInfo, tempChannelId: ByteVector32, fundingAmount: Satoshi, wallet: WalletExt, cm: ChannelMaster) {
-  def onPeerDisconnect(worker: CommsTower.Worker): Unit
+abstract class NCFunderOpenHandler(info: RemoteNodeInfo, tempChannelId: ByteVector32,
+                                   fakeFunding: MakeFundingTxResponse, cWallet: WalletExt,
+                                   cm: ChannelMaster) {
+
   def onEstablished(channel: ChannelNormal): Unit
   def onFailure(err: Throwable): Unit
 
   val freshChannel: ChannelNormal = new ChannelNormal(cm.chanBag) {
     def SEND(messages: LightningMessage*): Unit = CommsTower.sendMany(messages, info.nodeSpecificPair)
     def STORE(normalData: PersistentChannelData): PersistentChannelData = cm.chanBag.put(normalData)
-    var chainWallet: WalletExt = wallet
+    var chainWallet: WalletExt = cWallet
   }
 
   private val makeChanListener = new ConnectionListener with ChannelListener { me =>
@@ -28,22 +43,20 @@ abstract class NCFunderOpenHandler(info: RemoteNodeInfo, tempChannelId: ByteVect
       case _ => // Do nothing to avoid conflicts
     }
 
-    override def onOperational(worker: CommsTower.Worker, theirInit: Init): Unit = {
-      val cmd = INPUT_INIT_FUNDER(info, tempChannelId, fundingAmount, pushAmount = 0L.msat,
+    override def onOperational(worker: CommsTower.Worker, theirInit: Init): Unit =
+      freshChannel process INPUT_INIT_FUNDER(info, tempChannelId, fakeFunding, pushAmount = 0L.msat,
         initialFeeratePerKw = LNParams.feeRatesInfo.onChainFeeConf.getCommitmentFeerate(ChannelVersion.STATIC_REMOTEKEY, None),
-        fundingTxFeeratePerKw = LNParams.feeRatesInfo.onChainFeeConf.feeEstimator.getFeeratePerKw(LNParams.feeRatesInfo.onChainFeeConf.feeTargets.fundingBlockTarget),
-        localParams = LNParams.makeChannelParams(info, freshChannel.chainWallet, isFunder = true, fundingAmount), theirInit, channelFlags = 0.toByte, ChannelVersion.STATIC_REMOTEKEY)
+        localParams = LNParams.makeChannelParams(info, freshChannel.chainWallet, isFunder = true, fakeFunding.fundingAmount),
+        theirInit, channelFlags = 0.toByte, ChannelVersion.STATIC_REMOTEKEY)
 
-      freshChannel process cmd
-    }
-
-    override def onDisconnect(worker: CommsTower.Worker): Unit = {
-      // Peer has disconnected during HC opening process
-      CommsTower.rmListenerNative(info, me)
-      onPeerDisconnect(worker)
-    }
+    override def onDisconnect(worker: CommsTower.Worker): Unit =
+      onException(freshChannel, freshChannel.data, PeerDisconnected)
 
     override def onBecome: PartialFunction[Transition, Unit] = {
+      case (_, _: DATA_WAIT_FOR_ACCEPT_CHANNEL, data: DATA_WAIT_FOR_FUNDING_INTERNAL, WAIT_FOR_ACCEPT, WAIT_FOR_ACCEPT) =>
+        val future = NCFunderOpenHandler.makeFunding(cWallet, data.lastSent.fundingPubkey, data.remoteParams.fundingPubKey, data.initFunder.fakeFunding.fundingAmount)
+        future onComplete { case Failure(reason) => onException(freshChannel, data, reason) case Success(realFunding) => freshChannel process realFunding }
+
       case (_, _, data: DATA_WAIT_FOR_FUNDING_CONFIRMED, WAIT_FOR_ACCEPT, WAIT_FUNDING_DONE) =>
         // It is up to NC to store itself and communicate successful opening
         cm.implantChannel(data.commitments, freshChannel)
@@ -52,9 +65,9 @@ abstract class NCFunderOpenHandler(info: RemoteNodeInfo, tempChannelId: ByteVect
     }
 
     override def onException: PartialFunction[Malfunction, Unit] = {
-      // Something went wrong while trying to establish a channel
+      // Something went wrong while trying to establish a new channel
 
-      case (_, error: Throwable) =>
+      case (_, _, error: Throwable) =>
         CommsTower.rmListenerNative(info, me)
         onFailure(error)
     }

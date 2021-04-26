@@ -1,4 +1,6 @@
-<LinearLayout style="@style/StandardLinearLayout" xmlns:android="http://schemas.android.com/apk/res/android">
+<LinearLayout
+    style="@style/StandardLinearLayout"
+    xmlns:android="http://schemas.android.com/apk/res/android">
 
     <FrameLayout style="@style/FillingView">
 
