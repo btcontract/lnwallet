@@ -3,10 +3,10 @@ package com.lightning.walletapp
 import R.string._
 import fr.acinq.eclair._
 import java.util.{Timer, TimerTask}
+import scala.util.{Failure, Success}
 import android.view.{View, ViewGroup}
 import java.io.{File, FileOutputStream}
 import android.graphics.{Bitmap, Color}
-import scala.util.{Failure, Success, Try}
 import android.graphics.Color.{BLACK, WHITE}
 import android.content.{DialogInterface, Intent}
 import immortan.utils.{Denomination, InputParser}
@@ -15,7 +15,7 @@ import com.google.zxing.{BarcodeFormat, EncodeHintType}
 import android.text.{Editable, Html, Spanned, TextWatcher}
 import androidx.core.content.{ContextCompat, FileProvider}
 import com.google.android.material.snackbar.{BaseTransientBottomBar, Snackbar}
-import android.widget.{ArrayAdapter, EditText, ImageView, LinearLayout, ListView, TextView}
+import android.widget.{ArrayAdapter, Button, EditText, ImageView, LinearLayout, ListView, TextView}
 import com.cottacush.android.currencyedittext.CurrencyEditText
 import com.google.android.material.textfield.TextInputLayout
 import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
@@ -180,11 +180,14 @@ trait BaseActivity extends AppCompatActivity { me =>
 
   def simpleTextBuilder(msg: CharSequence): AlertDialog.Builder = new AlertDialog.Builder(me).setMessage(msg)
   def simpleTextWithNegBuilder(neg: Int, msg: CharSequence): AlertDialog.Builder = simpleTextBuilder(msg).setNegativeButton(neg, null)
-
   def titleBodyAsViewBuilder(title: View, body: View): AlertDialog.Builder = new AlertDialog.Builder(me).setCustomTitle(title).setView(body)
   def titleBodyAsViewWithNegBuilder(neg: Int, title: View, body: View): AlertDialog.Builder = titleBodyAsViewBuilder(title, body).setNegativeButton(neg, null)
   def onFail(error: CharSequence): Unit = UITask(me showForm titleBodyAsViewWithNegBuilder(dialog_ok, null, error).create).run
-  def onFail(error: Throwable): Unit = onFail(error.getMessage)
+  def onFail(error: Throwable): Unit = onFail(error.toString)
+
+  def getPositiveButton(alert: AlertDialog): Button = alert.getButton(DialogInterface.BUTTON_POSITIVE)
+  def getNegativeButton(alert: AlertDialog): Button = alert.getButton(DialogInterface.BUTTON_NEGATIVE)
+  def getNeutralButton(alert: AlertDialog): Button = alert.getButton(DialogInterface.BUTTON_NEUTRAL)
 
   def mkCheckForm(ok: AlertDialog => Unit, no: => Unit, bld: AlertDialog.Builder, okRes: Int, noRes: Int): AlertDialog = {
     // Create alert dialog where NEGATIVE button removes a dialog AND calls a respected provided function
@@ -195,28 +198,28 @@ trait BaseActivity extends AppCompatActivity { me =>
     val alert = showForm(bld.create)
     val posAct = me onButtonTap ok(alert)
     val negAct = me onButtonTap removeAndProceedWithTimeout(alert)(no)
-    if (-1 != noRes) alert getButton DialogInterface.BUTTON_NEGATIVE setOnClickListener negAct
-    if (-1 != okRes) alert getButton DialogInterface.BUTTON_POSITIVE setOnClickListener posAct
+    if (-1 != noRes) getNegativeButton(alert) setOnClickListener negAct
+    if (-1 != okRes) getPositiveButton(alert) setOnClickListener posAct
     alert
   }
 
-  def mkCheckFormNeutral(ok: AlertDialog => Unit, no: => Unit, neutral: AlertDialog => Unit, bld: AlertDialog.Builder, okRes: Int, noRes: Int, neutralRes: Int): AlertDialog = {
+  def mkCheckFormNeutral(ok: AlertDialog => Unit, no: => Unit, neutral: AlertDialog => Unit,
+                         bld: AlertDialog.Builder, okRes: Int, noRes: Int, neutralRes: Int): AlertDialog = {
+
     if (-1 != neutralRes) bld.setNeutralButton(neutralRes, null)
     val alert = mkCheckForm(ok, no, bld, okRes, noRes)
     val neutralAct = me onButtonTap neutral(alert)
 
     // Extend base dialog with a special NEUTRAL button, may be omitted by providing -1
-    if (-1 != neutralRes) alert getButton DialogInterface.BUTTON_NEUTRAL setOnClickListener neutralAct
+    if (-1 != neutralRes) getNeutralButton(alert) setOnClickListener neutralAct
     alert
   }
 
   def showForm(alertDialog: AlertDialog): AlertDialog = {
-    // This may be called after a host activity is destroyed!
-    alertDialog setCanceledOnTouchOutside false
-
     // First, make sure it does not blow up if called on destroyed activity, then bound its width in case if this is a tablet, finally attempt to make dialog links clickable
     try alertDialog.show catch none finally if (WalletApp.app.scrWidth > 2.3) alertDialog.getWindow.setLayout(WalletApp.app.maxDialog.toInt, ViewGroup.LayoutParams.WRAP_CONTENT)
     try clickableTextField(alertDialog findViewById android.R.id.message) catch none
+    alertDialog.setCanceledOnTouchOutside(false)
     alertDialog
   }
 
@@ -240,7 +243,7 @@ trait BaseActivity extends AppCompatActivity { me =>
 
   val bigDecimalValue: CurrencyEditText => BigDecimal = _.getNumericValueBigDecimal
 
-  class RateManager(val content: View, extraHint: Option[String], rates: Fiat2Btc, fiatCode: String, asMsat: Boolean) {
+  class RateManager(val content: View, extraHint: Option[String], rates: Fiat2Btc, fiatCode: String) {
     val fiatInputAmount: CurrencyEditText = content.findViewById(R.id.fiatInputAmount).asInstanceOf[CurrencyEditText]
     val inputAmount: CurrencyEditText = content.findViewById(R.id.inputAmount).asInstanceOf[CurrencyEditText]
     val hintFiatDenom: TextView = clickableTextField(content findViewById R.id.hintFiatDenom)
@@ -252,13 +255,8 @@ trait BaseActivity extends AppCompatActivity { me =>
     val extraInput: EditText = content.findViewById(R.id.fiatInputAmount).asInstanceOf[EditText]
 
     def result: MilliSatoshi = MilliSatoshi(bigDecimalValue(inputAmount).toLong * 1000L)
-    def updatedSatBase: Try[MilliSatoshi] = WalletApp.currentRate(rates, fiatCode).map(bigDecimalValue(fiatInputAmount) / _).filter(0D.!=).map(Denomination.btcBigDecimal2MSat)
     def updatedFiat: String = WalletApp.msatInFiat(rates, fiatCode)(result).filter(0D.!=).map(Denomination.formatFiatPrecise.format).getOrElse(null)
-
-    def updatedSat: String = {
-      if (asMsat) updatedSatBase.map(LNParams.denomination.asString).getOrElse(null)
-      else updatedSatBase.map(_.truncateToSatoshi.toMilliSatoshi).map(LNParams.denomination.asString).getOrElse(null)
-    }
+    def updatedSat: String = WalletApp.currentRate(rates, fiatCode).map(bigDecimalValue(fiatInputAmount) / _).filter(0D.!=).map(Denomination.btcBigDecimal2MSat).map(LNParams.denomination.asString).getOrElse(null)
 
     extraHint match { case Some(hint) => extraInputLayout setHint hint case None => extraInputLayout setVisibility View.GONE }
     fiatInputAmount addTextChangedListener onTextChange { _ => if (fiatInputAmount.hasFocus) inputAmount setText updatedSat }
@@ -274,17 +272,20 @@ trait BaseActivity extends AppCompatActivity { me =>
     val bitcoinFee: TextView = content.findViewById(R.id.bitcoinFee).asInstanceOf[TextView]
     val fiatFee: TextView = content.findViewById(R.id.fiatFee).asInstanceOf[TextView]
 
-    def update(rate: FeeratePerKw, feeOpt: Option[MilliSatoshi], showIssue: Boolean): TimerTask = UITask {
+    def updateButton(okButton: Button, isEnabled: Boolean): Unit = UITask {
+      val alpha = if (isEnabled) 1F else 0.3F
+      okButton.setEnabled(isEnabled)
+      okButton.setAlpha(alpha)
+    }.run
+
+    def update(rate: FeeratePerKw, feeOpt: Option[MilliSatoshi], showIssue: Boolean): Unit = UITask {
+      feeOpt.map(fee => LNParams.denomination.parsedWithSign(fee, Colors.cardZero).html).foreach(bitcoinFee.setText)
+      feeOpt.map(fee => WalletApp.currentMsatInFiatHuman(fee).html).foreach(fiatFee.setText)
       feeRate setText getString(dialog_sat_vbyte).format(rate.toLong / 1000).html
-      txIssues setVisibility BaseActivity.viewMap(feeOpt.isEmpty && showIssue)
       bitcoinFee setVisibility BaseActivity.viewMap(feeOpt.isDefined)
       fiatFee setVisibility BaseActivity.viewMap(feeOpt.isDefined)
-
-      feeOpt.foreach { fee =>
-        bitcoinFee setText LNParams.denomination.parsedWithSign(fee, Colors.cardZero).html
-        fiatFee setText WalletApp.currentMsatInFiatHuman(fee).html
-      }
-    }
+      txIssues setVisibility BaseActivity.viewMap(showIssue)
+    }.run
   }
 
   class SpinnerPopup(lg: Option[CharSequence], sm: Option[CharSequence] = None) {

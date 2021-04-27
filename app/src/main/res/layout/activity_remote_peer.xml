@@ -4,9 +4,7 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:f="http://schemas.android.com/tools">
 
-    <LinearLayout
-        android:id="@+id/remotePeerMain"
-        style="@style/StandardXYMarginLinearLayout">
+    <LinearLayout style="@style/StandardXYMarginLinearLayout">
 
         <!-- Remote peer info -->
 

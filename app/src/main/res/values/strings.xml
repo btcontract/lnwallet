@@ -58,6 +58,7 @@
     <string name="dialog_can_send"><![CDATA[<strong>can send</strong> %1$s]]></string>
     <string name="dialog_can_receive"><![CDATA[<strong>can receive</strong> %1$s]]></string>
     <string name="dialog_sat_vbyte"><![CDATA[fee %1$s <strong>sat/vB</strong>]]></string>
+    <string name="dialog_insufficient_funds">insufficient funds</string>
 
     <!-- errors -->
 
@@ -149,7 +150,6 @@
 
     <string name="rpa_title">Remote peer connection</string>
     <string name="rpa_disconnect">Remote peer disconnected</string>
-    <string name="rpa_funding_too_small">Minimal funding amount is %1$s</string>
     <string name="rpa_no_feature_support">Can not proceed with channels since some important features are not supported by remote peer.</string>
 
     <string name="rpa_request_hc">Request hosted channel</string>

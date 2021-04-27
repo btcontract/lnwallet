@@ -24,6 +24,7 @@ object ExtCodecs {
   }.as[HostedState]
 
   val lightningNodeKeysCodec = {
+    (extendedPrivateKeyCodec withContext "master") ::
     (extendedPrivateKeyCodec withContext "extendedNodeKey") ::
       (privateKey withContext "hashingKey")
   }.as[LightningNodeKeys]

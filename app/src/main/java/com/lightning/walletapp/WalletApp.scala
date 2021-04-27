@@ -105,6 +105,7 @@ object WalletApp { me =>
     LNParams.chainHash = Block.TestnetGenesisBlock.hash
     LNParams.routerConf = RouterConf(maxCltvDelta = CltvExpiryDelta(2016), mppMinPartAmount = MilliSatoshi(10000000L), routeHopDistance = 6)
     LNParams.denomination = if (useSatDenom) SatDenomination else BtcDenomination
+    LNParams.ourInit = LNParams.createInit
 
     extDataBag.db txWrap {
       LNParams.fiatRatesInfo = extDataBag.tryGetFiatRatesInfo getOrElse FiatRatesInfo(Map.empty, Map.empty, stamp = 0L)
@@ -168,14 +169,15 @@ object WalletApp { me =>
         }
       }
 
-      override def onTransactionReceived(event: TransactionReceived): Unit = if (event.received >= event.sent) {
-        val txDescription = TxDescription.defineDescription(LNParams.cm.all.values, event.walletAddreses, event.tx)
-        txDataBag.putTx(event, isIncoming = 1L, txDescription, lastChainBalance.toMilliSatoshi, LNParams.fiatRatesInfo.rates)
-      } else {
-        val txDescription = TxDescription.defineDescription(LNParams.cm.all.values, Nil, event.tx)
-        // Outgoing tx should already be present in db so this will fail silently unless sent from other wallet
-        txDataBag.putTx(event, 0L, txDescription, lastChainBalance.toMilliSatoshi, LNParams.fiatRatesInfo.rates)
-      }
+      override def onTransactionReceived(event: TransactionReceived): Unit =
+        if (event.received >= event.sent) {
+          val txDescription = TxDescription.defineDescription(LNParams.cm.all.values, event.walletAddreses, event.tx)
+          txDataBag.putTx(event, isIncoming = 1L, txDescription, lastChainBalance.toMilliSatoshi, LNParams.fiatRatesInfo.rates)
+        } else {
+          val txDescription = TxDescription.defineDescription(LNParams.cm.all.values, Nil, event.tx)
+          // Outgoing tx should already be present in db so this will fail silently unless sent from other wallet
+          txDataBag.putTx(event, 0L, txDescription, lastChainBalance.toMilliSatoshi, LNParams.fiatRatesInfo.rates)
+        }
 
       override def onChainDisconnected: Unit = {
         // Remember to eventually stop accepting payments

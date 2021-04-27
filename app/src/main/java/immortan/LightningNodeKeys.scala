@@ -2,7 +2,7 @@ package immortan
 
 import fr.acinq.bitcoin.DeterministicWallet._
 import fr.acinq.bitcoin.Crypto.{PrivateKey, PublicKey}
-import fr.acinq.bitcoin.{ByteVector32, Protocol, Script}
+import fr.acinq.bitcoin.{ByteVector32, Protocol}
 import fr.acinq.eclair.crypto.Mac32
 import java.io.ByteArrayInputStream
 import immortan.crypto.Tools.Bytes
@@ -17,7 +17,7 @@ object LightningNodeKeys {
     val master: ExtendedPrivateKey = generate(ByteVector view seed)
     val extendedNodeKey: ExtendedPrivateKey = derivePrivateKey(master, hardened(46L) :: hardened(0L) :: Nil)
     val hashingKey: PrivateKey = derivePrivateKey(master, hardened(138L) :: 0L :: Nil).privateKey
-    LightningNodeKeys(extendedNodeKey, hashingKey)
+    LightningNodeKeys(master, extendedNodeKey, hashingKey)
   }
 
   // Compatible with Electrum/Phoenix/BLW
@@ -27,15 +27,15 @@ object LightningNodeKeys {
   }
 }
 
-case class LightningNodeKeys(extendedNodeKey: ExtendedPrivateKey, hashingKey: PrivateKey) {
+case class LightningNodeKeys(master: ExtendedPrivateKey, extendedNodeKey: ExtendedPrivateKey, hashingKey: PrivateKey) {
   lazy val ourNodePrivateKey: PrivateKey = extendedNodeKey.privateKey
 
-  // Used for separate key per domain
   def makeLinkingKey(domain: String): PrivateKey = {
     val domainBytes = ByteVector.view(domain getBytes "UTF-8")
     val pathMaterial = Mac32.hmac256(hashingKey.value.bytes, domainBytes)
     val chain = hardened(138) :: makeKeyPath(pathMaterial.bytes)
-    derivePrivateKey(extendedNodeKey, chain).privateKey
+    // use master here to be compatible with old BLW
+    derivePrivateKey(master, chain).privateKey
   }
 
   def fakeInvoiceKey(paymentHash: ByteVector32): PrivateKey = {
@@ -46,12 +46,6 @@ case class LightningNodeKeys(extendedNodeKey: ExtendedPrivateKey, hashingKey: Pr
   def ourFakeNodeIdKey(theirNodeId: PublicKey): ExtendedPrivateKey = {
     val chain = hardened(230) :: makeKeyPath(theirNodeId.value)
     derivePrivateKey(extendedNodeKey, chain)
-  }
-
-  def refundPubKey(theirNodeId: PublicKey): ByteVector = {
-    val derivationChain = hardened(276) :: makeKeyPath(theirNodeId.value)
-    val p2wpkh = Script.pay2wpkh(derivePrivateKey(extendedNodeKey, derivationChain).publicKey)
-    Script.write(p2wpkh)
   }
 
   private def makeKeyPath(material: ByteVector): List[Long] = {

@@ -56,7 +56,7 @@ class ElectrumEclairWallet(val wallet: ActorRef, chainHash: ByteVector32)(implic
   override def commit(tx: Transaction): Future[Boolean] =
     (wallet ? BroadcastTransaction(tx)) flatMap {
       case ElectrumClient.BroadcastTransactionResponse(_, None) =>
-        //tx broadcast successfully: commit tx
+        // tx broadcast successfully: commit tx
         (wallet ? CommitTransaction(tx)).mapTo[Boolean]
       case ElectrumClient.BroadcastTransactionResponse(_, errorOpt) if errorOpt.exists(_.message contains "transaction already in block chain") =>
         // tx was already in the blockchain, that's weird but it is OK

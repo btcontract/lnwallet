@@ -20,12 +20,11 @@ import immortan.utils.{Denomination, FeeRatesInfo, FiatRatesInfo, PaymentRequest
 import fr.acinq.eclair.blockchain.electrum.db.WalletDb
 import fr.acinq.eclair.router.ChannelUpdateExt
 import java.util.concurrent.atomic.AtomicLong
+import com.google.common.cache.LoadingCache
 import immortan.SyncMaster.ShortChanIdSet
 import fr.acinq.eclair.crypto.Generators
 import immortan.crypto.Noise.KeyPair
 import immortan.crypto.CanBeShutDown
-import java.io.ByteArrayInputStream
-import java.nio.ByteOrder
 import akka.util.Timeout
 import scala.util.Try
 
@@ -67,11 +66,34 @@ object LNParams {
   var trampoline: TrampolineOn = _
   var chainWallet: WalletExt = _
   var cm: ChannelMaster = _
+  var ourInit: Init = _
 
-  // Init messages + features
+  // Last known chain tip (zero is unknown)
+  val blockCount: AtomicLong = new AtomicLong(0L)
 
-  lazy val ourInit: Init = {
-    // Late init because chain hash may be replaced
+  // Chain wallet has lost connection this long time ago
+  // can only happen if wallet has connected, then disconnected
+  val lastDisconnect: AtomicLong = new AtomicLong(Long.MaxValue)
+
+  def isOperational: Boolean =
+    null != chainHash && null != secret && null != chainWallet && null != syncParams &&
+      null != trampoline && null != feeRatesInfo && null != fiatRatesInfo && null != denomination &&
+      null != cm && null != cm.inProcessors && null != routerConf && null != ourInit
+
+  implicit val timeout: Timeout = Timeout(30.seconds)
+  implicit val system: ActorSystem = ActorSystem("immortan-actor-system")
+  implicit val ec: ExecutionContextExecutor = scala.concurrent.ExecutionContext.Implicits.global
+
+  def createWallet(walletDb: WalletDb, seed: ByteVector): WalletExt = {
+    val clientPool = system.actorOf(SimpleSupervisor.props(Props(new ElectrumClientPool(blockCount, chainHash)), "pool", SupervisorStrategy.Resume))
+    val watcher = system.actorOf(SimpleSupervisor.props(Props(new ElectrumWatcher(blockCount, clientPool)), "watcher", SupervisorStrategy.Resume))
+    val wallet = system.actorOf(ElectrumWallet.props(seed, clientPool, ElectrumWallet.WalletParameters(chainHash, walletDb)), "wallet")
+    val catcher = system.actorOf(Props(new WalletEventsCatcher), "catcher")
+    val eclairWallet = new ElectrumEclairWallet(wallet, chainHash)
+    WalletExt(eclairWallet, catcher, clientPool, watcher)
+  }
+
+  def createInit: Init = {
     val networks: InitTlv = InitTlv.Networks(chainHash :: Nil)
     val tlvStream: TlvStream[InitTlv] = TlvStream(networks)
 
@@ -89,31 +111,6 @@ object LNParams {
       (ChainSwap, FeatureSupport.Optional),
       (Wumbo, FeatureSupport.Optional)
     ), tlvStream)
-  }
-
-  // Last known chain tip (zero is unknown)
-  val blockCount: AtomicLong = new AtomicLong(0L)
-
-  // Chain wallet has lost connection this long time ago
-  // can only happen if wallet has connected, then disconnected
-  val lastDisconnect: AtomicLong = new AtomicLong(Long.MaxValue)
-
-  def isOperational: Boolean =
-    null != chainHash && null != secret && null != chainWallet && null != syncParams &&
-      null != trampoline && null != feeRatesInfo && null != fiatRatesInfo && null != denomination &&
-      null != cm && null != cm.inProcessors && null != routerConf
-
-  implicit val timeout: Timeout = Timeout(30.seconds)
-  implicit val system: ActorSystem = ActorSystem("immortan-actor-system")
-  implicit val ec: ExecutionContextExecutor = scala.concurrent.ExecutionContext.Implicits.global
-
-  def createWallet(walletDb: WalletDb, seed: ByteVector): WalletExt = {
-    val clientPool = system.actorOf(SimpleSupervisor.props(Props(new ElectrumClientPool(blockCount, chainHash)), "pool", SupervisorStrategy.Resume))
-    val watcher = system.actorOf(SimpleSupervisor.props(Props(new ElectrumWatcher(blockCount, clientPool)), "watcher", SupervisorStrategy.Resume))
-    val wallet = system.actorOf(ElectrumWallet.props(seed, clientPool, ElectrumWallet.WalletParameters(chainHash, walletDb)), "wallet")
-    val catcher = system.actorOf(Props(new WalletEventsCatcher), "catcher")
-    val eclairWallet = new ElectrumEclairWallet(wallet, chainHash)
-    WalletExt(eclairWallet, catcher, clientPool, watcher)
   }
 
   // We make sure force-close pays directly to wallet
@@ -172,6 +169,7 @@ class TestNetSyncParams extends SyncParams {
 }
 
 // Important: LNParams.format must be defined
+
 case class RemoteNodeInfo(nodeId: PublicKey, address: NodeAddress, alias: String) {
   lazy val nodeSpecificExtendedKey: DeterministicWallet.ExtendedPrivateKey = LNParams.secret.keys.ourFakeNodeIdKey(nodeId)
 
@@ -181,47 +179,39 @@ case class RemoteNodeInfo(nodeId: PublicKey, address: NodeAddress, alias: String
 
   lazy val nodeSpecificPair: KeyPairAndPubKey = KeyPairAndPubKey(KeyPair(nodeSpecificPubKey.value, nodeSpecificPrivKey.value), nodeId)
 
-  private def derivePrivKey(path: KeyPath) = derivePrivateKey(nodeSpecificExtendedKey, path)
+  private def derivePrivKey(path: KeyPath) = derivePrivateKey(LNParams.secret.keys.master, path)
 
-  private val channelPrivateKeysMemo = memoize(derivePrivKey)
+  private val channelPrivateKeysMemo: LoadingCache[KeyPath, ExtendedPrivateKey] = memoize(derivePrivKey)
 
-  private val channelPublicKeysMemo = memoize(channelPrivateKeysMemo.get _ andThen publicKey)
+  private val channelPublicKeysMemo: LoadingCache[KeyPath, ExtendedPublicKey] = memoize(channelPrivateKeysMemo.get _ andThen publicKey)
 
-  private def internalKeyPath(channelKeyPath: KeyPath, index: Long): Seq[Long] = channelKeyPath.path :+ hardened(index)
+  private def internalKeyPath(path: KeyPath, index: Long): Seq[Long] = path.path :+ hardened(index)
 
-  private def shaSeed(channelKeyPath: KeyPath): ByteVector32 = {
-    val extendedKey = channelPrivateKeysMemo getUnchecked internalKeyPath(channelKeyPath, 5L)
+  private def shaSeed(path: KeyPath): ByteVector32 = {
+    val extendedKey = channelPrivateKeysMemo getUnchecked internalKeyPath(path, 5L)
     Crypto.sha256(extendedKey.privateKey.value :+ 1.toByte)
-  }
-
-  def keyPath(localParams: LocalParams): KeyPath = {
-    val fundPubKey = fundingPublicKey(localParams.fundingKeyPath).publicKey
-    val bis = new ByteArrayInputStream(Crypto.sha256(fundPubKey.value).toArray)
-    def nextHop: Long = Protocol.uint32(input = bis, order = ByteOrder.BIG_ENDIAN)
-    val path = Seq(nextHop, nextHop, nextHop, nextHop, nextHop, nextHop, nextHop, nextHop)
-    DeterministicWallet.KeyPath(path)
   }
 
   def newFundingKeyPath(isFunder: Boolean): KeyPath = {
     def nextHop: Long = secureRandom.nextInt & 0xFFFFFFFFL
-    val last = if (isFunder) DeterministicWallet.hardened(1) else DeterministicWallet.hardened(0)
-    val path = Seq(nextHop, nextHop, nextHop, nextHop, nextHop, nextHop, nextHop, nextHop, last)
-    DeterministicWallet.KeyPath(path)
+    val lastHop = if (isFunder) hardened(1) else hardened(0)
+    val path = Seq(nextHop, nextHop, nextHop, nextHop, nextHop, nextHop, nextHop, nextHop, lastHop)
+    KeyPath(path)
   }
 
-  def fundingPublicKey(channelKeyPath: KeyPath): ExtendedPublicKey = channelPublicKeysMemo getUnchecked internalKeyPath(channelKeyPath, 0L)
+  def fundingPublicKey(path: KeyPath): ExtendedPublicKey = channelPublicKeysMemo getUnchecked internalKeyPath(path, 0L)
 
-  def revocationPoint(channelKeyPath: KeyPath): ExtendedPublicKey = channelPublicKeysMemo getUnchecked internalKeyPath(channelKeyPath, 1L)
+  def revocationPoint(path: KeyPath): ExtendedPublicKey = channelPublicKeysMemo getUnchecked internalKeyPath(path, 1L)
 
-  def paymentPoint(channelKeyPath: KeyPath): ExtendedPublicKey = channelPublicKeysMemo getUnchecked internalKeyPath(channelKeyPath, 2L)
+  def paymentPoint(path: KeyPath): ExtendedPublicKey = channelPublicKeysMemo getUnchecked internalKeyPath(path, 2L)
 
-  def delayedPaymentPoint(channelKeyPath: KeyPath): ExtendedPublicKey = channelPublicKeysMemo getUnchecked internalKeyPath(channelKeyPath, 3L)
+  def delayedPaymentPoint(path: KeyPath): ExtendedPublicKey = channelPublicKeysMemo getUnchecked internalKeyPath(path, 3L)
 
-  def htlcPoint(channelKeyPath: KeyPath): ExtendedPublicKey = channelPublicKeysMemo getUnchecked internalKeyPath(channelKeyPath, 4L)
+  def htlcPoint(path: KeyPath): ExtendedPublicKey = channelPublicKeysMemo getUnchecked internalKeyPath(path, 4L)
 
-  def commitmentSecret(channelKeyPath: KeyPath, index: Long): PrivateKey = Generators.perCommitSecret(shaSeed(channelKeyPath), index)
+  def commitmentSecret(path: KeyPath, index: Long): PrivateKey = Generators.perCommitSecret(shaSeed(path), index)
 
-  def commitmentPoint(channelKeyPath: KeyPath, index: Long): PublicKey = Generators.perCommitPoint(shaSeed(channelKeyPath), index)
+  def commitmentPoint(path: KeyPath, index: Long): PublicKey = Generators.perCommitPoint(shaSeed(path), index)
 
   def sign(tx: Transactions.TransactionWithInputInfo, publicKey: ExtendedPublicKey, txOwner: Transactions.TxOwner, format: Transactions.CommitmentFormat): ByteVector64 =
     Transactions.sign(tx, channelPrivateKeysMemo.get(publicKey.path).privateKey, txOwner, format)

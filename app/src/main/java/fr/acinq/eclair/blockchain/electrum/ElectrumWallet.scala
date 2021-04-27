@@ -393,17 +393,10 @@ class ElectrumWallet(seed: ByteVector, client: ActorRef, params: ElectrumWallet.
           stay() using data.copy(pendingHeadersRequests = pendingHeadersRequest1)
       }
 
-    case Event(CompleteTransaction(tx, feeRatePerKw, sequenceFlag), data) =>
-      Try(data.completeTransaction(tx, feeRatePerKw, minimumFee, dustLimit, allowSpendUnconfirmed, sequenceFlag)) match {
-        case Success((tx1, fee1)) => stay replying CompleteTransactionResponse(Some(tx1, fee1))
-        case _ => stay replying CompleteTransactionResponse(None)
-      }
-
-    case Event(SendAll(publicKeyScript, feeRatePerKw, sequenceFlag), data) =>
-      Try(data.spendAll(publicKeyScript, feeRatePerKw, dustLimit, sequenceFlag)) match {
-        case Success((tx, fee)) => stay replying SendAllResponse(Some(tx, fee))
-        case _ => stay replying SendAllResponse(None)
-      }
+    case Event(bc@ElectrumClient.BroadcastTransaction(tx), _) =>
+      log.info(s"broadcasting txid=${tx.txid}")
+      client forward bc
+      stay
 
     case Event(CommitTransaction(tx), data) =>
       log.info(s"committing txid=${tx.txid}")
@@ -415,15 +408,9 @@ class ElectrumWallet(seed: ByteVector, client: ActorRef, params: ElectrumWallet.
       // we notify here because the tx won't be downloaded again (it has been added to the state at commit)
       context.system.eventStream.publish(data1.transactionReceived(tx, Some(fee), received, sent))
       stay using persistAndNotify(data1) replying true
-
-    case Event(bc@ElectrumClient.BroadcastTransaction(tx), _) =>
-      log.info(s"broadcasting txid=${tx.txid}")
-      client forward bc
-      stay
   }
 
   whenUnhandled {
-
     case Event(IsDoubleSpent(tx), data) =>
       // detect if one of our transaction (i.e a transaction that spends from our wallet) has been double-spent
       val isDoubleSpent = data.heights
@@ -456,18 +443,30 @@ class ElectrumWallet(seed: ByteVector, client: ActorRef, params: ElectrumWallet.
       val (xpub, path) = computeXpub(master, chainHash)
       stay replying GetXpubResponse(xpub, path)
 
-    case Event(ElectrumClient.BroadcastTransaction(tx), _) => stay replying ElectrumClient.BroadcastTransactionResponse(tx, Some(Error(-1, "wallet is not connected")))
+    case Event(CompleteTransaction(tx, feeRatePerKw, sequenceFlag), data) =>
+      Try(data.completeTransaction(tx, feeRatePerKw, dustLimit, allowSpendUnconfirmed, sequenceFlag)) match {
+        case Success((tx1, fee1)) => stay replying CompleteTransactionResponse(Some(tx1, fee1))
+        case _ => stay replying CompleteTransactionResponse(None)
+      }
+
+    case Event(SendAll(publicKeyScript, feeRatePerKw, sequenceFlag), data) =>
+      Try(data.spendAll(publicKeyScript, feeRatePerKw, dustLimit, sequenceFlag)) match {
+        case Success((tx, fee)) => stay replying SendAllResponse(Some(tx, fee))
+        case _ => stay replying SendAllResponse(None)
+      }
+
+    case Event(ElectrumClient.BroadcastTransaction(tx), _) =>
+      val notConnected = Some(Error(code = -1, "wallet is not connected"))
+      stay replying ElectrumClient.BroadcastTransactionResponse(tx, notConnected)
   }
 
   initialize()
-
 }
 
 object ElectrumWallet {
   def props(seed: ByteVector, client: ActorRef, params: WalletParameters): Props = Props(new ElectrumWallet(seed, client, params))
 
-  case class WalletParameters(chainHash: ByteVector32, walletDb: WalletDb, minimumFee: Satoshi = 2000.sat,
-                              dustLimit: Satoshi = 546.sat, swipeRange: Int = 10, allowSpendUnconfirmed: Boolean = true)
+  case class WalletParameters(chainHash: ByteVector32, walletDb: WalletDb, dustLimit: Satoshi = 546L.sat, swipeRange: Int = 10, allowSpendUnconfirmed: Boolean = true)
 
   // @formatter:off
   sealed trait State
@@ -858,14 +857,13 @@ object ElectrumWallet {
      *
      * @param tx           input tx that has no inputs
      * @param feeRatePerKw fee rate per kiloweight
-     * @param minimumFee   minimum fee
      * @param dustLimit    dust limit
      * @return a (state, tx, fee) tuple where state has been updated and tx is a complete,
      *         fully signed transaction that can be broadcast.
      *         our utxos spent by this tx are locked and won't be available for spending
      *         until the tx has been cancelled. If the tx is committed, they will be removed
      */
-    def completeTransaction(tx: Transaction, feeRatePerKw: FeeratePerKw, minimumFee: Satoshi, dustLimit: Satoshi, allowSpendUnconfirmed: Boolean, sequenceFlag: Long): (Transaction, Satoshi) = {
+    def completeTransaction(tx: Transaction, feeRatePerKw: FeeratePerKw, dustLimit: Satoshi, allowSpendUnconfirmed: Boolean, sequenceFlag: Long): (Transaction, Satoshi) = {
       require(tx.txIn.isEmpty, "cannot complete a tx that already has inputs")
       val amount = tx.txOut.map(_.amount).sum
       require(amount > dustLimit, "amount to send is below dust limit")
@@ -972,7 +970,6 @@ object ElectrumWallet {
       // use all uxtos, including locked ones
       val tx1 = addUtxosWithDummySig(tx, utxos, sequenceFlag)
       val fee = Transactions.weight2fee(feeRatePerKw, tx1.weight())
-      println(s"amount: $amount, dustLimit: $dustLimit")
       require(amount - fee > dustLimit, "amount to send is below dust limit")
       val tx2 = tx1.copy(txOut = TxOut(amount - fee, publicKeyScript) :: Nil)
       val tx3 = signTransaction(tx2)
