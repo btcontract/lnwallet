@@ -5,8 +5,6 @@ import fr.acinq.eclair._
 import immortan.crypto.Tools._
 import fr.acinq.eclair.Features._
 import com.lightning.walletapp.R.string._
-
-import scala.util.{Failure, Success}
 import immortan.utils.{InputParser, Rx, ThrottledWork}
 import android.widget.{LinearLayout, ProgressBar, TextView}
 import fr.acinq.eclair.blockchain.MakeFundingTxResponse
@@ -110,41 +108,39 @@ class RemotePeerActivity extends BaseActivity with ExternalDataChecker { me =>
 
   def openNewChannel(view: View): Unit = {
     val body = getLayoutInflater.inflate(R.layout.frag_input_fund_channel, null)
-    val rateManager = new RateManager(body, None, LNParams.fiatRatesInfo.rates, WalletApp.fiatCode)
+    val manager = new RateManager(body, extraHint = None, LNParams.fiatRatesInfo.rates, WalletApp.fiatCode)
     val canSend = LNParams.denomination.parsedWithSign(WalletApp.lastChainBalance.toMilliSatoshi, Colors.cardZero)
     val canSendFiat = WalletApp.currentMsatInFiatHuman(WalletApp.lastChainBalance.toMilliSatoshi)
 
     def useMax(alert: AlertDialog): Unit = {
       val balanceAsLong = WalletApp.lastChainBalance.toLong
-      rateManager.inputAmount.setText(balanceAsLong.toString)
+      manager.inputAmount.setText(balanceAsLong.toString)
     }
 
-    def attempt(alert: AlertDialog): Unit = removeAndProceedWithTimeout(alert) {
-      NCFunderOpenHandler.makeFunding(LNParams.chainWallet, rateManager.result.truncateToSatoshi).onComplete {
-        case Success(fakeFunding) => attemptChannel(fakeFunding)
-        case Failure(reason) => revert(reason)
-      }
-
-      def attemptChannel(fakeFunding: MakeFundingTxResponse): Unit =
+    def attempt(alert: AlertDialog): Unit = {
+      NCFunderOpenHandler.makeFunding(LNParams.chainWallet, manager.resultSat) foreach { fakeFunding =>
         new NCFunderOpenHandler(remoteNodeInfo, fakeFunding, LNParams.chainWallet, LNParams.cm) {
           override def onEstablished(freshChannel: ChannelNormal): Unit = onBackPressed.run
-          override def onFailure(reason: Throwable): Unit = revert(reason)
+
+          override def onFailure(reason: Throwable): Unit = {
+            // Put peer details back and show error details
+            switchView(showProgress = false)
+            onFail(reason)
+          }
         }
+      }
 
-      def revert(reason: Throwable): Unit = UITask {
-        switchView(showProgress = false)
-        onFail(reason)
-      }.run
-
+      // Show loader while opening
       switchView(showProgress = true)
+      alert.dismiss
     }
 
-    val builder = titleBodyAsViewBuilder(getString(rpa_open_nc), rateManager.content)
+    val builder = titleBodyAsViewBuilder(title = getString(rpa_open_nc), body = manager.content)
     val alert = mkCheckFormNeutral(attempt, none, useMax, builder, dialog_ok, dialog_cancel, dialog_max)
 
     val feeView = new FeeView(body) {
       override def update(rate: FeeratePerKw, feeOpt: Option[MilliSatoshi], showIssue: Boolean): Unit = {
-        // Here we update fee view and button availability at once so user can't proceed if there are tx issues
+        // We update fee view and button availability at once so user can't proceed if there are tx issues
         updateButton(getPositiveButton(alert), feeOpt.isDefined)
         super.update(rate, feeOpt, showIssue)
       }
@@ -156,15 +152,14 @@ class RemotePeerActivity extends BaseActivity with ExternalDataChecker { me =>
       def error(exc: Throwable): Unit = feeView.update(NCFunderOpenHandler.defFeerate, None, showIssue = true)
     }
 
-    rateManager.inputAmount addTextChangedListener onTextChange { _ =>
-      val userEnteredSum: Satoshi = rateManager.result.truncateToSatoshi
-      if (userEnteredSum >= LNParams.minFundingSatoshis) worker.addWork(userEnteredSum)
-      else feeView.update(NCFunderOpenHandler.defFeerate, None, showIssue = false)
+    manager.inputAmount addTextChangedListener onTextChange { _ =>
+      if (manager.resultSat >= LNParams.minFundingSatoshis) worker.addWork(manager.resultSat)
+      else feeView.update(NCFunderOpenHandler.defFeerate, feeOpt = None, showIssue = false)
     }
 
-    rateManager.hintDenom.setText(getString(dialog_can_send).format(canSend).html)
-    rateManager.hintFiatDenom.setText(getString(dialog_can_send).format(canSendFiat).html)
-    feeView.update(NCFunderOpenHandler.defFeerate, None, showIssue = false).run
+    manager.hintDenom.setText(getString(dialog_can_send).format(canSend).html)
+    manager.hintFiatDenom.setText(getString(dialog_can_send).format(canSendFiat).html)
+    feeView.update(NCFunderOpenHandler.defFeerate, feeOpt = None, showIssue = false).run
   }
 
   def sharePeerSpecificNodeId(view: View): Unit =
@@ -174,8 +169,8 @@ class RemotePeerActivity extends BaseActivity with ExternalDataChecker { me =>
 
   }
 
-  def switchView(showProgress: Boolean): Unit = {
+  def switchView(showProgress: Boolean): Unit = UITask {
     progressBar setVisibility BaseActivity.viewMap(showProgress)
     peerDetails setVisibility BaseActivity.viewMap(!showProgress)
-  }
+  }.run
 }

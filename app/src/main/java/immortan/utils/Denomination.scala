@@ -20,7 +20,6 @@ object Denomination {
 
 trait Denomination { me =>
   protected def parsed(msat: MilliSatoshi, zeroColor: String): String
-  def asString(msat: Satoshi): String = fmt.format(BigDecimal(msat.toLong) / factor)
   def asString(msat: MilliSatoshi): String = fmt.format(BigDecimal(msat.toLong) / factor)
   def parsedWithSign(msat: MilliSatoshi, zeroColor: String): String = parsed(msat, zeroColor) + "\u00A0" + sign
   def directedWithSign(incoming: MilliSatoshi, outgoing: MilliSatoshi, zeroColor: String, isPlus: Boolean): String

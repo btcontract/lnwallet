@@ -34,6 +34,7 @@ import android.content.pm.PackageManager
 import android.view.View.OnClickListener
 import androidx.core.graphics.ColorUtils
 import androidx.core.app.ActivityCompat
+import fr.acinq.bitcoin.Satoshi
 import scala.concurrent.Future
 import scodec.bits.ByteVector
 import android.app.Dialog
@@ -241,8 +242,6 @@ trait BaseActivity extends AppCompatActivity { me =>
 
   // Fiat / BTC converter
 
-  val bigDecimalValue: CurrencyEditText => BigDecimal = _.getNumericValueBigDecimal
-
   class RateManager(val content: View, extraHint: Option[String], rates: Fiat2Btc, fiatCode: String) {
     val fiatInputAmount: CurrencyEditText = content.findViewById(R.id.fiatInputAmount).asInstanceOf[CurrencyEditText]
     val inputAmount: CurrencyEditText = content.findViewById(R.id.inputAmount).asInstanceOf[CurrencyEditText]
@@ -254,11 +253,27 @@ trait BaseActivity extends AppCompatActivity { me =>
     val extraInputLayout: TextInputLayout = content.findViewById(R.id.extraInputLayout).asInstanceOf[TextInputLayout]
     val extraInput: EditText = content.findViewById(R.id.fiatInputAmount).asInstanceOf[EditText]
 
-    def result: MilliSatoshi = MilliSatoshi(bigDecimalValue(inputAmount).toLong * 1000L)
-    def updatedFiat: String = WalletApp.msatInFiat(rates, fiatCode)(result).filter(0D.!=).map(Denomination.formatFiatPrecise.format).getOrElse(null)
-    def updatedSat: String = WalletApp.currentRate(rates, fiatCode).map(bigDecimalValue(fiatInputAmount) / _).filter(0D.!=).map(Denomination.btcBigDecimal2MSat).map(LNParams.denomination.asString).getOrElse(null)
+    def bigDecimalFrom(input: CurrencyEditText, times: Long = 1L): BigDecimal = (input.getNumericValueBigDecimal: BigDecimal) * times
+    def resultMsat: MilliSatoshi = MilliSatoshi(bigDecimalFrom(inputAmount, times = 1000L).toLong)
+    def resultSat: Satoshi = resultMsat.truncateToSatoshi
 
-    extraHint match { case Some(hint) => extraInputLayout setHint hint case None => extraInputLayout setVisibility View.GONE }
+    def updatedFiat: String =
+      WalletApp.msatInFiat(rates, fiatCode)(resultMsat)
+        .filter(0D.!=).map(Denomination.formatFiatPrecise.format)
+        .getOrElse(null)
+
+    def updatedSat: String =
+      WalletApp.currentRate(rates, fiatCode)
+        .map(perBtc => bigDecimalFrom(fiatInputAmount) / perBtc)
+        .filter(0D.!=).map(Denomination.btcBigDecimal2MSat)
+        .map(LNParams.denomination.asString)
+        .getOrElse(null)
+
+    extraHint match {
+      case Some(hint) => extraInputLayout setHint hint
+      case None => extraInputLayout setVisibility View.GONE
+    }
+
     fiatInputAmount addTextChangedListener onTextChange { _ => if (fiatInputAmount.hasFocus) inputAmount setText updatedSat }
     inputAmount addTextChangedListener onTextChange { _ => if (inputAmount.hasFocus) fiatInputAmount setText updatedFiat }
     inputAmountHint setText LNParams.denomination.sign.toUpperCase
