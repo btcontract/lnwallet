@@ -70,7 +70,7 @@
 
                 <com.ornach.nobobutton.NoboButton
                     app:nb_text="@string/rpa_open_nc"
-                    android:onClick="openNewChannel"
+                    android:onClick="fundNewChannel"
                     android:layout_marginTop="25dp"
                     style="@style/GreenButton"/>
 

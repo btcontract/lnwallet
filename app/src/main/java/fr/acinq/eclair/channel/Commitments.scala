@@ -401,7 +401,6 @@ case class NormalCommits(channelVersion: ChannelVersion, remoteInfo: RemoteNodeI
 
 object NormalCommits {
   type HtlcTimeoutTxSeq = Seq[HtlcTimeoutTx]
-
   type HtlcSuccessTxSeq = Seq[HtlcSuccessTx]
 
   def makeLocalTxs(remoteInfo: RemoteNodeInfo, channelVersion: ChannelVersion, commitTxNumber: Long, localParams: LocalParams, remoteParams: RemoteParams,
@@ -412,10 +411,10 @@ object NormalCommits {
     val remoteHtlcPubkey = Generators.derivePubKey(remoteParams.htlcBasepoint, localPerCommitmentPoint)
     val localRevocationPubkey = Generators.revocationPubKey(remoteParams.revocationBasepoint, localPerCommitmentPoint)
     val outputs = makeCommitTxOutputs(localParams.isFunder, localParams.dustLimit, localRevocationPubkey, remoteParams.toSelfDelay, localDelayedPaymentPubkey,
-      remotePaymentPubkey = localParams.walletStaticPaymentBasepoint, localHtlcPubkey, remoteHtlcPubkey, localFundingPubkey, remoteParams.fundingPubKey, spec, channelVersion.commitmentFormat)
+      remoteParams.paymentBasepoint, localHtlcPubkey, remoteHtlcPubkey, localFundingPubkey, remoteParams.fundingPubKey, spec, channelVersion.commitmentFormat)
     val commitTx = Transactions.makeCommitTx(commitmentInput, commitTxNumber, localParams.walletStaticPaymentBasepoint, remoteParams.paymentBasepoint, localParams.isFunder, outputs)
-    val (htlcTimeoutTxs, htlcSuccessTxs) = Transactions.makeHtlcTxs(commitTx.tx, localParams.dustLimit, localRevocationPubkey, remoteParams.toSelfDelay,
-      localDelayedPaymentPubkey, spec.feeratePerKw, outputs, channelVersion.commitmentFormat)
+    val (htlcTimeoutTxs, htlcSuccessTxs) = Transactions.makeHtlcTxs(commitTx.tx, localParams.dustLimit, localRevocationPubkey, remoteParams.toSelfDelay, localDelayedPaymentPubkey,
+      spec.feeratePerKw, outputs, channelVersion.commitmentFormat)
     (commitTx, htlcTimeoutTxs, htlcSuccessTxs)
   }
 
@@ -429,8 +428,8 @@ object NormalCommits {
     val outputs = makeCommitTxOutputs(!localParams.isFunder, remoteParams.dustLimit, remoteRevocationPubkey, localParams.toSelfDelay, remoteDelayedPaymentPubkey,
       localParams.walletStaticPaymentBasepoint, remoteHtlcPubkey, localHtlcPubkey, remoteParams.fundingPubKey, localFundingPubkey, spec, channelVersion.commitmentFormat)
     val commitTx = Transactions.makeCommitTx(commitmentInput, commitTxNumber, remoteParams.paymentBasepoint, localParams.walletStaticPaymentBasepoint, !localParams.isFunder, outputs)
-    val (htlcTimeoutTxs, htlcSuccessTxs) = Transactions.makeHtlcTxs(commitTx.tx, remoteParams.dustLimit, remoteRevocationPubkey, localParams.toSelfDelay,
-      remoteDelayedPaymentPubkey, spec.feeratePerKw, outputs, channelVersion.commitmentFormat)
+    val (htlcTimeoutTxs, htlcSuccessTxs) = Transactions.makeHtlcTxs(commitTx.tx, remoteParams.dustLimit, remoteRevocationPubkey, localParams.toSelfDelay, remoteDelayedPaymentPubkey,
+      spec.feeratePerKw, outputs, channelVersion.commitmentFormat)
     (commitTx, htlcTimeoutTxs, htlcSuccessTxs)
   }
 }

@@ -62,7 +62,7 @@ case class FeeRatesInfo(perKb: FeeratesPerKB, stamp: Long) {
   }
 
   val onChainFeeConf: OnChainFeeConf = {
-    val feerateTolerance = FeerateTolerance(0.2, 20)
+    val feerateTolerance = FeerateTolerance(0.001, 1000)
     val feeTargets = FeeTargets(fundingBlockTarget = 36, commitmentBlockTarget = 6, mutualCloseBlockTarget = 72, claimMainBlockTarget = 72)
     OnChainFeeConf(feeTargets, feeEstimator, closeOnOfflineMismatch = false, updateFeeMinDiffRatio = 0.1, feerateTolerance)
   }

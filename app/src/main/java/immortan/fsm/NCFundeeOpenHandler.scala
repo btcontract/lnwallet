@@ -1,28 +1,26 @@
 package immortan.fsm
 
 import immortan.{ChannelListener, ChannelMaster, ChannelNormal, CommsTower, ConnectionListener, LNParams, RemoteNodeInfo, WalletExt}
-import fr.acinq.eclair.channel.{ChannelVersion, DATA_WAIT_FOR_FUNDING_CONFIRMED, INPUT_INIT_FUNDEE, PersistentChannelData}
+import fr.acinq.eclair.channel.{ChannelVersion, DATA_WAIT_FOR_FUNDING_CONFIRMED, INPUT_INIT_FUNDEE, PeerDisconnected, PersistentChannelData}
 import fr.acinq.eclair.wire.{HasChannelId, HasTemporaryChannelId, Init, LightningMessage, OpenChannel}
 import immortan.Channel.{WAIT_FOR_ACCEPT, WAIT_FUNDING_DONE}
 import immortan.ChannelListener.{Malfunction, Transition}
 
 
-// Important: this must be initiated when chain tip is actually known
 abstract class NCFundeeOpenHandler(info: RemoteNodeInfo, theirOpen: OpenChannel, cm: ChannelMaster) {
-  def onPeerDisconnect(worker: CommsTower.Worker): Unit
+  // Important: this must be initiated when chain tip is actually known
   def onEstablished(channel: ChannelNormal): Unit
   def onFailure(err: Throwable): Unit
 
-  val freshChannel: ChannelNormal = new ChannelNormal(cm.chanBag) {
+  private val freshChannel = new ChannelNormal(cm.chanBag) {
     def SEND(messages: LightningMessage*): Unit = CommsTower.sendMany(messages, info.nodeSpecificPair)
     def STORE(normalData: PersistentChannelData): PersistentChannelData = cm.chanBag.put(normalData)
-    var chainWallet: WalletExt = LNParams.chainWallet
+    val chainWallet: WalletExt = LNParams.chainWallet
   }
 
   private val makeChanListener = new ConnectionListener with ChannelListener { me =>
     override def onMessage(worker: CommsTower.Worker, message: LightningMessage): Unit = message match {
-      case msg: HasTemporaryChannelId if msg.temporaryChannelId == theirOpen.temporaryChannelId => freshChannel process message
-      case msg: HasChannelId if msg.channelId == theirOpen.temporaryChannelId => freshChannel process message
+      case msg: HasTemporaryChannelId if msg.temporaryChannelId == theirOpen.temporaryChannelId => freshChannel process msg
       case _ => // Do nothing to avoid conflicts
     }
 
@@ -31,11 +29,8 @@ abstract class NCFundeeOpenHandler(info: RemoteNodeInfo, theirOpen: OpenChannel,
       freshChannel process INPUT_INIT_FUNDEE(info, localParams, theirInit, ChannelVersion.STATIC_REMOTEKEY, theirOpen)
     }
 
-    override def onDisconnect(worker: CommsTower.Worker): Unit = {
-      // Peer has disconnected during HC opening process
-      CommsTower.rmListenerNative(info, me)
-      onPeerDisconnect(worker)
-    }
+    override def onDisconnect(worker: CommsTower.Worker): Unit =
+      onException(freshChannel, freshChannel.data, PeerDisconnected)
 
     override def onBecome: PartialFunction[Transition, Unit] = {
       case (_, _, data: DATA_WAIT_FOR_FUNDING_CONFIRMED, WAIT_FOR_ACCEPT, WAIT_FUNDING_DONE) =>

@@ -116,7 +116,7 @@ object LNParams {
   // We make sure force-close pays directly to wallet
   def makeChannelParams(remoteInfo: RemoteNodeInfo, chainWallet: WalletExt, isFunder: Boolean, fundingAmount: Satoshi): LocalParams = {
     val walletKey: PublicKey = Await.result(chainWallet.wallet.getReceiveAddresses, atMost = 40.seconds).values.head.publicKey
-    makeChannelParams(remoteInfo, Script write Script.pay2wpkh(walletKey), walletKey, isFunder, fundingAmount)
+    makeChannelParams(remoteInfo, Script.write(Script.pay2wpkh(walletKey).toList), walletKey, isFunder, fundingAmount)
   }
 
   // We make sure that funder and fundee key path end differently

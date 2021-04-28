@@ -20,16 +20,12 @@ object NCFunderOpenHandler {
   val dummyLocal: PublicKey = randomKey.publicKey
   val dummyRemote: PublicKey = randomKey.publicKey
 
-  val defFeerate: FeeratePerKw = {
-    val target = LNParams.feeRatesInfo.onChainFeeConf.feeTargets.fundingBlockTarget
-    LNParams.feeRatesInfo.onChainFeeConf.feeEstimator.getFeeratePerKw(target)
-  }
-
+  val defFeerate: FeeratePerKw = LNParams.feeRatesInfo.onChainFeeConf.feeEstimator.getFeeratePerKw(target = LNParams.feeRatesInfo.onChainFeeConf.feeTargets.fundingBlockTarget)
   def makeFunding(chainWallet: WalletExt, fundingAmount: Satoshi, local: PublicKey = dummyLocal, remote: PublicKey = dummyRemote, feeratePerKw: FeeratePerKw = defFeerate): Future[MakeFundingTxResponse] =
     chainWallet.wallet.makeFundingTx(Script.write(Script pay2wsh Scripts.multiSig2of2(local, remote).toList), fundingAmount, feeratePerKw)
 }
 
-abstract class NCFunderOpenHandler(info: RemoteNodeInfo, fakeFunding: MakeFundingTxResponse, cWallet: WalletExt, cm: ChannelMaster) {
+abstract class NCFunderOpenHandler(info: RemoteNodeInfo, fakeFunding: MakeFundingTxResponse, cw: WalletExt, cm: ChannelMaster) {
   // Important: this must be initiated when chain tip is actually known
   def onEstablished(channel: ChannelNormal): Unit
   def onFailure(err: Throwable): Unit
@@ -38,7 +34,7 @@ abstract class NCFunderOpenHandler(info: RemoteNodeInfo, fakeFunding: MakeFundin
   private val freshChannel = new ChannelNormal(cm.chanBag) {
     def SEND(messages: LightningMessage*): Unit = CommsTower.sendMany(messages, info.nodeSpecificPair)
     def STORE(normalData: PersistentChannelData): PersistentChannelData = cm.chanBag.put(normalData)
-    var chainWallet: WalletExt = cWallet
+    val chainWallet: WalletExt = cw
   }
 
   private var assignedChanId = Option.empty[ByteVector32]
@@ -60,7 +56,7 @@ abstract class NCFunderOpenHandler(info: RemoteNodeInfo, fakeFunding: MakeFundin
 
     override def onBecome: PartialFunction[Transition, Unit] = {
       case (_, _: DATA_WAIT_FOR_ACCEPT_CHANNEL, data: DATA_WAIT_FOR_FUNDING_INTERNAL, WAIT_FOR_ACCEPT, WAIT_FOR_ACCEPT) =>
-        val future = NCFunderOpenHandler.makeFunding(cWallet, data.initFunder.fakeFunding.fundingAmount, data.lastSent.fundingPubkey, data.remoteParams.fundingPubKey)
+        val future = NCFunderOpenHandler.makeFunding(cw, data.initFunder.fakeFunding.fundingAmount, data.lastSent.fundingPubkey, data.remoteParams.fundingPubKey)
         future onComplete { case Failure(reason) => onException(freshChannel, data, reason) case Success(realFunding) => freshChannel process realFunding }
 
       case (_, _: DATA_WAIT_FOR_FUNDING_INTERNAL, data: DATA_WAIT_FOR_FUNDING_SIGNED, WAIT_FOR_ACCEPT, WAIT_FOR_ACCEPT) =>

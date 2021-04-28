@@ -2,19 +2,19 @@ package com.lightning.walletapp
 
 import immortan._
 import fr.acinq.eclair._
+import fr.acinq.eclair.wire._
 import immortan.crypto.Tools._
 import fr.acinq.eclair.Features._
 import com.lightning.walletapp.R.string._
 import immortan.utils.{InputParser, Rx, ThrottledWork}
 import android.widget.{LinearLayout, ProgressBar, TextView}
+import immortan.fsm.{NCFundeeOpenHandler, NCFunderOpenHandler}
 import fr.acinq.eclair.blockchain.MakeFundingTxResponse
 import com.lightning.walletapp.BaseActivity.StringOps
 import concurrent.ExecutionContext.Implicits.global
 import fr.acinq.eclair.blockchain.fee.FeeratePerKw
 import androidx.appcompat.app.AlertDialog
 import com.ornach.nobobutton.NoboButton
-import immortan.fsm.NCFunderOpenHandler
-import fr.acinq.eclair.wire.Init
 import fr.acinq.bitcoin.Satoshi
 import rx.lang.scala.Observable
 import android.os.Bundle
@@ -44,16 +44,40 @@ class RemotePeerActivity extends BaseActivity with ExternalDataChecker { me =>
     Wumbo -> findViewById(R.id.Wumbo).asInstanceOf[TextView]
   )
 
-  val baseListener: ConnectionListener = new ConnectionListener {
+  class DisconnectListener extends ConnectionListener {
+    override def onDisconnect(worker: CommsTower.Worker): Unit = {
+      UITask(WalletApp.app quickToast R.string.rpa_disconnect).run
+      disconnectListenersAndFinish
+    }
+  }
+
+  private lazy val incomingAcceptingListener = new DisconnectListener {
+    override def onMessage(worker: CommsTower.Worker, message: LightningMessage): Unit = message match {
+      case theirOpen: OpenChannel if (theirOpen.channelFlags & 0x01) == 0 => acceptIncomingChannel(theirOpen)
+      case _: OpenChannel => UITask(WalletApp.app quickToast error_rejected_incoming_public).run
+      case _ => // Do nothing
+    }
+  }
+
+  private lazy val incomingIgnoringListener = new DisconnectListener
+
+  private lazy val viewUpdatingListener = new ConnectionListener {
     override def onOperational(worker: CommsTower.Worker, theirInit: Init): Unit = UITask {
       val checkFeature = Features.canUseFeature(LNParams.ourInit.features, theirInit.features, _: Feature)
-      featureTextViewMap.foreach { case (feature, textView) => textView setText feature.rfcName }
-      criticalSupportAvailable = criticalFeatures.forall(checkFeature)
+      val criticalSupportAvailable = criticalFeatures.forall(checkFeature)
 
       featureTextViewMap foreach {
-        case (feature, view) if checkFeature(feature) => view.setBackgroundResource(R.drawable.border_green)
-        case (feature, view) if criticalFeatures.contains(feature) => view.setBackgroundResource(R.drawable.border_red)
-        case (_, view) => view.setBackgroundResource(R.drawable.border_gray)
+        case (feature, view) if checkFeature(feature) =>
+          view.setBackgroundResource(R.drawable.border_green)
+          view.setText(feature.rfcName)
+
+        case (feature, view) if criticalFeatures.contains(feature) =>
+          view.setBackgroundResource(R.drawable.border_red)
+          view.setText(feature.rfcName)
+
+        case (feature, view) =>
+          view.setBackgroundResource(R.drawable.border_gray)
+          view.setText(feature.rfcName)
       }
 
       switchView(showProgress = false)
@@ -61,16 +85,9 @@ class RemotePeerActivity extends BaseActivity with ExternalDataChecker { me =>
       viewYesFeatureSupport setVisibility BaseActivity.viewMap(criticalSupportAvailable)
       optionHostedChannel setVisibility BaseActivity.viewMap(checkFeature apply HostedChannels)
     }.run
-
-    override def onDisconnect(worker: CommsTower.Worker): Unit = UITask {
-      CommsTower.rmListenerNative(remoteNodeInfo, baseListener)
-      WalletApp.app.quickToast(R.string.rpa_disconnect)
-      finish
-    }.run
   }
 
   private var whenBackPressed: Runnable = UITask(finish)
-  private var criticalSupportAvailable: Boolean = false
   private var remoteNodeInfo: RemoteNodeInfo = _
 
   override def checkExternalData(whenNone: Runnable): Unit =
@@ -78,7 +95,7 @@ class RemotePeerActivity extends BaseActivity with ExternalDataChecker { me =>
       case remoteInfo: RemoteNodeInfo =>
         peerIpAddress.setText(remoteInfo.address.toString)
         peerNodeKey.setText(remoteInfo.nodeId.toString.humanFour)
-        CommsTower.listenNative(listeners1 = Set(baseListener), remoteInfo)
+        CommsTower.listenNative(Set(viewUpdatingListener, incomingAcceptingListener), remoteInfo)
         whenBackPressed = UITask(CommsTower disconnectNative remoteInfo)
         remoteNodeInfo = remoteInfo
 
@@ -106,7 +123,17 @@ class RemotePeerActivity extends BaseActivity with ExternalDataChecker { me =>
 
   // BUTTON ACTIONS
 
-  def openNewChannel(view: View): Unit = {
+  def acceptIncomingChannel(theirOpen: OpenChannel): Unit = {
+    new NCFundeeOpenHandler(remoteNodeInfo, theirOpen, LNParams.cm) {
+      override def onEstablished(chan: ChannelNormal): Unit = disconnectListenersAndFinish
+      override def onFailure(reason: Throwable): Unit = revertAndInform(reason)
+    }
+
+    switchView(showProgress = true)
+    stopAcceptingIncomingOffers
+  }
+
+  def fundNewChannel(view: View): Unit = {
     val body = getLayoutInflater.inflate(R.layout.frag_input_fund_channel, null)
     val manager = new RateManager(body, extraHint = None, LNParams.fiatRatesInfo.rates, WalletApp.fiatCode)
     val canSend = LNParams.denomination.parsedWithSign(WalletApp.lastChainBalance.toMilliSatoshi, Colors.cardZero)
@@ -120,18 +147,13 @@ class RemotePeerActivity extends BaseActivity with ExternalDataChecker { me =>
     def attempt(alert: AlertDialog): Unit = {
       NCFunderOpenHandler.makeFunding(LNParams.chainWallet, manager.resultSat) foreach { fakeFunding =>
         new NCFunderOpenHandler(remoteNodeInfo, fakeFunding, LNParams.chainWallet, LNParams.cm) {
-          override def onEstablished(freshChannel: ChannelNormal): Unit = onBackPressed.run
-
-          override def onFailure(reason: Throwable): Unit = {
-            // Put peer details back and show error details
-            switchView(showProgress = false)
-            onFail(reason)
-          }
+          override def onEstablished(chan: ChannelNormal): Unit = disconnectListenersAndFinish
+          override def onFailure(reason: Throwable): Unit = revertAndInform(reason)
         }
       }
 
-      // Show loader while opening
       switchView(showProgress = true)
+      stopAcceptingIncomingOffers
       alert.dismiss
     }
 
@@ -173,4 +195,23 @@ class RemotePeerActivity extends BaseActivity with ExternalDataChecker { me =>
     progressBar setVisibility BaseActivity.viewMap(showProgress)
     peerDetails setVisibility BaseActivity.viewMap(!showProgress)
   }.run
+
+  def revertAndInform(reason: Throwable): Unit = {
+    // Whatever the reason for this to happen we may accept new incoming offers
+    CommsTower.listenNative(Set(incomingAcceptingListener), remoteNodeInfo)
+    switchView(showProgress = false)
+    onFail(reason)
+  }
+
+  def stopAcceptingIncomingOffers: Unit = {
+    CommsTower.listenNative(Set(incomingIgnoringListener), remoteNodeInfo)
+    CommsTower.rmListenerNative(remoteNodeInfo, incomingAcceptingListener)
+  }
+
+  def disconnectListenersAndFinish: Unit = {
+    CommsTower.rmListenerNative(remoteNodeInfo, incomingAcceptingListener)
+    CommsTower.rmListenerNative(remoteNodeInfo, incomingIgnoringListener)
+    CommsTower.rmListenerNative(remoteNodeInfo, viewUpdatingListener)
+    finish
+  }
 }

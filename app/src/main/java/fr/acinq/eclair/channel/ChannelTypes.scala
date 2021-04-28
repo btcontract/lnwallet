@@ -35,19 +35,58 @@ import immortan.crypto.Tools
 
 
 // Fatal by deafult
-case class FeerateTooSmall(channelId: ByteVector32, remoteFeeratePerKw: FeeratePerKw) extends RuntimeException
-case class DustLimitTooSmall(channelId: ByteVector32, dustLimit: Satoshi, min: Satoshi) extends RuntimeException
-case class DustLimitTooLarge(channelId: ByteVector32, dustLimit: Satoshi, max: Satoshi) extends RuntimeException
-case class InvalidMaxAcceptedHtlcs(channelId: ByteVector32, maxAcceptedHtlcs: Int, max: Int) extends RuntimeException
-case class InvalidChainHash(channelId: ByteVector32, local: ByteVector32, remote: ByteVector32) extends RuntimeException
-case class InvalidPushAmount(channelId: ByteVector32, pushAmount: MilliSatoshi, max: MilliSatoshi) extends RuntimeException
-case class ToSelfDelayTooHigh(channelId: ByteVector32, toSelfDelay: CltvExpiryDelta, max: CltvExpiryDelta) extends RuntimeException
-case class InvalidFundingAmount(channelId: ByteVector32, fundingAmount: Satoshi, min: Satoshi, max: Satoshi) extends RuntimeException
-case class DustLimitAboveOurChannelReserve(channelId: ByteVector32, dustLimit: Satoshi, channelReserve: Satoshi) extends RuntimeException
-case class ChannelReserveBelowOurDustLimit(channelId: ByteVector32, channelReserve: Satoshi, dustLimit: Satoshi) extends RuntimeException
-case class ChannelReserveNotMet(channelId: ByteVector32, toLocal: MilliSatoshi, toRemote: MilliSatoshi, reserve: Satoshi) extends RuntimeException
-case class FeerateTooDifferent(channelId: ByteVector32, localFeeratePerKw: FeeratePerKw, remoteFeeratePerKw: FeeratePerKw) extends RuntimeException
-case class ChannelReserveTooHigh(channelId: ByteVector32, channelReserve: Satoshi, reserveToFundingRatio: Double, maxReserveToFundingRatio: Double) extends RuntimeException
+case class FeerateTooSmall(channelId: ByteVector32, remoteFeeratePerKw: FeeratePerKw) extends RuntimeException {
+  override def toString: String = s"FeerateTooSmall, remoteFeeratePerKw=$remoteFeeratePerKw"
+}
+
+case class DustLimitTooSmall(channelId: ByteVector32, dustLimit: Satoshi, min: Satoshi) extends RuntimeException {
+  override def toString: String = s"DustLimitTooSmall, dustLimit=$dustLimit, min=$min"
+}
+
+case class DustLimitTooLarge(channelId: ByteVector32, dustLimit: Satoshi, max: Satoshi) extends RuntimeException {
+  override def toString: String = s"DustLimitTooLarge, dustLimit=$dustLimit, max=$max"
+}
+
+case class InvalidMaxAcceptedHtlcs(channelId: ByteVector32, maxAcceptedHtlcs: Int, max: Int) extends RuntimeException {
+  override def toString: String = s"InvalidMaxAcceptedHtlcs, maxAcceptedHtlcs=$maxAcceptedHtlcs, max=$max"
+}
+
+case class InvalidChainHash(channelId: ByteVector32, local: ByteVector32, remote: ByteVector32) extends RuntimeException {
+  override def toString: String = s"InvalidChainHash, local=$local, remote=$remote"
+}
+
+case class InvalidPushAmount(channelId: ByteVector32, pushAmount: MilliSatoshi, max: MilliSatoshi) extends RuntimeException {
+  override def toString: String = s"InvalidPushAmount, pushAmount=$pushAmount, max=$max"
+}
+
+case class ToSelfDelayTooHigh(channelId: ByteVector32, toSelfDelay: CltvExpiryDelta, max: CltvExpiryDelta) extends RuntimeException {
+  override def toString: String = s"ToSelfDelayTooHigh, toSelfDelay=$toSelfDelay, max=$max"
+}
+
+case class InvalidFundingAmount(channelId: ByteVector32, fundingAmount: Satoshi, min: Satoshi, max: Satoshi) extends RuntimeException {
+  override def toString: String = s"InvalidFundingAmount, fundingAmount=$fundingAmount, min=$min, max=$max"
+}
+
+case class DustLimitAboveOurChannelReserve(channelId: ByteVector32, dustLimit: Satoshi, channelReserve: Satoshi) extends RuntimeException {
+  override def toString: String = s"DustLimitAboveOurChannelReserve, dustLimit=$dustLimit, channelReserve=$channelReserve"
+}
+
+case class ChannelReserveBelowOurDustLimit(channelId: ByteVector32, channelReserve: Satoshi, dustLimit: Satoshi) extends RuntimeException {
+  override def toString: String = s"ChannelReserveBelowOurDustLimit, channelReserve=$channelReserve, dustLimit=$dustLimit"
+}
+
+case class ChannelReserveNotMet(channelId: ByteVector32, toLocal: MilliSatoshi, toRemote: MilliSatoshi, reserve: Satoshi) extends RuntimeException {
+  override def toString: String = s"ChannelReserveNotMet, toLocal=$toLocal, toRemote=$toRemote, reserve=$reserve"
+}
+
+case class FeerateTooDifferent(channelId: ByteVector32, localFeeratePerKw: FeeratePerKw, remoteFeeratePerKw: FeeratePerKw) extends RuntimeException {
+  override def toString: String = s"FeerateTooDifferent, localFeeratePerKw=$localFeeratePerKw, remoteFeeratePerKw=$remoteFeeratePerKw"
+}
+
+case class ChannelReserveTooHigh(channelId: ByteVector32, channelReserve: Satoshi, reserveToFundingRatio: Double, maxReserveToFundingRatio: Double) extends RuntimeException {
+  override def toString: String = s"DustLimitTooSmall, channelReserve=$channelReserve, reserveToFundingRatio=$reserveToFundingRatio, maxReserveToFundingRatio=$maxReserveToFundingRatio"
+}
+
 case object PeerDisconnected extends RuntimeException
 
 // Non-fatal by default

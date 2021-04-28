@@ -27,7 +27,7 @@ object ChannelNormal {
   def make(initListeners: Set[ChannelListener], normalData: HasNormalCommitments, cw: WalletExt, bag: ChannelBag): ChannelNormal = new ChannelNormal(bag) {
     def SEND(messages: LightningMessage*): Unit = CommsTower.sendMany(messages, normalData.commitments.remoteInfo.nodeSpecificPair)
     def STORE(normalData1: PersistentChannelData): PersistentChannelData = bag.put(normalData1)
-    var chainWallet: WalletExt = cw
+    val chainWallet: WalletExt = cw
     listeners = initListeners
     doProcess(normalData)
   }
@@ -35,7 +35,7 @@ object ChannelNormal {
 
 abstract class ChannelNormal(bag: ChannelBag) extends Channel with Handlers { me =>
   val receiver: ActorRef = LNParams.system actorOf Props(new Receiver)
-  var chainWallet: WalletExt
+  val chainWallet: WalletExt
 
   def doProcess(change: Any): Unit =
     Tuple3(data, change, state) match {
@@ -141,6 +141,7 @@ abstract class ChannelNormal(bag: ChannelBag) extends Channel with Handlers { me
         val localSigOfLocalTx = wait.initFundee.remoteInfo.sign(localCommitTx, fundingPubKey, TxOwner.Local, wait.initFundee.channelVersion.commitmentFormat)
         val signedLocalCommitTx = Transactions.addSigs(localCommitTx, fundingPubKey.publicKey, wait.remoteParams.fundingPubKey, localSigOfLocalTx, created.signature)
 
+        // Make sure their supplied signature is correct before proceeding
         require(Transactions.checkSpendable(signedLocalCommitTx).isSuccess)
 
         val localSigOfRemoteTx = wait.initFundee.remoteInfo.sign(remoteCommitTx, fundingPubKey, TxOwner.Remote, wait.initFundee.channelVersion.commitmentFormat)
