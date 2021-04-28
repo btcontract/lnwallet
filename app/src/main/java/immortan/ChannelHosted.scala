@@ -215,7 +215,7 @@ abstract class ChannelHosted extends Channel { me =>
 
 
       case (hc: HostedCommits, remoteError: Error, WAIT_FOR_ACCEPT | OPEN | SLEEPING) if hc.remoteError.isEmpty =>
-        BECOME(me STORE hc.copy(remoteError = remoteError.toSome), SUSPENDED)
+        StoreBecomeSend(hc.copy(remoteError = remoteError.toSome), SUSPENDED)
 
 
       case (_: HasNormalCommitments, _: CurrentBlockCount, OPEN | SLEEPING | SUSPENDED) => ???

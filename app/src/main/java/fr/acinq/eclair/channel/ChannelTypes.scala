@@ -87,10 +87,6 @@ case class ChannelReserveTooHigh(channelId: ByteVector32, channelReserve: Satosh
   override def toString: String = s"DustLimitTooSmall, channelReserve=$channelReserve, reserveToFundingRatio=$reserveToFundingRatio, maxReserveToFundingRatio=$maxReserveToFundingRatio"
 }
 
-case object PeerDisconnected extends RuntimeException {
-  override def toString: String = "PeerDisconnected"
-}
-
 // Non-fatal by default
 case object ChannelOffline extends RuntimeException
 case object InPrincipleNotSendable extends RuntimeException
