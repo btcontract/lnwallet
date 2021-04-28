@@ -73,16 +73,17 @@ class MainActivity extends NfcReaderActivity with BaseActivity { me =>
 
   class EnsureSeed extends Step {
     def makeAttempt: Unit = WalletApp.extDataBag.tryGetSecret match {
-      // Make wallet operational outside of Try to see an error right away
+      case Failure(_: android.database.CursorIndexOutOfBoundsException) =>
+        // Record is not present at all, this is probaby a fresh wallet
+        me exitTo classOf[SetupActivity]
+
+      case Failure(reason) =>
+        // Notify user about it
+        throw reason
 
       case Success(secret) =>
         WalletApp.makeOperational(secret)
         me exitTo ClassNames.hubActivityClass
-
-      case Failure(exception) =>
-        exception.printStackTrace()
-        // No seed present, wallet is new
-        me exitTo classOf[SetupActivity]
     }
   }
 
