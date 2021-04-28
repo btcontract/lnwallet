@@ -64,7 +64,7 @@ abstract class ChannelHosted extends Channel { me =>
         if (!isRemoteSigOk) throw new RuntimeException("Their signature is wrong")
         if (!isRightRemoteUpdateNumber) throw new RuntimeException("Their remote update number is wrong")
         if (!isRightLocalUpdateNumber) throw new RuntimeException("Their local update number is wrong")
-        BECOME(me STORE localHalfSignedHC.copy(lastCrossSignedState = localCompleteLCSS), OPEN)
+        StoreBecomeSend(localHalfSignedHC.copy(lastCrossSignedState = localCompleteLCSS), OPEN)
 
 
       case (wait: WaitRemoteHostedReply, remoteLCSS: LastCrossSignedState, WAIT_FOR_ACCEPT) =>
@@ -152,7 +152,8 @@ abstract class ChannelHosted extends Channel { me =>
 
 
       case (hc: HostedCommits, CMD_SOCKET_ONLINE, SLEEPING | SUSPENDED) =>
-        val invokeMsg = InvokeHostedChannel(LNParams.chainHash, hc.lastCrossSignedState.refundScriptPubKey, ByteVector.empty)
+        val refundScriptPubKey: ByteVector = hc.lastCrossSignedState.refundScriptPubKey
+        val invokeMsg = InvokeHostedChannel(LNParams.chainHash, refundScriptPubKey, ByteVector.empty)
         SEND(hc.getError getOrElse invokeMsg)
 
 

@@ -39,6 +39,7 @@ abstract class NCFunderOpenHandler(info: RemoteNodeInfo, fakeFunding: MakeFundin
 
   private var assignedChanId = Option.empty[ByteVector32]
   private val makeChanListener = new ConnectionListener with ChannelListener { me =>
+    override def onDisconnect(worker: CommsTower.Worker): Unit = CommsTower.rmListenerNative(info, me)
     override def onMessage(worker: CommsTower.Worker, message: LightningMessage): Unit = message match {
       case msg: HasTemporaryChannelId if msg.temporaryChannelId == tempChannelId => freshChannel process msg
       case msg: HasChannelId if assignedChanId.contains(msg.channelId) => freshChannel process msg
@@ -50,9 +51,6 @@ abstract class NCFunderOpenHandler(info: RemoteNodeInfo, fakeFunding: MakeFundin
         initialFeeratePerKw = LNParams.feeRatesInfo.onChainFeeConf.getCommitmentFeerate(ChannelVersion.STATIC_REMOTEKEY, None),
         localParams = LNParams.makeChannelParams(info, freshChannel.chainWallet, isFunder = true, fakeFunding.fundingAmount),
         theirInit, channelFlags = 0.toByte, ChannelVersion.STATIC_REMOTEKEY)
-
-    override def onDisconnect(worker: CommsTower.Worker): Unit =
-      onException(freshChannel, freshChannel.data, PeerDisconnected)
 
     override def onBecome: PartialFunction[Transition, Unit] = {
       case (_, _: DATA_WAIT_FOR_ACCEPT_CHANNEL, data: DATA_WAIT_FOR_FUNDING_INTERNAL, WAIT_FOR_ACCEPT, WAIT_FOR_ACCEPT) =>

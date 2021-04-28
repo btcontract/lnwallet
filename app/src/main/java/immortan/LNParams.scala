@@ -106,7 +106,6 @@ object LNParams {
       (TrampolineRouting, FeatureSupport.Optional),
       (StaticRemoteKey, FeatureSupport.Optional),
       (HostedChannels, FeatureSupport.Optional),
-      (AnchorOutputs, FeatureSupport.Optional),
       (PaymentSecret, FeatureSupport.Optional),
       (ChainSwap, FeatureSupport.Optional),
       (Wumbo, FeatureSupport.Optional)

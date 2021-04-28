@@ -146,11 +146,6 @@ object Features {
     val mandatory = 18
   }
 
-  case object AnchorOutputs extends Feature {
-    val rfcName = "Anchor outputs"
-    val mandatory = 20
-  }
-
   case object TrampolinePayment extends Feature {
     val rfcName = "Trampoline payments"
     val mandatory = 50
@@ -182,7 +177,6 @@ object Features {
     TrampolinePayment,
     StaticRemoteKey,
     HostedChannels,
-    AnchorOutputs,
     PaymentSecret,
     ChainSwap,
     Wumbo
@@ -192,8 +186,7 @@ object Features {
     ChannelRangeQueriesExtended -> (ChannelRangeQueries :: Nil),
     BasicMultiPartPayment -> (PaymentSecret :: Nil),
     PaymentSecret -> (VariableLengthOnion :: Nil),
-    TrampolinePayment -> (PaymentSecret :: Nil),
-    AnchorOutputs -> (StaticRemoteKey :: Nil)
+    TrampolinePayment -> (PaymentSecret :: Nil)
   )
 
   case class FeatureException(message: String) extends IllegalArgumentException(message)

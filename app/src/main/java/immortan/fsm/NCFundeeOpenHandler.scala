@@ -1,8 +1,8 @@
 package immortan.fsm
 
 import immortan.{ChannelListener, ChannelMaster, ChannelNormal, CommsTower, ConnectionListener, LNParams, RemoteNodeInfo, WalletExt}
-import fr.acinq.eclair.channel.{ChannelVersion, DATA_WAIT_FOR_FUNDING_CONFIRMED, INPUT_INIT_FUNDEE, PeerDisconnected, PersistentChannelData}
-import fr.acinq.eclair.wire.{HasChannelId, HasTemporaryChannelId, Init, LightningMessage, OpenChannel}
+import fr.acinq.eclair.channel.{ChannelVersion, DATA_WAIT_FOR_FUNDING_CONFIRMED, INPUT_INIT_FUNDEE, PersistentChannelData}
+import fr.acinq.eclair.wire.{HasTemporaryChannelId, Init, LightningMessage, OpenChannel}
 import immortan.Channel.{WAIT_FOR_ACCEPT, WAIT_FUNDING_DONE}
 import immortan.ChannelListener.{Malfunction, Transition}
 
@@ -19,6 +19,7 @@ abstract class NCFundeeOpenHandler(info: RemoteNodeInfo, theirOpen: OpenChannel,
   }
 
   private val makeChanListener = new ConnectionListener with ChannelListener { me =>
+    override def onDisconnect(worker: CommsTower.Worker): Unit = CommsTower.rmListenerNative(info, me)
     override def onMessage(worker: CommsTower.Worker, message: LightningMessage): Unit = message match {
       case msg: HasTemporaryChannelId if msg.temporaryChannelId == theirOpen.temporaryChannelId => freshChannel process msg
       case _ => // Do nothing to avoid conflicts
@@ -28,9 +29,6 @@ abstract class NCFundeeOpenHandler(info: RemoteNodeInfo, theirOpen: OpenChannel,
       val localParams = LNParams.makeChannelParams(info, freshChannel.chainWallet, isFunder = false, theirOpen.fundingSatoshis)
       freshChannel process INPUT_INIT_FUNDEE(info, localParams, theirInit, ChannelVersion.STATIC_REMOTEKEY, theirOpen)
     }
-
-    override def onDisconnect(worker: CommsTower.Worker): Unit =
-      onException(freshChannel, freshChannel.data, PeerDisconnected)
 
     override def onBecome: PartialFunction[Transition, Unit] = {
       case (_, _, data: DATA_WAIT_FOR_FUNDING_CONFIRMED, WAIT_FOR_ACCEPT, WAIT_FUNDING_DONE) =>

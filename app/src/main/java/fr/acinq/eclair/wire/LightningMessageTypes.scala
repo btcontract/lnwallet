@@ -255,7 +255,7 @@ case class ReplyChannelRange(chainHash: ByteVector32, firstBlockNum: Long,
 
 case class GossipTimestampFilter(chainHash: ByteVector32, firstTimestamp: Long, timestampRange: Long) extends RoutingMessage with HasChainHash
 
-case class UnknownMessage(tag: Int, data: BitVector) extends LightningMessage
+case class UnknownMessage(tag: Int, data: ByteVector) extends LightningMessage
 
 // HOSTED CHANNELS
 

@@ -6,16 +6,16 @@ import fr.acinq.eclair.wire._
 import immortan.crypto.Tools._
 import fr.acinq.eclair.Features._
 import com.lightning.walletapp.R.string._
+import fr.acinq.bitcoin.{ByteVector32, Satoshi}
 import immortan.utils.{InputParser, Rx, ThrottledWork}
 import android.widget.{LinearLayout, ProgressBar, TextView}
-import immortan.fsm.{NCFundeeOpenHandler, NCFunderOpenHandler}
+import immortan.fsm.{HCOpenHandler, NCFundeeOpenHandler, NCFunderOpenHandler}
 import fr.acinq.eclair.blockchain.MakeFundingTxResponse
 import com.lightning.walletapp.BaseActivity.StringOps
 import concurrent.ExecutionContext.Implicits.global
 import fr.acinq.eclair.blockchain.fee.FeeratePerKw
 import androidx.appcompat.app.AlertDialog
 import com.ornach.nobobutton.NoboButton
-import fr.acinq.bitcoin.Satoshi
 import rx.lang.scala.Observable
 import android.os.Bundle
 import android.view.View
@@ -188,7 +188,16 @@ class RemotePeerActivity extends BaseActivity with ExternalDataChecker { me =>
     share(remoteNodeInfo.nodeSpecificPubKey.toString)
 
   def requestHostedChannel(view: View): Unit = {
+    // Switch view first since HC may throw immediately
+    switchView(showProgress = true)
+    stopAcceptingIncomingOffers
 
+    // We only need local params to extract defaultFinalScriptPubKey
+    val localParams = LNParams.makeChannelParams(remoteNodeInfo, LNParams.chainWallet, isFunder = false, LNParams.minFundingSatoshis)
+    new HCOpenHandler(remoteNodeInfo, peerSpecificSecret = ByteVector32.Zeroes, localParams.defaultFinalScriptPubKey, LNParams.cm) {
+      def onEstablished(channel: ChannelHosted): Unit = disconnectListenersAndFinish
+      def onFailure(reason: Throwable): Unit = revertAndInform(reason)
+    }
   }
 
   def switchView(showProgress: Boolean): Unit = UITask {
