@@ -286,16 +286,16 @@ object Helpers {
      */
     def isClosingTypeAlreadyKnown(closing: DATA_CLOSING): Option[ClosingType] = {
       closing match {
-        case _ if closing.localCommitPublished.exists(_.isConfirmed) =>
+        case _ if closing.localCommitPublished.exists(_.isCommitConfirmed) =>
           Some(LocalClose(closing.commitments.localCommit, closing.localCommitPublished.get))
-        case _ if closing.remoteCommitPublished.exists(_.isConfirmed) =>
+        case _ if closing.remoteCommitPublished.exists(_.isCommitConfirmed) =>
           Some(CurrentRemoteClose(closing.commitments.remoteCommit, closing.remoteCommitPublished.get))
-        case _ if closing.nextRemoteCommitPublished.exists(_.isConfirmed) =>
+        case _ if closing.nextRemoteCommitPublished.exists(_.isCommitConfirmed) =>
           Some(NextRemoteClose(closing.commitments.remoteNextCommitInfo.left.get.nextRemoteCommit, closing.nextRemoteCommitPublished.get))
-        case _ if closing.futureRemoteCommitPublished.exists(_.isConfirmed) =>
+        case _ if closing.futureRemoteCommitPublished.exists(_.isCommitConfirmed) =>
           Some(RecoveryClose(closing.futureRemoteCommitPublished.get))
-        case _ if closing.revokedCommitPublished.exists(rcp => rcp.irrevocablySpent.values.toSet.contains(rcp.commitTx.txid)) =>
-          Some(RevokedClose(closing.revokedCommitPublished.find(rcp => rcp.irrevocablySpent.values.toSet.contains(rcp.commitTx.txid)).get))
+        case _ if closing.revokedCommitPublished.exists(_.isCommitConfirmed) =>
+          Some(RevokedClose(closing.revokedCommitPublished.find(_.isCommitConfirmed).get))
         case _ => None // we don't know yet what the closing type will be
       }
     }

@@ -5,15 +5,19 @@ import fr.acinq.eclair.channel._
 import immortan.crypto.{CanBeRepliedTo, StateMachine}
 import fr.acinq.eclair.transactions.{RemoteFulfill, RemoteReject}
 import fr.acinq.eclair.blockchain.CurrentBlockCount
+
 import scala.concurrent.ExecutionContextExecutor
 import fr.acinq.eclair.wire.LightningMessage
 import immortan.Channel.channelContext
 import java.util.concurrent.Executors
+
 import fr.acinq.bitcoin.ByteVector32
 import immortan.crypto.Tools.none
+
 import scala.concurrent.Future
 import scala.util.Failure
 import akka.actor.Actor
+import fr.acinq.eclair.MilliSatoshi
 
 
 object Channel {
@@ -35,9 +39,15 @@ object Channel {
   }.toMap
 
   def chanAndCommitsOpt(chan: Channel): Option[ChanAndCommits] = chan.data match {
-    case commits: HasNormalCommitments => ChanAndCommits(chan, commits.commitments).toSome
-    case commits: HostedCommits => ChanAndCommits(chan, commits).toSome
+    case data: HasNormalCommitments => ChanAndCommits(chan, data.commitments).toSome
+    case data: HostedCommits => ChanAndCommits(chan, data).toSome
     case _ => None
+  }
+
+  def estimateBalance(chan: Channel): MilliSatoshi = chan.data match {
+    case data: HasNormalCommitments => data.commitments.localCommit.spec.toLocal
+    case data: HostedCommits => data.nextLocalSpec.toLocal
+    case _ => MilliSatoshi(0L)
   }
 
   def isOperational(chan: Channel): Boolean = chan.data match {

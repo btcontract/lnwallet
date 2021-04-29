@@ -177,26 +177,37 @@ sealed trait HasNormalCommitments extends PersistentChannelData {
 
 case class ClosingTxProposed(unsignedTx: Transaction, localClosingSigned: ClosingSigned)
 
-case class LocalCommitPublished(commitTx: Transaction, claimMainDelayedOutputTx: Option[Transaction], htlcSuccessTxs: List[Transaction],
-                                htlcTimeoutTxs: List[Transaction], claimHtlcDelayedTxs: List[Transaction], irrevocablySpent: Map[OutPoint, ByteVector32] = Map.empty) {
+sealed trait ForceCloseCommitPublished {
+  lazy val irrevocablySpentTxIds: Set[ByteVector32] = irrevocablySpent.values.toSet
+  lazy val isCommitConfirmed: Boolean = irrevocablySpentTxIds contains commitTx.txid
 
-  lazy val isConfirmed: Boolean = (commitTx :: secondTierTxs).exists(tx => irrevocablySpent.values.toSet contains tx.txid)
+  val irrevocablySpent: Map[OutPoint, ByteVector32]
+  val delayedRefundsLeft: Seq[Transaction]
+  val commitTx: Transaction
+}
 
-  lazy val secondTierTxs: List[Transaction] = claimMainDelayedOutputTx.toList ::: htlcSuccessTxs ::: htlcTimeoutTxs ::: claimHtlcDelayedTxs
+case class LocalCommitPublished(commitTx: Transaction, claimMainDelayedOutputTx: Option[Transaction], htlcSuccessTxs: List[Transaction], htlcTimeoutTxs: List[Transaction],
+                                claimHtlcDelayedTxs: List[Transaction], irrevocablySpent: Map[OutPoint, ByteVector32] = Map.empty) extends ForceCloseCommitPublished {
+
+  lazy val delayedRefundsLeft: Seq[Transaction] = (claimMainDelayedOutputTx.toList ++ claimHtlcDelayedTxs).filterNot(delayTx => irrevocablySpentTxIds contains delayTx.txid)
 }
 
 case class RemoteCommitPublished(commitTx: Transaction, claimMainOutputTx: Option[Transaction], claimHtlcSuccessTxs: List[Transaction],
-                                 claimHtlcTimeoutTxs: List[Transaction], irrevocablySpent: Map[OutPoint, ByteVector32] = Map.empty) {
+                                 claimHtlcTimeoutTxs: List[Transaction], irrevocablySpent: Map[OutPoint, ByteVector32] = Map.empty) extends ForceCloseCommitPublished {
 
-  lazy val isConfirmed: Boolean = (commitTx :: secondTierTxs).exists(tx => irrevocablySpent.values.toSet contains tx.txid)
+  lazy val delayedRefundsLeft: Seq[Transaction] = claimHtlcTimeoutTxs.filterNot(delayTx => irrevocablySpentTxIds contains delayTx.txid)
 
-  lazy val secondTierTxs: List[Transaction] = claimMainOutputTx.toList ::: claimHtlcSuccessTxs ::: claimHtlcTimeoutTxs
+  lazy val paymentLeftoverRefunds: Seq[Transaction] = claimHtlcSuccessTxs ++ claimHtlcTimeoutTxs
+
+  lazy val balanceLeftoverRefunds: Seq[Transaction] = commitTx +: claimMainOutputTx.toList
 }
 
 case class RevokedCommitPublished(commitTx: Transaction, claimMainOutputTx: Option[Transaction], mainPenaltyTx: Option[Transaction], htlcPenaltyTxs: List[Transaction],
-                                  claimHtlcDelayedPenaltyTxs: List[Transaction], irrevocablySpent: Map[OutPoint, ByteVector32] = Map.empty) {
+                                  claimHtlcDelayedPenaltyTxs: List[Transaction], irrevocablySpent: Map[OutPoint, ByteVector32] = Map.empty) extends ForceCloseCommitPublished {
 
-  lazy val penaltyTxs: List[Transaction] = claimMainOutputTx.toList ::: mainPenaltyTx.toList ::: htlcPenaltyTxs ::: claimHtlcDelayedPenaltyTxs
+  lazy val delayedRefundsLeft: Seq[Transaction] = claimHtlcDelayedPenaltyTxs.filterNot(delayTx => irrevocablySpentTxIds contains delayTx.txid)
+
+  lazy val penaltyTxs: Seq[Transaction] = claimMainOutputTx.toList ++ mainPenaltyTx.toList ++ htlcPenaltyTxs ++ claimHtlcDelayedPenaltyTxs
 }
 
 final case class DATA_WAIT_FOR_OPEN_CHANNEL(initFundee: INPUT_INIT_FUNDEE) extends ChannelData
@@ -217,22 +228,35 @@ final case class DATA_WAIT_FOR_FUNDING_CONFIRMED(commitments: NormalCommits, fun
 
 final case class DATA_WAIT_FOR_FUNDING_LOCKED(commitments: NormalCommits, shortChannelId: ShortChannelId, lastSent: FundingLocked) extends ChannelData with HasNormalCommitments
 
-final case class DATA_NORMAL(commitments: NormalCommits, shortChannelId: ShortChannelId, localShutdown: Option[Shutdown] = None, remoteShutdown: Option[Shutdown] = None) extends ChannelData with HasNormalCommitments
+final case class DATA_NORMAL(commitments: NormalCommits, shortChannelId: ShortChannelId, localShutdown: Option[Shutdown] = None,
+                             remoteShutdown: Option[Shutdown] = None) extends ChannelData with HasNormalCommitments
 
 final case class DATA_NEGOTIATING(commitments: NormalCommits, localShutdown: Shutdown, remoteShutdown: Shutdown, closingTxProposed: List[List[ClosingTxProposed]],
                                   bestUnpublishedClosingTxOpt: Option[Transaction] = None) extends ChannelData with HasNormalCommitments
 
-final case class DATA_CLOSING(commitments: NormalCommits, fundingTx: Option[Transaction], waitingSince: Long = System.currentTimeMillis, mutualCloseProposed: List[Transaction] = Nil, mutualClosePublished: List[Transaction] = Nil,
-                              localCommitPublished: Option[LocalCommitPublished] = None, remoteCommitPublished: Option[RemoteCommitPublished] = None, nextRemoteCommitPublished: Option[RemoteCommitPublished] = None,
-                              futureRemoteCommitPublished: Option[RemoteCommitPublished] = None, revokedCommitPublished: List[RevokedCommitPublished] = Nil) extends ChannelData with HasNormalCommitments {
+final case class DATA_CLOSING(commitments: NormalCommits, fundingTx: Option[Transaction], waitingSince: Long = System.currentTimeMillis, mutualCloseProposed: List[Transaction] = Nil,
+                              mutualClosePublished: List[Transaction] = Nil, localCommitPublished: Option[LocalCommitPublished] = None, remoteCommitPublished: Option[RemoteCommitPublished] = None,
+                              nextRemoteCommitPublished: Option[RemoteCommitPublished] = None, futureRemoteCommitPublished: Option[RemoteCommitPublished] = None,
+                              revokedCommitPublished: List[RevokedCommitPublished] = Nil) extends ChannelData with HasNormalCommitments {
 
-  val commitTxes: Seq[Transaction] = mutualClosePublished ::: localCommitPublished.map(_.commitTx).toList ::: remoteCommitPublished.map(_.commitTx).toList :::
-    nextRemoteCommitPublished.map(_.commitTx).toList ::: futureRemoteCommitPublished.map(_.commitTx).toList ::: revokedCommitPublished.map(_.commitTx)
+  lazy val balanceLeftoverRefunds: Seq[Transaction] = {
+    // It's OK to use a set of all possible payment leftovers because it will be compared against an incoming tx
+    mutualCloseProposed ++ mutualClosePublished ++ localCommitPublished.toList.flatMap(_.claimMainDelayedOutputTx) ++
+      remoteCommitPublished.toList.flatMap(_.balanceLeftoverRefunds) ++ nextRemoteCommitPublished.toList.flatMap(_.balanceLeftoverRefunds) ++
+      futureRemoteCommitPublished.toList.flatMap(_.balanceLeftoverRefunds)
+  }
 
-  lazy val secondTierTxs: Seq[Transaction] = localCommitPublished.toList.flatMap(_.secondTierTxs) ::: remoteCommitPublished.toList.flatMap(_.secondTierTxs) :::
-    nextRemoteCommitPublished.toList.flatMap(_.secondTierTxs) ::: futureRemoteCommitPublished.toList.flatMap(_.secondTierTxs)
+  lazy val paymentLeftoverRefunds: Seq[Transaction] = {
+    // It's OK to use a set of all possible payment leftovers because it will be compared against an incoming tx
+    localCommitPublished.toList.flatMap(_.claimHtlcDelayedTxs) ++ remoteCommitPublished.toList.flatMap(_.paymentLeftoverRefunds) ++
+      nextRemoteCommitPublished.toList.flatMap(_.paymentLeftoverRefunds) ++ futureRemoteCommitPublished.toList.flatMap(_.paymentLeftoverRefunds)
+  }
 
-  lazy val penaltyTxs: Seq[Transaction] = revokedCommitPublished.flatMap(_.penaltyTxs)
+  lazy val forceCloseCommitPublished: Option[ForceCloseCommitPublished] = {
+    // We must select a single candidate here because its delayed refunds will be displayed to user, so we can't show a total sum of all possible refunds
+    val candidates = localCommitPublished ++ remoteCommitPublished ++ nextRemoteCommitPublished ++ futureRemoteCommitPublished ++ revokedCommitPublished
+    candidates.find(_.isCommitConfirmed).orElse(candidates.headOption)
+  }
 }
 
 final case class DATA_WAIT_FOR_REMOTE_PUBLISH_FUTURE_COMMITMENT(commitments: NormalCommits, remoteChannelReestablish: ChannelReestablish) extends ChannelData with HasNormalCommitments

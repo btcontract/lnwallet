@@ -50,7 +50,6 @@ object ImplicitJsonFormats extends DefaultJsonProtocol {
       case JsString("OpReturnTxDescription") => raw.convertTo[OpReturnTxDescription]
       case JsString("ChanFundingTxDescription") => raw.convertTo[ChanFundingTxDescription]
       case JsString("ChanRefundingTxDescription") => raw.convertTo[ChanRefundingTxDescription]
-      case JsString("CommitClaimTxDescription") => raw.convertTo[CommitClaimTxDescription]
       case JsString("HtlcClaimTxDescription") => raw.convertTo[HtlcClaimTxDescription]
       case JsString("PenaltyTxDescription") => raw.convertTo[PenaltyTxDescription]
       case _ => throw new Exception
@@ -61,7 +60,6 @@ object ImplicitJsonFormats extends DefaultJsonProtocol {
       case paymentDescription: OpReturnTxDescription => paymentDescription.toJson
       case paymentDescription: ChanFundingTxDescription => paymentDescription.toJson
       case paymentDescription: ChanRefundingTxDescription => paymentDescription.toJson
-      case paymentDescription: CommitClaimTxDescription => paymentDescription.toJson
       case paymentDescription: HtlcClaimTxDescription => paymentDescription.toJson
       case paymentDescription: PenaltyTxDescription => paymentDescription.toJson
       case _ => throw new Exception
@@ -79,9 +77,6 @@ object ImplicitJsonFormats extends DefaultJsonProtocol {
 
   implicit val chanRefundingTxDescriptionFmt: JsonFormat[ChanRefundingTxDescription] = taggedJsonFmt(jsonFormat[PublicKey,
     ChanRefundingTxDescription](ChanRefundingTxDescription.apply, "nodeId"), tag = "ChanRefundingTxDescription")
-
-  implicit val commitClaimTxDescriptionFmt: JsonFormat[CommitClaimTxDescription] = taggedJsonFmt(jsonFormat[PublicKey,
-    CommitClaimTxDescription](CommitClaimTxDescription.apply, "nodeId"), tag = "CommitClaimTxDescription")
 
   implicit val htlcClaimTxDescriptionFmt: JsonFormat[HtlcClaimTxDescription] = taggedJsonFmt(jsonFormat[PublicKey,
     HtlcClaimTxDescription](HtlcClaimTxDescription.apply, "nodeId"), tag = "HtlcClaimTxDescription")

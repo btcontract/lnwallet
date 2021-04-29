@@ -230,26 +230,9 @@ class WalletApp extends Application { me =>
   lazy val maxDialog: Double = metrics.densityDpi * 2.2
   lazy val isTablet: Boolean = scrWidth > 3.5
 
-  import android.provider.Settings.System.{getFloat, FONT_SCALE}
-  lazy val bigFont: Boolean = getFloat(getContentResolver, FONT_SCALE, 1) > 1
-
   lazy val timeFormat: SimpleDateFormat = {
-    val format = DateFormat.is24HourFormat(me) match {
-      case false if scrWidth < 2.2 & bigFont => "MM/dd/yy' <small>'h:mma'</small>'"
-      case false if scrWidth < 2.2 => "MM/dd/yy' <small>'h:mma'</small>'"
-
-      case false if scrWidth < 2.5 & bigFont => "MM/dd/yy' <small>'h:mma'</small>'"
-      case false if scrWidth < 2.5 => "MM/dd/yy' <small>'h:mma'</small>'"
-      case false => "MMM dd, yyyy' <small>'h:mma'</small>'"
-
-      case true if scrWidth < 2.2 & bigFont => "d MMM yyyy' <small>'HH:mm'</small>'"
-      case true if scrWidth < 2.2 => "d MMM yyyy' <small>'HH:mm'</small>'"
-
-      case true if scrWidth < 2.4 & bigFont => "d MMM yyyy' <small>'HH:mm'</small>'"
-      case true if scrWidth < 2.5 => "d MMM yyyy' <small>'HH:mm'</small>'"
-      case true => "d MMM yyyy' <small>'HH:mm'</small>'"
-    }
-
+    val is24hour = DateFormat.is24HourFormat(me)
+    val format = if (is24hour) "d MMM yyyy" else "MMM dd, yyyy"
     new SimpleDateFormat(format)
   }
 

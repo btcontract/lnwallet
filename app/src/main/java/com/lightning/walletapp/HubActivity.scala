@@ -113,18 +113,39 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
     val inFlightRouted: TextView = view.findViewById(R.id.inFlightRouted).asInstanceOf[TextView]
     val addChannelTip: ImageView = view.findViewById(R.id.addChannelTip).asInstanceOf[ImageView]
 
+    def updateFiatRates: Unit = {
+      val change = LNParams.fiatRatesInfo.pctDifference(WalletApp.fiatCode).map(_ + "<br>").getOrElse(new String)
+      val unitPriceAndChange = s"<small>$change</small>${WalletApp currentMsatInFiatHuman 100000000000L.msat}"
+      fiatUnitPriceAndChange.setText(unitPriceAndChange.html)
+    }
+
+    def updateTotalBalance: Unit = {
+      val chainBalanceMsat = WalletApp.lastChainBalance.toMilliSatoshi
+      totalFiatBalance.setText(WalletApp.currentMsatInFiatHuman(chainBalanceMsat).html)
+      totalBalance.setText(LNParams.denomination.parsedWithSign(chainBalanceMsat, totalZero).html)
+      totalBitcoinBalance.setText(LNParams.denomination.parsedWithSign(chainBalanceMsat, btcCardZero).html)
+    }
+
+    def setCaptionVisibility: Unit = {
+      val somePaymentsPresent = BaseActivity.viewMap(allInfos.nonEmpty)
+      listCaption.setVisibility(somePaymentsPresent)
+    }
+
     def updateLnCardView: Unit = {
-      val states = LNParams.cm.all.values.map(_.state)
       val localInCount = LNParams.cm.inProcessors.count { case (fullTag, _) => fullTag.tag == PaymentTagTlv.FINAL_INCOMING }
       val localOutCount = LNParams.cm.opm.data.payments.count { case (fullTag, _) => fullTag.tag == PaymentTagTlv.LOCALLY_SENT }
       val trampolineCount = LNParams.cm.inProcessors.count { case (fullTag, _) => fullTag.tag == PaymentTagTlv.TRAMPLOINE_ROUTED }
-      val hideAll = localInCount + localOutCount + trampolineCount == 0
 
+      val states = LNParams.cm.all.values.map(_.state)
       addChannelTip setVisibility BaseActivity.viewMap(states.isEmpty)
       channelStateIndicators setVisibility BaseActivity.viewMap(states.nonEmpty)
       totalLightningBalance setVisibility BaseActivity.viewMap(states.nonEmpty)
       channelIndicator.createIndicators(states.toArray)
 
+      val lnBalance = LNParams.cm.all.values.filter(Channel.isOperationalOrWaiting).map(Channel.estimateBalance)
+      totalLightningBalance setText LNParams.denomination.parsedWithSign(lnBalance.sum, lnCardZero).html
+
+      val hideAll = localInCount + localOutCount + trampolineCount == 0
       inFlightIncoming.setAlpha { if (hideAll) 0F else if (localInCount > 0) 1F else 0.3F }
       inFlightOutgoing.setAlpha { if (hideAll) 0F else if (localOutCount > 0) 1F else 0.3F }
       inFlightRouted.setAlpha { if (hideAll) 0F else if (trampolineCount > 0) 1F else 0.3F }
@@ -168,15 +189,15 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
 
   private val chainListener: WalletEventsListener = new WalletEventsListener {
     override def onChainSynchronized(event: WalletReady): Unit = UITask {
+      walletCards.updateTotalBalance
       updatePendingChainTxStatus
-      updateTotalBalance
     }.run
   }
 
   private val fiatRatesListener: FiatRatesListener = new FiatRatesListener {
     def onFiatRates(rates: FiatRatesInfo): Unit = UITask {
-      updateTotalBalance
-      updateFiatRates
+      walletCards.updateTotalBalance
+      walletCards.updateFiatRates
     }.run
   }
 
@@ -191,14 +212,12 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
     case _: OpReturnTxDescription => holder.setPaymentTypeVisibility(visible = R.id.btcOutgoing)
     case _: ChanRefundingTxDescription => holder.setPaymentTypeVisibility(visible = R.id.lnBtc)
     case _: ChanFundingTxDescription => holder.setPaymentTypeVisibility(visible = R.id.btcLn)
-    case _: CommitClaimTxDescription => holder.setPaymentTypeVisibility(visible = R.id.lnBtc)
     case _: PlainTxDescription => holder.setPaymentTypeVisibility(visible = R.id.btcOutgoing)
     case _: HtlcClaimTxDescription => holder.setPaymentTypeVisibility(visible = R.id.lnBtc)
     case _: PenaltyTxDescription => holder.setPaymentTypeVisibility(visible = R.id.lnBtc)
   }
 
   def txDescription(info: TxInfo): String = info.description match {
-    case _: CommitClaimTxDescription => getString(tx_description_commit_claim)
     case _: ChanRefundingTxDescription => getString(tx_description_refunding)
     case _: HtlcClaimTxDescription => getString(tx_description_htlc_claim)
     case _: ChanFundingTxDescription => getString(tx_description_funding)
@@ -299,10 +318,10 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
       val txEvents = Rx.uniqueFirstAndLastWithinWindow(txEventStream, 1.second).doOnNext(_ => reloadTxInfos)
       val paymentEvents = Rx.uniqueFirstAndLastWithinWindow(paymentEventStream, 1.second).doOnNext(_ => reloadPaymentInfos)
       val relayEvents = Rx.uniqueFirstAndLastWithinWindow(relayEventStream, 1.second).doOnNext(_ => reloadRelayedPreimageInfos)
-      val allEvents = txEvents.merge(paymentEvents).merge(relayEvents).doOnNext(_ => updAllInfos).merge(stateEvents)
 
       statusSubscription = statusEvents.merge(stateEvents).subscribe(_ => UITask(walletCards.updateLnCardView).run).toSome
-      streamSubscription = allEvents.subscribe(_ => UITask(updatePaymentList).run).toSome
+      val paymentRelatedEvents = txEvents.merge(paymentEvents).merge(relayEvents).doOnNext(_ => updAllInfos).merge(stateEvents)
+      streamSubscription = paymentRelatedEvents.subscribe(_ => UITask(updatePaymentList).run).toSome
 
       WalletApp.txDataBag.db txWrap {
         reloadRelayedPreimageInfos
@@ -316,10 +335,10 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
       itemsList.setDividerHeight(0)
       itemsList.setDivider(null)
 
+      walletCards.setCaptionVisibility
+      walletCards.updateTotalBalance
       walletCards.updateLnCardView
-      setCaptionVisibility
-      updateTotalBalance
-      updateFiatRates
+      walletCards.updateFiatRates
     } else {
       WalletApp.freePossiblyUsedResouces
       me exitTo ClassNames.mainActivityClass
@@ -355,26 +374,8 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
 
   // VIEW UPDATERS
 
-  def updateFiatRates: Unit = {
-    val change = LNParams.fiatRatesInfo.pctDifference(WalletApp.fiatCode).map(_ + "<br>").getOrElse(new String)
-    val unitPriceAndChange = s"<small>$change</small>" + WalletApp.currentMsatInFiatHuman(100000000000L.msat)
-    walletCards.fiatUnitPriceAndChange.setText(unitPriceAndChange.html)
-  }
-
-  def updateTotalBalance: Unit = {
-    val chainBalanceMsat = WalletApp.lastChainBalance.toMilliSatoshi
-    walletCards.totalFiatBalance.setText(WalletApp.currentMsatInFiatHuman(chainBalanceMsat).html)
-    walletCards.totalBalance.setText(LNParams.denomination.parsedWithSign(chainBalanceMsat, totalZero).html)
-    walletCards.totalBitcoinBalance.setText(LNParams.denomination.parsedWithSign(chainBalanceMsat, btcCardZero).html)
-  }
-
   def updatePaymentList: Unit = {
     paymentsAdapter.notifyDataSetChanged
-    setCaptionVisibility
-  }
-
-  def setCaptionVisibility: Unit = {
-    val captionVisibility = BaseActivity.viewMap(allInfos.nonEmpty)
-    walletCards.listCaption setVisibility captionVisibility
+    walletCards.setCaptionVisibility
   }
 }
