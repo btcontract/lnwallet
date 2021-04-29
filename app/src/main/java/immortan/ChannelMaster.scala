@@ -9,6 +9,7 @@ import immortan.PaymentStatus._
 import immortan.ChannelMaster._
 import fr.acinq.eclair.channel._
 import scala.concurrent.duration._
+import fr.acinq.bitcoin.{ByteVector32, Satoshi}
 import fr.acinq.bitcoin.Crypto.{PrivateKey, PublicKey}
 import immortan.ChannelListener.{Malfunction, Transition}
 import fr.acinq.eclair.transactions.{RemoteFulfill, RemoteReject}
@@ -16,7 +17,6 @@ import immortan.crypto.{CanBeRepliedTo, CanBeShutDown, StateMachine}
 import java.util.concurrent.atomic.AtomicLong
 import fr.acinq.eclair.payment.IncomingPacket
 import com.google.common.cache.LoadingCache
-import fr.acinq.bitcoin.ByteVector32
 import rx.lang.scala.Subject
 import immortan.utils.Rx
 import scala.util.Try
@@ -172,6 +172,9 @@ class ChannelMaster(val payBag: PaymentBag, val chanBag: ChannelBag, val dataBag
 
   def allIncomingResolutions: Iterable[IncomingResolution] = all.values.flatMap(Channel.chanAndCommitsOpt).flatMap(_.commits.crossSignedIncoming).map(initResolveMemo.get)
   def allInChannelOutgoing: Map[FullPaymentTag, OutgoingAdds] = all.values.flatMap(Channel.chanAndCommitsOpt).flatMap(_.commits.allOutgoing).groupBy(_.fullTag)
+
+  def closingDatas: Iterable[ForceCloseCommitPublished] = all.values.map(_.data).collect { case c: DATA_CLOSING => c.forceCloseCommitPublished }.flatten
+  def pendingRefundsAmount(publishes: Iterable[ForceCloseCommitPublished] = Nil): Satoshi = publishes.flatMap(_.delayedRefundsLeft).map(_.txOut.head.amount).sum
 
   def fromNode(nodeId: PublicKey): Iterable[ChanAndCommits] = all.values.flatMap(Channel.chanAndCommitsOpt).filter(_.commits.remoteInfo.nodeId == nodeId)
   def hostedFromNode(nodeId: PublicKey): Option[ChannelHosted] = fromNode(nodeId).collectFirst { case ChanAndCommits(chan: ChannelHosted, _) => chan }

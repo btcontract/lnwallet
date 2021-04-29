@@ -7,6 +7,7 @@
     <string name="bitcoin_wallet">Bitcoin</string>
     <string name="lightning_wallet">Lightning</string>
     <string name="total_balance">Total balance</string>
+    <string name="pending_refunds">Pending refunds</string>
     <string name="recent_activity">Recent activity</string>
     <string name="copied_to_clipboard">Copied to clipboard</string>
     <string name="add_address">More addresses</string>

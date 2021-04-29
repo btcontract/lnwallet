@@ -115,6 +115,9 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
     val inFlightRouted: TextView = view.findViewById(R.id.inFlightRouted).asInstanceOf[TextView]
     val addChannelTip: ImageView = view.findViewById(R.id.addChannelTip).asInstanceOf[ImageView]
 
+    val pendingRefunds: View = view.findViewById(R.id.pendingRefunds).asInstanceOf[View]
+    val pendingRefundsSum: TextView = view.findViewById(R.id.pendingRefundsSum).asInstanceOf[TextView]
+
     def updateFiatRates: Unit = {
       val change = LNParams.fiatRatesInfo.pctDifference(WalletApp.fiatCode).map(_ + "<br>").getOrElse(new String)
       val unitPriceAndChange = s"<small>$change</small>${WalletApp currentMsatInFiatHuman 100000000000L.msat}"
@@ -157,6 +160,11 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
       inFlightIncoming setText localInCount.toString
       inFlightOutgoing setText localOutCount.toString
       inFlightRouted setText trampolineCount.toString
+
+      val currentClosings = LNParams.cm.closingDatas
+      val currentRefunds = LNParams.cm.pendingRefundsAmount(currentClosings).toMilliSatoshi
+      pendingRefundsSum setText LNParams.denomination.parsedWithSign(currentRefunds, cardZero).html
+      pendingRefunds setVisibility BaseActivity.viewMap(currentClosings.nonEmpty)
     }
   }
 
@@ -298,11 +306,6 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
     if (WalletApp.isAlive && LNParams.isOperational) {
       setContentView(com.lightning.walletapp.R.layout.activity_hub)
 
-      bottomActionBar post UITask {
-        bottomBlurringArea.setHeightTo(bottomActionBar)
-        itemsList.setPadding(0, 0, 0, bottomActionBar.getHeight)
-      }
-
       getContentResolver.registerContentObserver(Vibrator.uri, true, vibratorObserver)
       getContentResolver.registerContentObserver(WalletApp.app.sqlPath(PaymentTable.table), true, paymentObserver)
       getContentResolver.registerContentObserver(WalletApp.app.sqlPath(RelayTable.table), true, relayObserver)
@@ -331,16 +334,21 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
         updAllInfos
       }
 
-      itemsList.addHeaderView(walletCards.view)
-      itemsList.setAdapter(paymentsAdapter)
-      itemsList.setDividerHeight(0)
-      itemsList.setDivider(null)
+      bottomActionBar post UITask {
+        bottomBlurringArea.setHeightTo(bottomActionBar)
+        itemsList.setPadding(0, 0, 0, bottomActionBar.getHeight)
+      }
 
       walletCards.syncIndicator setVisibility {
         val twoWeeksAgo = System.currentTimeMillis - 3600 * 24 * 14 * 1000L
         val display = WalletApp.lastWalletReady.timestamp < twoWeeksAgo
         BaseActivity.viewMap(display)
       }
+
+      itemsList.addHeaderView(walletCards.view)
+      itemsList.setAdapter(paymentsAdapter)
+      itemsList.setDividerHeight(0)
+      itemsList.setDivider(null)
 
       walletCards.setCaptionVisibility
       walletCards.updateTotalBalance

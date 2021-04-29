@@ -5,19 +5,16 @@ import fr.acinq.eclair.channel._
 import immortan.crypto.{CanBeRepliedTo, StateMachine}
 import fr.acinq.eclair.transactions.{RemoteFulfill, RemoteReject}
 import fr.acinq.eclair.blockchain.CurrentBlockCount
-
 import scala.concurrent.ExecutionContextExecutor
 import fr.acinq.eclair.wire.LightningMessage
 import immortan.Channel.channelContext
 import java.util.concurrent.Executors
-
 import fr.acinq.bitcoin.ByteVector32
+import fr.acinq.eclair.MilliSatoshi
 import immortan.crypto.Tools.none
-
 import scala.concurrent.Future
 import scala.util.Failure
 import akka.actor.Actor
-import fr.acinq.eclair.MilliSatoshi
 
 
 object Channel {
@@ -95,10 +92,18 @@ trait Channel extends StateMachine[ChannelData] with CanBeRepliedTo { me =>
   var listeners = Set.empty[ChannelListener]
 
   val events: ChannelListener = new ChannelListener {
-    override def onException: PartialFunction[ChannelListener.Malfunction, Unit] = { case failure => for (lst <- listeners if lst.onException isDefinedAt failure) lst onException failure }
-    override def onBecome: PartialFunction[ChannelListener.Transition, Unit] = { case transition => for (lst <- listeners if lst.onBecome isDefinedAt transition) lst onBecome transition }
+    override def onException: PartialFunction[ChannelListener.Malfunction, Unit] = {
+      case failure => for (lst <- listeners if lst.onException isDefinedAt failure) lst onException failure
+    }
+
+    override def onBecome: PartialFunction[ChannelListener.Transition, Unit] = {
+      case transition => for (lst <- listeners if lst.onBecome isDefinedAt transition) lst onBecome transition
+    }
+
     override def stateUpdated(rejects: Seq[RemoteReject] = Nil): Unit = for (lst <- listeners) lst.stateUpdated(rejects)
+
     override def fulfillReceived(fulfill: RemoteFulfill): Unit = for (lst <- listeners) lst.fulfillReceived(fulfill)
+
     override def addReceived(add: UpdateAddHtlcExt): Unit = for (lst <- listeners) lst.addReceived(add)
   }
 
