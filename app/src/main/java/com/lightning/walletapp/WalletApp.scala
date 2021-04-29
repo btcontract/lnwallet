@@ -6,8 +6,8 @@ import immortan.sqlite._
 import fr.acinq.eclair._
 import com.lightning.walletapp.sqlite._
 import com.lightning.walletapp.R.string._
+import fr.acinq.bitcoin.{Block, SatoshiLong}
 import immortan.crypto.Tools.{Fiat2Btc, none, runAnd}
-import fr.acinq.bitcoin.{Block, Satoshi, SatoshiLong}
 import android.app.{Application, NotificationChannel, NotificationManager}
 import fr.acinq.eclair.blockchain.electrum.{CheckPoint, ElectrumClientPool}
 import android.content.{ClipData, ClipboardManager, Context, Intent, SharedPreferences}
@@ -32,7 +32,7 @@ import scala.util.Try
 object WalletApp { me =>
   var txDataBag: SQLiteTxExtended = _
   var extDataBag: SQLiteDataExtended = _
-  var lastChainBalance: Satoshi = _
+  var lastWalletReady: WalletReady = _
   var usedAddons: UsedAddons = _
   var app: WalletApp = _
 
@@ -57,7 +57,7 @@ object WalletApp { me =>
   def capLNFeeToChain: Boolean = app.prefs.getBoolean(CAP_LN_FEE_TO_CHAIN, false)
 
   // Due to Android specifics any of these may be nullified at runtime, must check for liveness on every entry
-  def isAlive: Boolean = null != extDataBag && null != txDataBag && null != lastChainBalance && null != usedAddons && null != app
+  def isAlive: Boolean = null != extDataBag && null != txDataBag && null != lastWalletReady && null != usedAddons && null != app
 
   def freePossiblyUsedResouces: Unit = {
     // Drop whatever network connections we still have
@@ -72,7 +72,7 @@ object WalletApp { me =>
 
     txDataBag = null
     extDataBag = null
-    lastChainBalance = null
+    lastWalletReady = null
     usedAddons = null
   }
 
@@ -83,8 +83,8 @@ object WalletApp { me =>
     miscInterface txWrap {
       extDataBag = new SQLiteDataExtended(miscInterface)
       txDataBag = new SQLiteTxExtended(app, miscInterface)
-      lastChainBalance = extDataBag.tryGetLastBalance getOrElse 0L.sat
-      usedAddons = extDataBag.tryGetAddons getOrElse UsedAddons(Nil)
+      lastWalletReady = extDataBag.tryGetLastWalletReady getOrElse WalletReady(0L.sat, 0L.sat, 0L, 0L)
+      usedAddons = extDataBag.tryGetAddons getOrElse UsedAddons(addons = List.empty)
       if (app.isTablet) Table.DEFAULT_LIMIT.set(10)
       else Table.DEFAULT_LIMIT.set(20)
     }
@@ -157,26 +157,24 @@ object WalletApp { me =>
     LNParams.chainWallet.eventsCatcher ! new WalletEventsListener {
       // CurrentBlockCount is handled separately is Channel.Receiver
       override def onChainSynchronized(event: WalletReady): Unit = {
+        extDataBag.putLastWalletReady(event)
+        lastWalletReady = event
+
         // Sync is complete now, we can start channel connections
         // Invalidate last disconnect stamp since we're up again
         LNParams.lastDisconnect.set(Long.MaxValue)
         LNParams.blockCount.set(event.height)
         LNParams.cm.initConnect
-
-        if (event.totalBalance != lastChainBalance) {
-          extDataBag.putLastBalance(event.totalBalance)
-          lastChainBalance = event.totalBalance
-        }
       }
 
       override def onTransactionReceived(event: TransactionReceived): Unit =
         if (event.received >= event.sent) {
           val txDescription = TxDescription.defineDescription(LNParams.cm.all.values, event.walletAddreses, event.tx)
-          txDataBag.putTx(event, isIncoming = 1L, txDescription, lastChainBalance.toMilliSatoshi, LNParams.fiatRatesInfo.rates)
+          txDataBag.putTx(event, isIncoming = 1L, txDescription, lastWalletReady.totalBalance.toMilliSatoshi, LNParams.fiatRatesInfo.rates)
         } else {
           val txDescription = TxDescription.defineDescription(LNParams.cm.all.values, Nil, event.tx)
           // Outgoing tx should already be present in db so this will fail silently unless sent from other wallet
-          txDataBag.putTx(event, 0L, txDescription, lastChainBalance.toMilliSatoshi, LNParams.fiatRatesInfo.rates)
+          txDataBag.putTx(event, 0L, txDescription, lastWalletReady.totalBalance.toMilliSatoshi, LNParams.fiatRatesInfo.rates)
         }
 
       override def onChainDisconnected: Unit = {

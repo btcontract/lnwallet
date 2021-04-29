@@ -4,14 +4,14 @@ import spray.json._
 import immortan.sqlite.SQLiteData._
 import immortan.utils.ImplicitJsonFormats._
 import fr.acinq.eclair.wire.LightningMessageCodecs.{swapInStateCodec, trampolineOnCodec}
+import fr.acinq.eclair.blockchain.electrum.ElectrumWallet.{PersistentData, WalletReady}
 import fr.acinq.eclair.wire.{HostedChannelBranding, SwapInState, TrampolineOn}
-import fr.acinq.bitcoin.{BlockHeader, ByteVector32, Satoshi}
-import immortan.{DataBag, WalletSecret, SwapInStateExt}
+import immortan.{DataBag, SwapInStateExt, WalletSecret}
 import immortan.utils.{FeeRatesInfo, FiatRatesInfo}
+import fr.acinq.bitcoin.{BlockHeader, ByteVector32}
 import java.lang.{Integer => JInt}
 
 import fr.acinq.eclair.blockchain.electrum.db.WalletDb
-import fr.acinq.eclair.blockchain.electrum.ElectrumWallet.PersistentData
 import fr.acinq.eclair.blockchain.electrum.db.sqlite.SqliteWalletDb.persistentDataCodec
 import fr.acinq.eclair.wire.LightningMessageCodecs.hostedChannelBrandingCodec
 import immortan.wire.ExtCodecs.walletSecretCodec
@@ -25,7 +25,7 @@ object SQLiteData {
   final val LABEL_FORMAT = "label-format"
   final val LABEL_ELECTRUM_DATA = "label-electrum-data"
   final val LABLEL_TRAMPOLINE_ON = "label-trampoline-on"
-  final val LABEL_LAST_BALANCE = "label-last-balance"
+  final val LABEL_LAST_WALLET_READY = "label-last-wallet-ready"
   final val LABEL_FIAT_RATES = "label-fiat-rates"
   final val LABEL_FEE_RATES = "label-fee-rates"
 
@@ -59,9 +59,9 @@ class SQLiteData(val db: DBInterface) extends WalletDb with DataBag {
 
   def tryGetTrampolineOn: Try[TrampolineOn] = tryGet(LABLEL_TRAMPOLINE_ON).map(raw => trampolineOnCodec.decode(raw.toBitVector).require.value)
 
-  def putLastBalance(data: Satoshi): Unit = put(LABEL_LAST_BALANCE, data.toJson.compactPrint getBytes "UTF-8")
+  def putLastWalletReady(data: WalletReady): Unit = put(LABEL_LAST_WALLET_READY, data.toJson.compactPrint getBytes "UTF-8")
 
-  def tryGetLastBalance: Try[Satoshi] = tryGet(LABEL_LAST_BALANCE).map(SQLiteData.byteVecToString) map to[Satoshi]
+  def tryGetLastWalletReady: Try[WalletReady] = tryGet(LABEL_LAST_WALLET_READY).map(SQLiteData.byteVecToString) map to[WalletReady]
 
   def putFiatRatesInfo(data: FiatRatesInfo): Unit = put(LABEL_FIAT_RATES, data.toJson.compactPrint getBytes "UTF-8")
 

@@ -96,14 +96,16 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
 
   class WalletCardsViewHolder {
     val view: View = getLayoutInflater.inflate(R.layout.frag_wallet_cards, null)
-
     val totalBalance: TextView = view.findViewById(R.id.totalBalance).asInstanceOf[TextView]
-    val offlineIndicator: TextView = view.findViewById(R.id.offlineIndicator).asInstanceOf[TextView]
     val totalFiatBalance: TextView = view.findViewById(R.id.totalFiatBalance).asInstanceOf[TextView]
     val fiatUnitPriceAndChange: TextView = view.findViewById(R.id.fiatUnitPriceAndChange).asInstanceOf[TextView]
 
     val listCaption: RelativeLayout = view.findViewById(R.id.listCaption).asInstanceOf[RelativeLayout]
     val totalBitcoinBalance: TextView = view.findViewById(R.id.totalBitcoinBalance).asInstanceOf[TextView]
+    val receiveBitcoinTip: ImageView = view.findViewById(R.id.receiveBitcoinTip).asInstanceOf[ImageView]
+    val offlineIndicator: TextView = view.findViewById(R.id.offlineIndicator).asInstanceOf[TextView]
+    val syncIndicator: TextView = view.findViewById(R.id.syncIndicator).asInstanceOf[TextView]
+
     val totalLightningBalance: TextView = view.findViewById(R.id.totalLightningBalance).asInstanceOf[TextView]
     val channelStateIndicators: LinearLayout = view.findViewById(R.id.channelStateIndicators).asInstanceOf[LinearLayout]
     val channelIndicator: ChannelIndicatorLine = view.findViewById(R.id.channelIndicator).asInstanceOf[ChannelIndicatorLine]
@@ -120,10 +122,12 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
     }
 
     def updateTotalBalance: Unit = {
-      val chainBalanceMsat = WalletApp.lastChainBalance.toMilliSatoshi
-      totalFiatBalance.setText(WalletApp.currentMsatInFiatHuman(chainBalanceMsat).html)
-      totalBalance.setText(LNParams.denomination.parsedWithSign(chainBalanceMsat, totalZero).html)
-      totalBitcoinBalance.setText(LNParams.denomination.parsedWithSign(chainBalanceMsat, btcCardZero).html)
+      val chainBalanceMsat = WalletApp.lastWalletReady.totalBalance.toMilliSatoshi
+      totalFiatBalance setText WalletApp.currentMsatInFiatHuman(chainBalanceMsat).html
+      totalBalance setText LNParams.denomination.parsedWithSign(chainBalanceMsat, totalZero).html
+      totalBitcoinBalance setText LNParams.denomination.parsedWithSign(chainBalanceMsat, btcCardZero).html
+      totalBitcoinBalance setVisibility BaseActivity.viewMap(chainBalanceMsat != 0L.msat)
+      receiveBitcoinTip setVisibility BaseActivity.viewMap(chainBalanceMsat == 0L.msat)
     }
 
     def setCaptionVisibility: Unit = {
@@ -140,19 +144,19 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
       addChannelTip setVisibility BaseActivity.viewMap(states.isEmpty)
       channelStateIndicators setVisibility BaseActivity.viewMap(states.nonEmpty)
       totalLightningBalance setVisibility BaseActivity.viewMap(states.nonEmpty)
-      channelIndicator.createIndicators(states.toArray)
+      channelIndicator createIndicators states.toArray
 
       val lnBalance = LNParams.cm.all.values.filter(Channel.isOperationalOrWaiting).map(Channel.estimateBalance)
       totalLightningBalance setText LNParams.denomination.parsedWithSign(lnBalance.sum, lnCardZero).html
 
       val hideAll = localInCount + localOutCount + trampolineCount == 0
-      inFlightIncoming.setAlpha { if (hideAll) 0F else if (localInCount > 0) 1F else 0.3F }
-      inFlightOutgoing.setAlpha { if (hideAll) 0F else if (localOutCount > 0) 1F else 0.3F }
-      inFlightRouted.setAlpha { if (hideAll) 0F else if (trampolineCount > 0) 1F else 0.3F }
+      inFlightIncoming setAlpha { if (hideAll) 0F else if (localInCount > 0) 1F else 0.3F }
+      inFlightOutgoing setAlpha { if (hideAll) 0F else if (localOutCount > 0) 1F else 0.3F }
+      inFlightRouted setAlpha { if (hideAll) 0F else if (trampolineCount > 0) 1F else 0.3F }
 
-      inFlightIncoming.setText(localInCount.toString)
-      inFlightOutgoing.setText(localOutCount.toString)
-      inFlightRouted.setText(trampolineCount.toString)
+      inFlightIncoming setText localInCount.toString
+      inFlightOutgoing setText localOutCount.toString
+      inFlightRouted setText trampolineCount.toString
     }
   }
 
@@ -189,6 +193,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
 
   private val chainListener: WalletEventsListener = new WalletEventsListener {
     override def onChainSynchronized(event: WalletReady): Unit = UITask {
+      walletCards.syncIndicator setVisibility View.GONE
       walletCards.updateTotalBalance
       updatePendingChainTxStatus
     }.run
@@ -287,10 +292,6 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
     case (CHOICE_RECEIVE_TAG, 0) => me goTo ClassNames.chainQrActivityClass
     case (CHOICE_RECEIVE_TAG, 1) =>
     case _ =>
-//    val body = getLayoutInflater.inflate(R.layout.frag_input_fiat_converter, null)
-//    val rateManager = new RateManager(body, None, Map("usd" -> 57500D), "usd")
-//    val alertBuilder = titleBodyAsViewBuilder(getString(dialog_receive_ln_title), rateManager.content)
-//    mkCheckFormNeutral(_.dismiss, none, _.dismiss, alertBuilder, dialog_ok, dialog_cancel, dialog_split)
   }
 
   def INIT(state: Bundle): Unit =
@@ -335,6 +336,12 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
       itemsList.setDividerHeight(0)
       itemsList.setDivider(null)
 
+      walletCards.syncIndicator setVisibility {
+        val twoWeeksAgo = System.currentTimeMillis - 3600 * 24 * 14 * 1000L
+        val display = WalletApp.lastWalletReady.timestamp < twoWeeksAgo
+        BaseActivity.viewMap(display)
+      }
+
       walletCards.setCaptionVisibility
       walletCards.updateTotalBalance
       walletCards.updateLnCardView
@@ -371,6 +378,9 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
     val sheet = new sheets.ChoiceBottomSheet(list, CHOICE_RECEIVE_TAG, me)
     sheet.show(getSupportFragmentManager, CHOICE_RECEIVE_TAG)
   }
+
+  def goToReceiveBitcoinPage(view: View): Unit =
+    me goTo ClassNames.chainQrActivityClass
 
   // VIEW UPDATERS
 

@@ -7,41 +7,26 @@
 
     <!-- Total balance, settings -->
 
-    <RelativeLayout
-        style="@style/FillingView">
+    <RelativeLayout style="@style/FillingView">
 
         <TextView
             android:text="@string/total_balance"
             android:layout_centerVertical="true"
             style="@style/FillingView"/>
 
-        <LinearLayout
-            style="@style/BoundedView"
+        <ImageButton
+            android:padding="6dp"
+            android:onClick="bringSettings"
             android:layout_alignParentEnd="true"
-            android:gravity="center">
+            android:src="@drawable/baseline_settings_24"
+            android:background="?android:selectableItemBackground"
+            style="@style/BoundedView"/>
 
-            <TextView
-                style="@style/ChipTextGrayMargin"
-                android:background="@drawable/border_yellow"
-                android:id="@+id/offlineIndicator"
-                android:text="@string/offline"
-                android:visibility="gone"/>
-
-            <ImageButton
-                android:padding="6dp"
-                android:onClick="bringSettings"
-                android:layout_marginStart="10dp"
-                android:src="@drawable/baseline_settings_24"
-                android:background="?android:selectableItemBackground"
-                style="@style/BoundedView"/>
-
-        </LinearLayout>
     </RelativeLayout>
 
     <!-- Wallet balance, fiat price -->
 
-    <RelativeLayout
-        style="@style/FillingView">
+    <RelativeLayout style="@style/FillingView">
 
         <TextView
             android:id="@+id/totalBalance"
@@ -67,6 +52,7 @@
 
     <androidx.cardview.widget.CardView
         card_view:cardCornerRadius="@dimen/corner_radius"
+        android:onClick="goToReceiveBitcoinPage"
         android:layout_marginTop="20dp"
         style="@style/Card">
 
@@ -76,14 +62,44 @@
             style="@style/FillingView">
 
             <TextView
+                android:layout_marginEnd="3dp"
                 android:textColor="@color/colorAccent"
                 android:text="@string/bitcoin_wallet"
+                android:id="@+id/unusedAnchorId"
                 style="@style/BoundedView"/>
+
+            <TextView
+                style="@style/ChipTextGrayMargin"
+                android:textColor="@color/colorAccent"
+                android:layout_toEndOf="@id/unusedAnchorId"
+                android:background="@drawable/border_yellow"
+                android:id="@+id/offlineIndicator"
+                android:text="@string/offline"
+                android:visibility="gone"
+                android:textSize="12sp"/>
+
+            <TextView
+                style="@style/ChipTextGrayMargin"
+                android:textColor="@color/colorAccent"
+                android:layout_toEndOf="@id/offlineIndicator"
+                android:background="@drawable/border_yellow"
+                android:id="@+id/syncIndicator"
+                android:text="@string/sync"
+                android:visibility="gone"
+                android:textSize="12sp"/>
 
             <TextView
                 android:id="@+id/totalBitcoinBalance"
                 android:layout_alignParentEnd="true"
                 style="@style/Emphasized"/>
+
+            <!-- No coins present -->
+
+            <ImageView
+                style="@style/BoundedView"
+                android:id="@+id/receiveBitcoinTip"
+                android:layout_alignParentEnd="true"
+                android:background="@drawable/baseline_add_24"/>
 
         </RelativeLayout>
     </androidx.cardview.widget.CardView>

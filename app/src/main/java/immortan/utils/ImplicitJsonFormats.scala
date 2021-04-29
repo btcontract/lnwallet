@@ -7,6 +7,7 @@ import fr.acinq.bitcoin.{ByteVector32, Satoshi}
 import immortan.sqlite.{PaymentSummary, RelaySummary, TxSummary}
 import immortan.utils.FiatRates.{BitpayItemList, CoinGeckoItemMap}
 import fr.acinq.eclair.blockchain.fee.{FeeratePerKB, FeeratesPerKB}
+import fr.acinq.eclair.blockchain.electrum.ElectrumWallet.WalletReady
 import fr.acinq.bitcoin.Crypto.PublicKey
 import immortan.crypto.Tools.Fiat2Btc
 import fr.acinq.eclair.MilliSatoshi
@@ -41,6 +42,9 @@ object ImplicitJsonFormats extends DefaultJsonProtocol {
   implicit val byteVector32Fmt: JsonFormat[ByteVector32] = sCodecJsonFmt(bytes32)
 
   implicit val satoshiFmt: JsonFormat[Satoshi] = sCodecJsonFmt(satoshi)
+
+  implicit val walletReadyFmt: RootJsonFormat[WalletReady] = jsonFormat[Satoshi, Satoshi, Long, Long,
+    WalletReady](WalletReady.apply, "confirmedBalance", "unconfirmedBalance", "height", "timestamp")
 
   // Tx description
 
