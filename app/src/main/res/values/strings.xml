@@ -43,7 +43,6 @@
 
     <string name="dialog_ok">OK</string>
     <string name="dialog_cancel">Cancel</string>
-    <string name="dialog_routing">Routing</string>
     <string name="dialog_receive">Receive</string>
     <string name="dialog_split">Split</string>
     <string name="dialog_share">Share</string>
@@ -66,6 +65,10 @@
     <string name="error_could_not_decrypt"><![CDATA[<strong>Backup decryption failed</strong>.<br><br>Make sure that both backup file and recovery phrase are correct.<br><br>Error details:<br><br>%1$s]]></string>
     <string name="error_wrong_phrase"><![CDATA[<strong>A phrase must be 12 or 24 words long</strong>.<br><br><strong>All words must be different</strong>.]]></string>
     <string name="error_nothing_useful">Nothing useful is found</string>
+
+    <string name="error_ln_payment_low_balance">Can not proceed because Lightning wallet does not have enough funds</string>
+    <string name="error_ln_payment_in_flight">Can not proceed because this payment is already in-flight</string>
+    <string name="error_ln_payment_send">Can not proceed because this payment has already been sent</string>
 
     <string name="error_nothing_in_clipboard"><![CDATA[
         <strong>Nothing useful is found in clipboard</strong>, please copy something first.
@@ -150,7 +153,7 @@
     </string>
 
     <string name="rpa_title">Remote peer connection</string>
-    <string name="rpa_disconnect">Remote peer disconnected</string>
+    <string name="rpa_disconnected">Remote peer disconnected</string>
     <string name="rpa_no_feature_support">Can not proceed with channels since some important features are not supported by remote peer.</string>
 
     <string name="rpa_request_hc">Request hosted channel</string>

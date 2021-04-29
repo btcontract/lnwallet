@@ -520,60 +520,64 @@ object LightningMessageCodecs {
 
   // EXTENDED MESSAGE UTILS
 
-  def decode(msg: UnknownMessage): LightningMessage = msg.tag match {
-    case HC_INVOKE_HOSTED_CHANNEL_TAG => invokeHostedChannelCodec.decode(msg.data.toBitVector).require.value
-    case HC_INIT_HOSTED_CHANNEL_TAG => initHostedChannelCodec.decode(msg.data.toBitVector).require.value
-    case HC_LAST_CROSS_SIGNED_STATE_TAG => lastCrossSignedStateCodec.decode(msg.data.toBitVector).require.value
-    case HC_STATE_UPDATE_TAG => stateUpdateCodec.decode(msg.data.toBitVector).require.value
-    case HC_STATE_OVERRIDE_TAG => stateOverrideCodec.decode(msg.data.toBitVector).require.value
-    case HC_HOSTED_CHANNEL_BRANDING_TAG => hostedChannelBrandingCodec.decode(msg.data.toBitVector).require.value
-    case HC_REFUND_PENDING_TAG => refundPendingCodec.decode(msg.data.toBitVector).require.value
-    case HC_RESIZE_CHANNEL_TAG => resizeChannelCodec.decode(msg.data.toBitVector).require.value
+  def decode(msg: UnknownMessage): LightningMessage = {
+    val codec = msg.tag match {
+      case HC_HOSTED_CHANNEL_BRANDING_TAG => hostedChannelBrandingCodec
+      case HC_LAST_CROSS_SIGNED_STATE_TAG => lastCrossSignedStateCodec
+      case HC_INVOKE_HOSTED_CHANNEL_TAG => invokeHostedChannelCodec
+      case HC_INIT_HOSTED_CHANNEL_TAG => initHostedChannelCodec
+      case HC_STATE_OVERRIDE_TAG => stateOverrideCodec
+      case HC_REFUND_PENDING_TAG => refundPendingCodec
+      case HC_RESIZE_CHANNEL_TAG => resizeChannelCodec
+      case HC_STATE_UPDATE_TAG => stateUpdateCodec
 
-    case HC_QUERY_PUBLIC_HOSTED_CHANNELS_TAG => queryPublicHostedChannelsCodec.decode(msg.data.toBitVector).require.value
-    case HC_REPLY_PUBLIC_HOSTED_CHANNELS_END_TAG => replyPublicHostedChannelsEndCodec.decode(msg.data.toBitVector).require.value
-    case HC_QUERY_PREIMAGES_TAG => queryPreimagesCodec.decode(msg.data.toBitVector).require.value
-    case HC_REPLY_PREIMAGES_TAG => replyPreimagesCodec.decode(msg.data.toBitVector).require.value
+      case HC_QUERY_PUBLIC_HOSTED_CHANNELS_TAG => queryPublicHostedChannelsCodec
+      case HC_REPLY_PUBLIC_HOSTED_CHANNELS_END_TAG => replyPublicHostedChannelsEndCodec
+      case HC_QUERY_PREIMAGES_TAG => queryPreimagesCodec
+      case HC_REPLY_PREIMAGES_TAG => replyPreimagesCodec
 
-    case PHC_ANNOUNCE_GOSSIP_TAG => LightningMessageCodecs.channelAnnouncementCodec.decode(msg.data.toBitVector).require.value
-    case PHC_ANNOUNCE_SYNC_TAG => LightningMessageCodecs.channelAnnouncementCodec.decode(msg.data.toBitVector).require.value
-    case PHC_UPDATE_GOSSIP_TAG => LightningMessageCodecs.channelUpdateCodec.decode(msg.data.toBitVector).require.value
-    case PHC_UPDATE_SYNC_TAG => LightningMessageCodecs.channelUpdateCodec.decode(msg.data.toBitVector).require.value
+      case PHC_ANNOUNCE_GOSSIP_TAG => channelAnnouncementCodec
+      case PHC_ANNOUNCE_SYNC_TAG => channelAnnouncementCodec
+      case PHC_UPDATE_GOSSIP_TAG => channelUpdateCodec
+      case PHC_UPDATE_SYNC_TAG => channelUpdateCodec
 
-    case HC_UPDATE_ADD_HTLC_TAG => LightningMessageCodecs.updateAddHtlcCodec.decode(msg.data.toBitVector).require.value
-    case HC_UPDATE_FULFILL_HTLC_TAG => LightningMessageCodecs.updateFulfillHtlcCodec.decode(msg.data.toBitVector).require.value
-    case HC_UPDATE_FAIL_HTLC_TAG => LightningMessageCodecs.updateFailHtlcCodec.decode(msg.data.toBitVector).require.value
-    case HC_UPDATE_FAIL_MALFORMED_HTLC_TAG => LightningMessageCodecs.updateFailMalformedHtlcCodec.decode(msg.data.toBitVector).require.value
-    case HC_ERROR_TAG => LightningMessageCodecs.errorCodec.decode(msg.data.toBitVector).require.value
+      case HC_UPDATE_FAIL_MALFORMED_HTLC_TAG => updateFailMalformedHtlcCodec
+      case HC_UPDATE_FULFILL_HTLC_TAG => updateFulfillHtlcCodec
+      case HC_UPDATE_FAIL_HTLC_TAG => updateFailHtlcCodec
+      case HC_UPDATE_ADD_HTLC_TAG => updateAddHtlcCodec
+      case HC_ERROR_TAG => errorCodec
 
-    case SWAP_IN_REQUEST_MESSAGE_TAG => provide(SwapInRequest).decode(msg.data.toBitVector).require.value
-    case SWAP_IN_RESPONSE_MESSAGE_TAG => swapInResponseCodec.decode(msg.data.toBitVector).require.value
-    case SWAP_IN_PAYMENT_REQUEST_MESSAGE_TAG => swapInPaymentRequestCodec.decode(msg.data.toBitVector).require.value
-    case SWAP_IN_PAYMENT_DENIED_MESSAGE_TAG => swapInPaymentDeniedCodec.decode(msg.data.toBitVector).require.value
-    case SWAP_IN_STATE_MESSAGE_TAG => swapInStateCodec.decode(msg.data.toBitVector).require.value
+      case SWAP_IN_REQUEST_MESSAGE_TAG => provide(SwapInRequest)
+      case SWAP_IN_PAYMENT_REQUEST_MESSAGE_TAG => swapInPaymentRequestCodec
+      case SWAP_IN_PAYMENT_DENIED_MESSAGE_TAG => swapInPaymentDeniedCodec
+      case SWAP_IN_RESPONSE_MESSAGE_TAG => swapInResponseCodec
+      case SWAP_IN_STATE_MESSAGE_TAG => swapInStateCodec
 
-    case SWAP_OUT_REQUEST_MESSAGE_TAG => provide(SwapOutRequest).decode(msg.data.toBitVector).require.value
-    case SWAP_OUT_FEERATES_MESSAGE_TAG => swapOutFeeratesCodec.decode(msg.data.toBitVector).require.value
-    case SWAP_OUT_TRANSACTION_REQUEST_MESSAGE_TAG => swapOutTransactionRequestCodec.decode(msg.data.toBitVector).require.value
-    case SWAP_OUT_TRANSACTION_RESPONSE_MESSAGE_TAG => swapOutTransactionResponseCodec.decode(msg.data.toBitVector).require.value
-    case SWAP_OUT_TRANSACTION_DENIED_MESSAGE_TAG => swapOutTransactionDeniedCodec.decode(msg.data.toBitVector).require.value
+      case SWAP_OUT_REQUEST_MESSAGE_TAG => provide(SwapOutRequest)
+      case SWAP_OUT_TRANSACTION_REQUEST_MESSAGE_TAG => swapOutTransactionRequestCodec
+      case SWAP_OUT_TRANSACTION_RESPONSE_MESSAGE_TAG => swapOutTransactionResponseCodec
+      case SWAP_OUT_TRANSACTION_DENIED_MESSAGE_TAG => swapOutTransactionDeniedCodec
+      case SWAP_OUT_FEERATES_MESSAGE_TAG => swapOutFeeratesCodec
 
-    case TRAMPOLINE_STATUS_UNDESIRED_TAG => provide(TrampolineUndesired).decode(msg.data.toBitVector).require.value
-    case TRAMPOLINE_STATUS_ON_TAG => trampolineOnCodec.decode(msg.data.toBitVector).require.value
-    case _ => throw new RuntimeException
+      case TRAMPOLINE_STATUS_UNDESIRED_TAG => provide(TrampolineUndesired)
+      case TRAMPOLINE_STATUS_ON_TAG => trampolineOnCodec
+      case _ => throw new RuntimeException
+    }
+
+    codec.decode(msg.data.toBitVector).require.value
   }
 
   // Extended messages need to be wrapped in UnknownMessage
 
   def prepare(msg: LightningMessage): LightningMessage = msg match {
+    case msg: HostedChannelBranding => UnknownMessage(HC_HOSTED_CHANNEL_BRANDING_TAG, hostedChannelBrandingCodec.encode(msg).require.toByteVector)
+    case msg: LastCrossSignedState => UnknownMessage(HC_LAST_CROSS_SIGNED_STATE_TAG, lastCrossSignedStateCodec.encode(msg).require.toByteVector)
     case msg: InvokeHostedChannel => UnknownMessage(HC_INVOKE_HOSTED_CHANNEL_TAG, invokeHostedChannelCodec.encode(msg).require.toByteVector)
     case msg: InitHostedChannel => UnknownMessage(HC_INIT_HOSTED_CHANNEL_TAG, initHostedChannelCodec.encode(msg).require.toByteVector)
-    case msg: LastCrossSignedState => UnknownMessage(HC_LAST_CROSS_SIGNED_STATE_TAG, lastCrossSignedStateCodec.encode(msg).require.toByteVector)
-    case msg: StateUpdate => UnknownMessage(HC_STATE_UPDATE_TAG, stateUpdateCodec.encode(msg).require.toByteVector)
     case msg: StateOverride => UnknownMessage(HC_STATE_OVERRIDE_TAG, stateOverrideCodec.encode(msg).require.toByteVector)
-    case msg: HostedChannelBranding => UnknownMessage(HC_HOSTED_CHANNEL_BRANDING_TAG, hostedChannelBrandingCodec.encode(msg).require.toByteVector)
     case msg: RefundPending => UnknownMessage(HC_REFUND_PENDING_TAG, refundPendingCodec.encode(msg).require.toByteVector)
     case msg: ResizeChannel => UnknownMessage(HC_RESIZE_CHANNEL_TAG, resizeChannelCodec.encode(msg).require.toByteVector)
+    case msg: StateUpdate => UnknownMessage(HC_STATE_UPDATE_TAG, stateUpdateCodec.encode(msg).require.toByteVector)
 
     case msg: QueryPublicHostedChannels => UnknownMessage(HC_QUERY_PUBLIC_HOSTED_CHANNELS_TAG, queryPublicHostedChannelsCodec.encode(msg).require.toByteVector)
     case msg: ReplyPublicHostedChannelsEnd => UnknownMessage(HC_REPLY_PUBLIC_HOSTED_CHANNELS_END_TAG, replyPublicHostedChannelsEndCodec.encode(msg).require.toByteVector)
@@ -581,16 +585,16 @@ object LightningMessageCodecs {
     case msg: ReplyPreimages => UnknownMessage(HC_REPLY_PREIMAGES_TAG, replyPreimagesCodec.encode(msg).require.toByteVector)
 
     case SwapInRequest => UnknownMessage(SWAP_IN_REQUEST_MESSAGE_TAG, provide(SwapInRequest).encode(SwapInRequest).require.toByteVector)
-    case msg: SwapInResponse => UnknownMessage(SWAP_IN_RESPONSE_MESSAGE_TAG, swapInResponseCodec.encode(msg).require.toByteVector)
     case msg: SwapInPaymentRequest => UnknownMessage(SWAP_IN_PAYMENT_REQUEST_MESSAGE_TAG, swapInPaymentRequestCodec.encode(msg).require.toByteVector)
     case msg: SwapInPaymentDenied => UnknownMessage(SWAP_IN_PAYMENT_DENIED_MESSAGE_TAG, swapInPaymentDeniedCodec.encode(msg).require.toByteVector)
+    case msg: SwapInResponse => UnknownMessage(SWAP_IN_RESPONSE_MESSAGE_TAG, swapInResponseCodec.encode(msg).require.toByteVector)
     case msg: SwapInState => UnknownMessage(SWAP_IN_STATE_MESSAGE_TAG, swapInStateCodec.encode(msg).require.toByteVector)
 
     case SwapOutRequest => UnknownMessage(SWAP_OUT_REQUEST_MESSAGE_TAG, provide(SwapOutRequest).encode(SwapOutRequest).require.toByteVector)
-    case msg: SwapOutFeerates => UnknownMessage(SWAP_OUT_FEERATES_MESSAGE_TAG, swapOutFeeratesCodec.encode(msg).require.toByteVector)
     case msg: SwapOutTransactionRequest => UnknownMessage(SWAP_OUT_TRANSACTION_REQUEST_MESSAGE_TAG, swapOutTransactionRequestCodec.encode(msg).require.toByteVector)
     case msg: SwapOutTransactionResponse => UnknownMessage(SWAP_OUT_TRANSACTION_RESPONSE_MESSAGE_TAG, swapOutTransactionResponseCodec.encode(msg).require.toByteVector)
     case msg: SwapOutTransactionDenied => UnknownMessage(SWAP_OUT_TRANSACTION_DENIED_MESSAGE_TAG, swapOutTransactionDeniedCodec.encode(msg).require.toByteVector)
+    case msg: SwapOutFeerates => UnknownMessage(SWAP_OUT_FEERATES_MESSAGE_TAG, swapOutFeeratesCodec.encode(msg).require.toByteVector)
 
     case TrampolineUndesired => UnknownMessage(TRAMPOLINE_STATUS_UNDESIRED_TAG, provide(TrampolineUndesired).encode(TrampolineUndesired).require.toByteVector)
     case msg: TrampolineOn => UnknownMessage(TRAMPOLINE_STATUS_ON_TAG, trampolineOnCodec.encode(msg).require.toByteVector)
@@ -600,12 +604,12 @@ object LightningMessageCodecs {
   // HC uses the following protocol-defined messages, but they still need to be wrapped in UnknownMessage
 
   def prepareNormal(msg: LightningMessage): LightningMessage = msg match {
+    case msg: Error => UnknownMessage(HC_ERROR_TAG, LightningMessageCodecs.errorCodec.encode(msg).require.toByteVector)
     case msg: ChannelUpdate => UnknownMessage(PHC_UPDATE_SYNC_TAG, LightningMessageCodecs.channelUpdateCodec.encode(msg).require.toByteVector)
     case msg: UpdateAddHtlc => UnknownMessage(HC_UPDATE_ADD_HTLC_TAG, LightningMessageCodecs.updateAddHtlcCodec.encode(msg).require.toByteVector)
-    case msg: UpdateFulfillHtlc => UnknownMessage(HC_UPDATE_FULFILL_HTLC_TAG, LightningMessageCodecs.updateFulfillHtlcCodec.encode(msg).require.toByteVector)
     case msg: UpdateFailHtlc => UnknownMessage(HC_UPDATE_FAIL_HTLC_TAG, LightningMessageCodecs.updateFailHtlcCodec.encode(msg).require.toByteVector)
+    case msg: UpdateFulfillHtlc => UnknownMessage(HC_UPDATE_FULFILL_HTLC_TAG, LightningMessageCodecs.updateFulfillHtlcCodec.encode(msg).require.toByteVector)
     case msg: UpdateFailMalformedHtlc => UnknownMessage(HC_UPDATE_FAIL_MALFORMED_HTLC_TAG, LightningMessageCodecs.updateFailMalformedHtlcCodec.encode(msg).require.toByteVector)
-    case msg: Error => UnknownMessage(HC_ERROR_TAG, LightningMessageCodecs.errorCodec.encode(msg).require.toByteVector)
     case _ => msg
   }
 }
