@@ -161,10 +161,10 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
       inFlightOutgoing setText localOutCount.toString
       inFlightRouted setText trampolineCount.toString
 
-      val currentClosings = LNParams.cm.closingDatas
-      val currentRefunds = LNParams.cm.pendingRefundsAmount(currentClosings).toMilliSatoshi
+      val currentPublished = LNParams.cm.closingsPublished
+      val currentRefunds = LNParams.cm.pendingRefundsAmount(currentPublished).toMilliSatoshi
       pendingRefundsSum setText LNParams.denomination.parsedWithSign(currentRefunds, cardZero).html
-      pendingRefunds setVisibility BaseActivity.viewMap(currentClosings.nonEmpty)
+      pendingRefunds setVisibility BaseActivity.viewMap(currentPublished.nonEmpty)
     }
   }
 
@@ -340,7 +340,8 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
       }
 
       walletCards.syncIndicator setVisibility {
-        val twoWeeksAgo = System.currentTimeMillis - 3600 * 24 * 14 * 1000L
+        // Block header timestamp is provided in seconds
+        val twoWeeksAgo = System.currentTimeMillis / 1000L - 3600 * 24 * 14
         val display = WalletApp.lastWalletReady.timestamp < twoWeeksAgo
         BaseActivity.viewMap(display)
       }

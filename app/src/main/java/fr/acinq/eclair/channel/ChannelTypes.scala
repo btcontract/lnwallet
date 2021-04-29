@@ -267,11 +267,6 @@ final case class LocalParams(fundingKeyPath: DeterministicWallet.KeyPath, dustLi
 final case class RemoteParams(dustLimit: Satoshi, maxHtlcValueInFlightMsat: UInt64, channelReserve: Satoshi, htlcMinimum: MilliSatoshi, toSelfDelay: CltvExpiryDelta, maxAcceptedHtlcs: Int,
                               fundingPubKey: PublicKey, revocationBasepoint: PublicKey, paymentBasepoint: PublicKey, delayedPaymentBasepoint: PublicKey, htlcBasepoint: PublicKey)
 
-object ChannelFlags {
-  val AnnounceChannel: Byte = 0x01.toByte
-  val Empty: Byte = 0x00.toByte
-}
-
 case class ChannelVersion(bits: BitVector) {
   val commitmentFormat: CommitmentFormat = if (hasAnchorOutputs) AnchorOutputsCommitmentFormat else DefaultCommitmentFormat
   def |(other: ChannelVersion): ChannelVersion = ChannelVersion(bits | other.bits)

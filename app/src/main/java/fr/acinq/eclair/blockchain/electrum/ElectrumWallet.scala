@@ -689,7 +689,7 @@ object ElectrumWallet {
 
     def readyMessage: WalletReady = {
       val (confirmed, unconfirmed) = balance
-      WalletReady(confirmed, unconfirmed, blockchain.tip.height, System.currentTimeMillis)
+      WalletReady(confirmed, unconfirmed, blockchain.tip.height, blockchain.tip.header.time)
     }
 
     /**

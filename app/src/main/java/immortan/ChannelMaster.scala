@@ -173,7 +173,7 @@ class ChannelMaster(val payBag: PaymentBag, val chanBag: ChannelBag, val dataBag
   def allIncomingResolutions: Iterable[IncomingResolution] = all.values.flatMap(Channel.chanAndCommitsOpt).flatMap(_.commits.crossSignedIncoming).map(initResolveMemo.get)
   def allInChannelOutgoing: Map[FullPaymentTag, OutgoingAdds] = all.values.flatMap(Channel.chanAndCommitsOpt).flatMap(_.commits.allOutgoing).groupBy(_.fullTag)
 
-  def closingDatas: Iterable[ForceCloseCommitPublished] = all.values.map(_.data).collect { case c: DATA_CLOSING => c.forceCloseCommitPublished }.flatten
+  def closingsPublished: Iterable[ForceCloseCommitPublished] = all.values.map(_.data).collect { case c: DATA_CLOSING => c.forceCloseCommitPublished }.flatten
   def pendingRefundsAmount(publishes: Iterable[ForceCloseCommitPublished] = Nil): Satoshi = publishes.flatMap(_.delayedRefundsLeft).map(_.txOut.head.amount).sum
 
   def fromNode(nodeId: PublicKey): Iterable[ChanAndCommits] = all.values.flatMap(Channel.chanAndCommitsOpt).filter(_.commits.remoteInfo.nodeId == nodeId)
