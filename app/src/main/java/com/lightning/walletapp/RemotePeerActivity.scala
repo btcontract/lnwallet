@@ -188,7 +188,11 @@ class RemotePeerActivity extends BaseActivity with ExternalDataChecker { me =>
   def sharePeerSpecificNodeId(view: View): Unit =
     share(remoteNodeInfo.nodeSpecificPubKey.toString)
 
-  def requestHostedChannel(view: View): Unit = {
+  def requestHostedChannel(view: View): Unit =
+    mkCheckForm(alertDialog => removeAndProceedWithTimeout(alertDialog)(doRequestHostedChannel), none,
+      new AlertDialog.Builder(me).setTitle(rpa_request_hc).setMessage(getString(rpa_hc_warn).html), dialog_ok, dialog_cancel)
+
+  private def doRequestHostedChannel: Unit = {
     // Switch view first since HC may throw immediately
     switchView(showProgress = true)
     stopAcceptingIncomingOffers

@@ -180,8 +180,6 @@ trait BaseActivity extends AppCompatActivity { me =>
     oldView
   }
 
-  def simpleTextBuilder(msg: CharSequence): AlertDialog.Builder = new AlertDialog.Builder(me).setMessage(msg)
-  def simpleTextWithNegBuilder(neg: Int, msg: CharSequence): AlertDialog.Builder = simpleTextBuilder(msg).setNegativeButton(neg, null)
   def titleBodyAsViewBuilder(title: View, body: View): AlertDialog.Builder = new AlertDialog.Builder(me).setCustomTitle(title).setView(body)
   def titleBodyAsViewWithNegBuilder(neg: Int, title: View, body: View): AlertDialog.Builder = titleBodyAsViewBuilder(title, body).setNegativeButton(neg, null)
   def onFail(error: CharSequence): Unit = UITask(me showForm titleBodyAsViewWithNegBuilder(dialog_ok, null, error).create).run
