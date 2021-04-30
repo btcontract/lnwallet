@@ -1,5 +1,6 @@
 package immortan
 
+import immortan.utils._
 import fr.acinq.eclair._
 import fr.acinq.bitcoin._
 import fr.acinq.eclair.wire._
@@ -7,20 +8,17 @@ import immortan.crypto.Tools._
 import fr.acinq.eclair.Features._
 import scala.concurrent.duration._
 import fr.acinq.eclair.blockchain.electrum._
-import fr.acinq.bitcoin.DeterministicWallet._
 import scodec.bits.{ByteVector, HexStringSyntax}
 import fr.acinq.bitcoin.Crypto.{PrivateKey, PublicKey}
 import scala.concurrent.{Await, ExecutionContextExecutor}
 import immortan.sqlite.{DBInterface, PreparedQuery, RichCursor}
 import fr.acinq.eclair.router.Router.{PublicChannel, RouterConf}
-import fr.acinq.eclair.channel.{LocalParams, PersistentChannelData}
+import fr.acinq.eclair.channel.{ChannelKeys, LocalParams, PersistentChannelData}
 import fr.acinq.eclair.transactions.{DirectedHtlc, RemoteFulfill, Transactions}
 import akka.actor.{ActorRef, ActorSystem, PoisonPill, Props, SupervisorStrategy}
-import immortan.utils.{Denomination, FeeRatesInfo, FiatRatesInfo, PaymentRequestExt, WalletEventsCatcher}
 import fr.acinq.eclair.blockchain.electrum.db.WalletDb
 import fr.acinq.eclair.router.ChannelUpdateExt
 import java.util.concurrent.atomic.AtomicLong
-import com.google.common.cache.LoadingCache
 import immortan.SyncMaster.ShortChanIdSet
 import fr.acinq.eclair.crypto.Generators
 import immortan.crypto.Noise.KeyPair
@@ -120,13 +118,12 @@ object LNParams {
 
   // We make sure that funder and fundee key path end differently
   def makeChannelParams(remoteInfo: RemoteNodeInfo, defaultFinalScriptPubkey: ByteVector, walletStaticPaymentBasepoint: PublicKey, isFunder: Boolean, fundingAmount: Satoshi): LocalParams =
-    makeChannelParams(defaultFinalScriptPubkey, walletStaticPaymentBasepoint, isFunder, fundingAmount, remoteInfo newFundingKeyPath isFunder)
+    makeChannelParams(defaultFinalScriptPubkey, walletStaticPaymentBasepoint, isFunder, ChannelKeys.newKeyPath(isFunder), fundingAmount)
 
   // Note: we send local maxHtlcValueInFlightMsat to channel capacity to simplify calculations
-  def makeChannelParams(defaultFinalScriptPubkey: ByteVector, walletStaticPaymentBasepoint: PublicKey, isFunder: Boolean, fundingAmount: Satoshi, fundingKeyPath: DeterministicWallet.KeyPath): LocalParams =
-    LocalParams(fundingKeyPath, minDustLimit, maxHtlcValueInFlightMsat = UInt64(fundingAmount.toMilliSatoshi.toLong), channelReserve = (fundingAmount * reserveToFundingRatio).max(minDustLimit),
-      htlcMinimum = minPayment, toSelfDelay = maxToLocalDelay, maxAcceptedHtlcs = maxAcceptedHtlcs, isFunder = isFunder, defaultFinalScriptPubKey = defaultFinalScriptPubkey,
-      walletStaticPaymentBasepoint = walletStaticPaymentBasepoint)
+  def makeChannelParams(defaultFinalScriptPubkey: ByteVector, walletStaticPaymentBasepoint: PublicKey, isFunder: Boolean, keyPath: DeterministicWallet.KeyPath, fundingAmount: Satoshi): LocalParams =
+    LocalParams(ChannelKeys.fromPath(secret.keys.master, keyPath), minDustLimit, UInt64(fundingAmount.toMilliSatoshi.toLong), (fundingAmount * reserveToFundingRatio).max(minDustLimit),
+      minPayment, maxToLocalDelay, maxAcceptedHtlcs, isFunder, defaultFinalScriptPubkey, walletStaticPaymentBasepoint)
 
   def currentBlockDay: Long = blockCount.get / blocksPerDay
 
@@ -171,55 +168,9 @@ class TestNetSyncParams extends SyncParams {
 
 case class RemoteNodeInfo(nodeId: PublicKey, address: NodeAddress, alias: String) {
   lazy val nodeSpecificExtendedKey: DeterministicWallet.ExtendedPrivateKey = LNParams.secret.keys.ourFakeNodeIdKey(nodeId)
-
-  lazy val nodeSpecificPrivKey: PrivateKey = nodeSpecificExtendedKey.privateKey
-
-  lazy val nodeSpecificPubKey: PublicKey = nodeSpecificPrivKey.publicKey
-
   lazy val nodeSpecificPair: KeyPairAndPubKey = KeyPairAndPubKey(KeyPair(nodeSpecificPubKey.value, nodeSpecificPrivKey.value), nodeId)
-
-  private def derivePrivKey(path: KeyPath) = derivePrivateKey(LNParams.secret.keys.master, path)
-
-  private val channelPrivateKeysMemo: LoadingCache[KeyPath, ExtendedPrivateKey] = memoize(derivePrivKey)
-
-  private val channelPublicKeysMemo: LoadingCache[KeyPath, ExtendedPublicKey] = memoize(channelPrivateKeysMemo.get _ andThen publicKey)
-
-  private def internalKeyPath(path: KeyPath, index: Long): Seq[Long] = path.path :+ hardened(index)
-
-  private def shaSeed(path: KeyPath): ByteVector32 = {
-    val extendedKey = channelPrivateKeysMemo getUnchecked internalKeyPath(path, 5L)
-    Crypto.sha256(extendedKey.privateKey.value :+ 1.toByte)
-  }
-
-  def newFundingKeyPath(isFunder: Boolean): KeyPath = {
-    def nextHop: Long = secureRandom.nextInt & 0xFFFFFFFFL
-    val lastHop = if (isFunder) hardened(1) else hardened(0)
-    val path = Seq(nextHop, nextHop, nextHop, nextHop, nextHop, nextHop, nextHop, nextHop, lastHop)
-    KeyPath(path)
-  }
-
-  def fundingPublicKey(path: KeyPath): ExtendedPublicKey = channelPublicKeysMemo getUnchecked internalKeyPath(path, 0L)
-
-  def revocationPoint(path: KeyPath): ExtendedPublicKey = channelPublicKeysMemo getUnchecked internalKeyPath(path, 1L)
-
-  def paymentPoint(path: KeyPath): ExtendedPublicKey = channelPublicKeysMemo getUnchecked internalKeyPath(path, 2L)
-
-  def delayedPaymentPoint(path: KeyPath): ExtendedPublicKey = channelPublicKeysMemo getUnchecked internalKeyPath(path, 3L)
-
-  def htlcPoint(path: KeyPath): ExtendedPublicKey = channelPublicKeysMemo getUnchecked internalKeyPath(path, 4L)
-
-  def commitmentSecret(path: KeyPath, index: Long): PrivateKey = Generators.perCommitSecret(shaSeed(path), index)
-
-  def commitmentPoint(path: KeyPath, index: Long): PublicKey = Generators.perCommitPoint(shaSeed(path), index)
-
-  def sign(tx: Transactions.TransactionWithInputInfo, publicKey: ExtendedPublicKey, txOwner: Transactions.TxOwner, format: Transactions.CommitmentFormat): ByteVector64 =
-    Transactions.sign(tx, channelPrivateKeysMemo.get(publicKey.path).privateKey, txOwner, format)
-
-  def sign(tx: Transactions.TransactionWithInputInfo, publicKey: ExtendedPublicKey, remotePoint: PublicKey, txOwner: Transactions.TxOwner, format: Transactions.CommitmentFormat): ByteVector64 =
-    Transactions.sign(tx, Generators.derivePrivKey(channelPrivateKeysMemo.get(publicKey.path).privateKey, remotePoint), txOwner, format)
-
-  def sign(tx: Transactions.TransactionWithInputInfo, publicKey: ExtendedPublicKey, remoteSecret: PrivateKey, txOwner: Transactions.TxOwner, format: Transactions.CommitmentFormat): ByteVector64 =
-    Transactions.sign(tx, Generators.revocationPrivKey(channelPrivateKeysMemo.get(publicKey.path).privateKey, remoteSecret), txOwner, format)
+  lazy val nodeSpecificPrivKey: PrivateKey = nodeSpecificExtendedKey.privateKey
+  lazy val nodeSpecificPubKey: PublicKey = nodeSpecificPrivKey.publicKey
 }
 
 case class WalletSecret(outstandingProviders: Set[NodeAnnouncement], keys: LightningNodeKeys, mnemonic: List[String], seed: ByteVector)
@@ -231,6 +182,12 @@ case class WalletExt(wallet: ElectrumEclairWallet, eventsCatcher: ActorRef, clie
 case class UpdateAddHtlcExt(theirAdd: UpdateAddHtlc, remoteInfo: RemoteNodeInfo)
 
 case class SwapInStateExt(state: SwapInState, nodeId: PublicKey)
+
+case class LastChainBalance(confirmed: Satoshi, unconfirmed: Satoshi, stamp: Long) {
+  def isTooLongAgo: Boolean = System.currentTimeMillis - 3600 * 24 * 14 * 1000L < stamp
+  val totalBalance: MilliSatoshi = confirmed.toMilliSatoshi + unconfirmed
+  val totalSatLong: Long = confirmed.toLong + unconfirmed.toLong
+}
 
 // Interfaces
 

@@ -4,14 +4,14 @@ import spray.json._
 import immortan.sqlite.SQLiteData._
 import immortan.utils.ImplicitJsonFormats._
 import fr.acinq.eclair.wire.LightningMessageCodecs.{swapInStateCodec, trampolineOnCodec}
-import fr.acinq.eclair.blockchain.electrum.ElectrumWallet.{PersistentData, WalletReady}
 import fr.acinq.eclair.wire.{HostedChannelBranding, SwapInState, TrampolineOn}
-import immortan.{DataBag, SwapInStateExt, WalletSecret}
+import immortan.{DataBag, LastChainBalance, SwapInStateExt, WalletSecret}
 import immortan.utils.{FeeRatesInfo, FiatRatesInfo}
 import fr.acinq.bitcoin.{BlockHeader, ByteVector32}
 import java.lang.{Integer => JInt}
 
 import fr.acinq.eclair.blockchain.electrum.db.WalletDb
+import fr.acinq.eclair.blockchain.electrum.ElectrumWallet.PersistentData
 import fr.acinq.eclair.blockchain.electrum.db.sqlite.SqliteWalletDb.persistentDataCodec
 import fr.acinq.eclair.wire.LightningMessageCodecs.hostedChannelBrandingCodec
 import immortan.wire.ExtCodecs.walletSecretCodec
@@ -25,7 +25,7 @@ object SQLiteData {
   final val LABEL_FORMAT = "label-format"
   final val LABEL_ELECTRUM_DATA = "label-electrum-data"
   final val LABLEL_TRAMPOLINE_ON = "label-trampoline-on"
-  final val LABEL_LAST_WALLET_READY = "label-last-wallet-ready"
+  final val LABEL_LAST_CHAIN_BALANCE = "label-last-chain-balance"
   final val LABEL_FIAT_RATES = "label-fiat-rates"
   final val LABEL_FEE_RATES = "label-fee-rates"
 
@@ -39,7 +39,9 @@ object SQLiteData {
 class SQLiteData(val db: DBInterface) extends WalletDb with DataBag {
   def delete(label: String): Unit = db.change(DataTable.killSql, label)
 
-  def tryGet(label: String): Try[ByteVector] = db.select(DataTable.selectSql, label).headTry(_ byteVec DataTable.content)
+  def tryGet(keyValueLabel: String): Try[ByteVector] =
+    db.select(DataTable.selectSql, keyValueLabel)
+      .headTry(_ byteVec DataTable.content)
 
   def put(label: String, content: Bytes): Unit = {
     // Insert and then update because of INSERT IGNORE
@@ -59,9 +61,9 @@ class SQLiteData(val db: DBInterface) extends WalletDb with DataBag {
 
   def tryGetTrampolineOn: Try[TrampolineOn] = tryGet(LABLEL_TRAMPOLINE_ON).map(raw => trampolineOnCodec.decode(raw.toBitVector).require.value)
 
-  def putLastWalletReady(data: WalletReady): Unit = put(LABEL_LAST_WALLET_READY, data.toJson.compactPrint getBytes "UTF-8")
+  def putLastChainBalance(data: LastChainBalance): Unit = put(LABEL_LAST_CHAIN_BALANCE, data.toJson.compactPrint getBytes "UTF-8")
 
-  def tryGetLastWalletReady: Try[WalletReady] = tryGet(LABEL_LAST_WALLET_READY).map(SQLiteData.byteVecToString) map to[WalletReady]
+  def tryGetLastChainBalance: Try[LastChainBalance] = tryGet(LABEL_LAST_CHAIN_BALANCE).map(SQLiteData.byteVecToString) map to[LastChainBalance]
 
   def putFiatRatesInfo(data: FiatRatesInfo): Unit = put(LABEL_FIAT_RATES, data.toJson.compactPrint getBytes "UTF-8")
 

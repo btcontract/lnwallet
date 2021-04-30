@@ -58,7 +58,7 @@ object Colors {
   val cardZero = "#777777"
   val totalZero = "#555555"
   val btcCardZero = "#B38722"
-  val lnCardZero = "#7278AD"
+  val lnCardZero = "#7D7DB8"
 }
 
 trait ExternalDataChecker {

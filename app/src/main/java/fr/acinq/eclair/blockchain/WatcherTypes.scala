@@ -16,9 +16,8 @@
 
 package fr.acinq.eclair.blockchain
 
-import scala.util.{Failure, Success, Try}
+import scala.util.{Success, Try}
 import fr.acinq.bitcoin.{ByteVector32, Script, ScriptWitness, Transaction}
-import fr.acinq.eclair.wire.ChannelAnnouncement
 import fr.acinq.eclair.channel.BitcoinEvent
 import fr.acinq.bitcoin.Crypto.PublicKey
 import scodec.bits.ByteVector

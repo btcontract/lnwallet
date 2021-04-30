@@ -52,9 +52,9 @@ object DeterministicWallet {
 
   case class ExtendedPrivateKey(secretkeybytes: ByteVector32, chaincode: ByteVector32, depth: Int, path: KeyPath, parent: Long) {
 
-    def privateKey: PrivateKey = PrivateKey(secretkeybytes)
+    lazy val privateKey: PrivateKey = PrivateKey(secretkeybytes)
 
-    def publicKey: PublicKey = privateKey.publicKey
+    lazy val publicKey: PublicKey = privateKey.publicKey
   }
 
   object ExtendedPrivateKey {

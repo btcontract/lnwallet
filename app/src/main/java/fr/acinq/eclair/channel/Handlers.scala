@@ -71,7 +71,7 @@ trait Handlers { me: ChannelNormal =>
       case ChannelReestablish(_, _, nextRemoteRevocationNumber, yourLastPerCommitmentSecret, _) if !Helpers.checkLocalCommit(d, nextRemoteRevocationNumber) =>
         // if next_remote_revocation_number is greater than our local commitment index, it means that either we are using an outdated commitment, or they are lying
         // but first we need to make sure that the last per_commitment_secret that they claim to have received from us is correct for that next_remote_revocation_number minus 1
-        if (d.commitments.remoteInfo.commitmentSecret(d.commitments.localParams.fundingKeyPath, nextRemoteRevocationNumber - 1) == yourLastPerCommitmentSecret) {
+        if (d.commitments.localParams.keys.commitmentSecret(nextRemoteRevocationNumber - 1) == yourLastPerCommitmentSecret) {
           // their data checks out, we indeed seem to be using an old revoked commitment, and must absolutely *NOT* publish it, because that would be a cheating attempt and they
           // would punish us by taking all the funds in the channel
           val error = Error(d.channelId, "please publish your local commitment")
@@ -91,7 +91,7 @@ trait Handlers { me: ChannelNormal =>
         // normal case, our data is up-to-date
         if (channelReestablish.nextLocalCommitmentNumber == 1 && d.commitments.localCommit.index == 0) {
           // If next_local_commitment_number is 1 in both the channel_reestablish it sent and received, then the node MUST retransmit funding_locked, otherwise it MUST NOT
-          val nextPerCommitmentPoint = d.commitments.remoteInfo.commitmentPoint(d.commitments.localParams.fundingKeyPath, index = 1L)
+          val nextPerCommitmentPoint = d.commitments.localParams.keys.commitmentPoint(index = 1L)
           val fundingLocked = FundingLocked(d.commitments.channelId, nextPerCommitmentPoint)
           sendQueue = sendQueue :+ fundingLocked
         }
@@ -133,8 +133,8 @@ trait Handlers { me: ChannelNormal =>
         // nothing to do
       } else if (commitments1.localCommit.index == channelReestablish.nextRemoteRevocationNumber + 1) {
         // our last revocation got lost, let's resend it
-        val localPerCommitmentSecret = commitments1.remoteInfo.commitmentSecret(commitments1.localParams.fundingKeyPath, d.commitments.localCommit.index - 1)
-        val localNextPerCommitmentPoint = commitments1.remoteInfo.commitmentPoint(commitments1.localParams.fundingKeyPath, d.commitments.localCommit.index + 1)
+        val localPerCommitmentSecret = commitments1.localParams.keys.commitmentSecret(d.commitments.localCommit.index - 1)
+        val localNextPerCommitmentPoint = commitments1.localParams.keys.commitmentPoint(d.commitments.localCommit.index + 1)
         val revocation = RevokeAndAck(channelId = commitments1.channelId, perCommitmentSecret = localPerCommitmentSecret, nextPerCommitmentPoint = localNextPerCommitmentPoint)
         sendQueue = sendQueue :+ revocation
       } else throw new RuntimeException

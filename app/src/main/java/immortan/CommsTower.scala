@@ -116,6 +116,7 @@ object CommsTower {
       workers -= pair
     }
 
+    def disconnect: Unit = try sock.close catch none
     def handleTheirRemoteInitMessage(listeners1: Set[ConnectionListener] = Set.empty)(remoteInit: Init): Unit = {
       // Use a separate variable for listeners here because a set of listeners provided to this method may be different
       // Account for a case where they disconnect while we are deciding on their features (do nothing in this case)
@@ -134,10 +135,6 @@ object CommsTower {
       val payloadLength = secureRandom.nextInt(5) + 1
       val data = randomBytes(length = payloadLength)
       handler process Ping(payloadLength, data)
-    }
-
-    def disconnect: Unit = {
-      try sock.close catch none
     }
   }
 }

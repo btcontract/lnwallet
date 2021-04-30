@@ -4,10 +4,10 @@ import immortan._
 import immortan.utils._
 import fr.acinq.eclair._
 import immortan.crypto.Tools._
+
 import scala.concurrent.duration._
 import com.lightning.walletapp.Colors._
 import com.lightning.walletapp.R.string._
-
 import android.os.{Bundle, Handler}
 import android.view.{View, ViewGroup}
 import rx.lang.scala.{Subject, Subscription}
@@ -17,12 +17,14 @@ import android.widget.{BaseAdapter, ImageView, LinearLayout, ListView, RelativeL
 import fr.acinq.eclair.blockchain.electrum.ElectrumWallet.WalletReady
 import com.lightning.walletapp.BaseActivity.StringOps
 import org.ndeftools.util.activity.NfcReaderActivity
+
 import concurrent.ExecutionContext.Implicits.global
 import com.github.mmin18.widget.RealtimeBlurView
 import androidx.recyclerview.widget.RecyclerView
 import com.indicator.ChannelIndicatorLine
 import fr.acinq.eclair.wire.PaymentTagTlv
 import android.database.ContentObserver
+import androidx.transition.TransitionManager
 import org.ndeftools.Message
 
 
@@ -95,7 +97,8 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
   }
 
   class WalletCardsViewHolder {
-    val view: View = getLayoutInflater.inflate(R.layout.frag_wallet_cards, null)
+    val view: LinearLayout = getLayoutInflater.inflate(R.layout.frag_wallet_cards, null).asInstanceOf[LinearLayout]
+
     val totalBalance: TextView = view.findViewById(R.id.totalBalance).asInstanceOf[TextView]
     val totalFiatBalance: TextView = view.findViewById(R.id.totalFiatBalance).asInstanceOf[TextView]
     val fiatUnitPriceAndChange: TextView = view.findViewById(R.id.fiatUnitPriceAndChange).asInstanceOf[TextView]
@@ -124,35 +127,35 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
       fiatUnitPriceAndChange.setText(unitPriceAndChange.html)
     }
 
-    def updateTotalBalance: Unit = {
-      val chainBalanceMsat = WalletApp.lastWalletReady.totalBalance.toMilliSatoshi
-      totalFiatBalance setText WalletApp.currentMsatInFiatHuman(chainBalanceMsat).html
-      totalBalance setText LNParams.denomination.parsedWithSign(chainBalanceMsat, totalZero).html
-      totalBitcoinBalance setText LNParams.denomination.parsedWithSign(chainBalanceMsat, btcCardZero).html
-      totalBitcoinBalance setVisibility BaseActivity.viewMap(chainBalanceMsat != 0L.msat)
-      receiveBitcoinTip setVisibility BaseActivity.viewMap(chainBalanceMsat == 0L.msat)
-    }
-
     def setCaptionVisibility: Unit = {
       val somePaymentsPresent = BaseActivity.viewMap(allInfos.nonEmpty)
       listCaption.setVisibility(somePaymentsPresent)
     }
 
-    def updateLnCardView: Unit = {
+    def updateView: Unit = {
+      val lnBalance = LNParams.cm.all.values.filter(Channel.isOperationalOrWaiting).map(Channel.estimateBalance)
+      val cumulativeBalance = lnBalance.sum + WalletApp.lastChainBalance.totalBalance
+      val states = LNParams.cm.all.values.map(_.state)
+
+      TransitionManager.beginDelayedTransition(view)
+      channelIndicator.createIndicators(states.toArray)
+      channelStateIndicators setVisibility BaseActivity.viewMap(states.nonEmpty)
+      totalFiatBalance setText WalletApp.currentMsatInFiatHuman(cumulativeBalance).html
+      totalBalance setText LNParams.denomination.parsedWithSign(cumulativeBalance, totalZero).html
+      syncIndicator setVisibility BaseActivity.viewMap(!WalletApp.lastChainBalance.isTooLongAgo)
+
+      totalLightningBalance setVisibility BaseActivity.viewMap(states.nonEmpty)
+      totalLightningBalance setText LNParams.denomination.parsedWithSign(lnBalance.sum, lnCardZero).html
+      totalBitcoinBalance setText LNParams.denomination.parsedWithSign(WalletApp.lastChainBalance.totalBalance, btcCardZero).html
+      totalBitcoinBalance setVisibility BaseActivity.viewMap(WalletApp.lastChainBalance.totalBalance != 0L.msat)
+      receiveBitcoinTip setVisibility BaseActivity.viewMap(WalletApp.lastChainBalance.totalBalance == 0L.msat)
+      addChannelTip setVisibility BaseActivity.viewMap(states.isEmpty)
+
       val localInCount = LNParams.cm.inProcessors.count { case (fullTag, _) => fullTag.tag == PaymentTagTlv.FINAL_INCOMING }
       val localOutCount = LNParams.cm.opm.data.payments.count { case (fullTag, _) => fullTag.tag == PaymentTagTlv.LOCALLY_SENT }
       val trampolineCount = LNParams.cm.inProcessors.count { case (fullTag, _) => fullTag.tag == PaymentTagTlv.TRAMPLOINE_ROUTED }
-
-      val states = LNParams.cm.all.values.map(_.state)
-      addChannelTip setVisibility BaseActivity.viewMap(states.isEmpty)
-      channelStateIndicators setVisibility BaseActivity.viewMap(states.nonEmpty)
-      totalLightningBalance setVisibility BaseActivity.viewMap(states.nonEmpty)
-      channelIndicator createIndicators states.toArray
-
-      val lnBalance = LNParams.cm.all.values.filter(Channel.isOperationalOrWaiting).map(Channel.estimateBalance)
-      totalLightningBalance setText LNParams.denomination.parsedWithSign(lnBalance.sum, lnCardZero).html
-
       val hideAll = localInCount + localOutCount + trampolineCount == 0
+
       inFlightIncoming setAlpha { if (hideAll) 0F else if (localInCount > 0) 1F else 0.3F }
       inFlightOutgoing setAlpha { if (hideAll) 0F else if (localOutCount > 0) 1F else 0.3F }
       inFlightRouted setAlpha { if (hideAll) 0F else if (trampolineCount > 0) 1F else 0.3F }
@@ -196,21 +199,23 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
   private val netListener: Monitor.ConnectivityListener = new Monitor.ConnectivityListener {
     override def onConnectivityChanged(ct: Int, isConnected: Boolean, isFast: Boolean): Unit = UITask {
       walletCards.offlineIndicator setVisibility BaseActivity.viewMap(!isConnected)
+      // This will make channels SLEEPING right away instead of after no Pong
+      if (!isConnected) CommsTower.workers.values.foreach(_.disconnect)
     }.run
   }
 
   private val chainListener: WalletEventsListener = new WalletEventsListener {
     override def onChainSynchronized(event: WalletReady): Unit = UITask {
       walletCards.syncIndicator setVisibility View.GONE
-      walletCards.updateTotalBalance
       updatePendingChainTxStatus
+      walletCards.updateView
     }.run
   }
 
   private val fiatRatesListener: FiatRatesListener = new FiatRatesListener {
     def onFiatRates(rates: FiatRatesInfo): Unit = UITask {
-      walletCards.updateTotalBalance
       walletCards.updateFiatRates
+      walletCards.updateView
     }.run
   }
 
@@ -323,7 +328,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
       val paymentEvents = Rx.uniqueFirstAndLastWithinWindow(paymentEventStream, 1.second).doOnNext(_ => reloadPaymentInfos)
       val relayEvents = Rx.uniqueFirstAndLastWithinWindow(relayEventStream, 1.second).doOnNext(_ => reloadRelayedPreimageInfos)
 
-      statusSubscription = statusEvents.merge(stateEvents).subscribe(_ => UITask(walletCards.updateLnCardView).run).toSome
+      statusSubscription = statusEvents.merge(stateEvents).subscribe(_ => UITask(walletCards.updateView).run).toSome
       val paymentRelatedEvents = txEvents.merge(paymentEvents).merge(relayEvents).doOnNext(_ => updAllInfos).merge(stateEvents)
       streamSubscription = paymentRelatedEvents.subscribe(_ => UITask(updatePaymentList).run).toSome
 
@@ -339,22 +344,14 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
         itemsList.setPadding(0, 0, 0, bottomActionBar.getHeight)
       }
 
-      walletCards.syncIndicator setVisibility {
-        // Block header timestamp is provided in seconds
-        val twoWeeksAgo = System.currentTimeMillis / 1000L - 3600 * 24 * 14
-        val display = WalletApp.lastWalletReady.timestamp < twoWeeksAgo
-        BaseActivity.viewMap(display)
-      }
-
       itemsList.addHeaderView(walletCards.view)
       itemsList.setAdapter(paymentsAdapter)
       itemsList.setDividerHeight(0)
       itemsList.setDivider(null)
 
       walletCards.setCaptionVisibility
-      walletCards.updateTotalBalance
-      walletCards.updateLnCardView
       walletCards.updateFiatRates
+      walletCards.updateView
     } else {
       WalletApp.freePossiblyUsedResouces
       me exitTo ClassNames.mainActivityClass

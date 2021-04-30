@@ -19,7 +19,7 @@ object ChannelTable extends Table {
   val newSql = s"INSERT OR IGNORE INTO $table ($channelId, $data) VALUES (?, ?)"
   val updSql = s"UPDATE $table SET $data = ? WHERE $channelId = ?"
   val killSql = s"DELETE FROM $table WHERE WHERE $channelId = ?"
-  val selectAllSql = s"SELECT * FROM $table ORDER BY $id DESC"
+  val selectAllSql = s"SELECT * FROM $table ORDER BY $id ASC"
 
   def createStatements: Seq[String] = s"CREATE TABLE IF NOT EXISTS $table($IDAUTOINC, $channelId TEXT NOT NULL $UNIQUE, $data BLOB NOT NULL)" :: Nil
 }

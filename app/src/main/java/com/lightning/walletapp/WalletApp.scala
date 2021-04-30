@@ -32,7 +32,7 @@ import scala.util.Try
 object WalletApp { me =>
   var txDataBag: SQLiteTxExtended = _
   var extDataBag: SQLiteDataExtended = _
-  var lastWalletReady: WalletReady = _
+  var lastChainBalance: LastChainBalance = _
   var usedAddons: UsedAddons = _
   var app: WalletApp = _
 
@@ -57,7 +57,7 @@ object WalletApp { me =>
   def capLNFeeToChain: Boolean = app.prefs.getBoolean(CAP_LN_FEE_TO_CHAIN, false)
 
   // Due to Android specifics any of these may be nullified at runtime, must check for liveness on every entry
-  def isAlive: Boolean = null != extDataBag && null != txDataBag && null != lastWalletReady && null != usedAddons && null != app
+  def isAlive: Boolean = null != extDataBag && null != txDataBag && null != lastChainBalance && null != usedAddons && null != app
 
   def freePossiblyUsedResouces: Unit = {
     // Drop whatever network connections we still have
@@ -72,7 +72,7 @@ object WalletApp { me =>
 
     txDataBag = null
     extDataBag = null
-    lastWalletReady = null
+    lastChainBalance = null
     usedAddons = null
   }
 
@@ -83,7 +83,7 @@ object WalletApp { me =>
     miscInterface txWrap {
       extDataBag = new SQLiteDataExtended(miscInterface)
       txDataBag = new SQLiteTxExtended(app, miscInterface)
-      lastWalletReady = extDataBag.tryGetLastWalletReady getOrElse WalletReady(0L.sat, 0L.sat, 0L, 0L)
+      lastChainBalance = extDataBag.tryGetLastChainBalance getOrElse LastChainBalance(0L.sat, 0L.sat, 0L)
       usedAddons = extDataBag.tryGetAddons getOrElse UsedAddons(addons = List.empty)
       if (app.isTablet) Table.DEFAULT_LIMIT.set(10)
       else Table.DEFAULT_LIMIT.set(20)
@@ -157,8 +157,9 @@ object WalletApp { me =>
     LNParams.chainWallet.eventsCatcher ! new WalletEventsListener {
       // CurrentBlockCount is handled separately is Channel.Receiver
       override def onChainSynchronized(event: WalletReady): Unit = {
-        extDataBag.putLastWalletReady(event)
-        lastWalletReady = event
+        // The main point of this is to use unix timestamp instead of chain tip stamp to define whether we are deeply in past
+        lastChainBalance = LastChainBalance(event.confirmedBalance, event.unconfirmedBalance, System.currentTimeMillis)
+        extDataBag.putLastChainBalance(lastChainBalance)
 
         // Sync is complete now, we can start channel connections
         // Invalidate last disconnect stamp since we're up again
@@ -170,11 +171,11 @@ object WalletApp { me =>
       override def onTransactionReceived(event: TransactionReceived): Unit =
         if (event.received >= event.sent) {
           val txDescription = TxDescription.defineDescription(LNParams.cm.all.values, event.walletAddreses, event.tx)
-          txDataBag.putTx(event, isIncoming = 1L, txDescription, lastWalletReady.totalBalance.toMilliSatoshi, LNParams.fiatRatesInfo.rates)
+          txDataBag.putTx(event, isIncoming = 1L, txDescription, lastChainBalance.totalBalance, LNParams.fiatRatesInfo.rates)
         } else {
           val txDescription = TxDescription.defineDescription(LNParams.cm.all.values, Nil, event.tx)
           // Outgoing tx should already be present in db so this will fail silently unless sent from other wallet
-          txDataBag.putTx(event, 0L, txDescription, lastWalletReady.totalBalance.toMilliSatoshi, LNParams.fiatRatesInfo.rates)
+          txDataBag.putTx(event, 0L, txDescription, lastChainBalance.totalBalance, LNParams.fiatRatesInfo.rates)
         }
 
       override def onChainDisconnected: Unit = {

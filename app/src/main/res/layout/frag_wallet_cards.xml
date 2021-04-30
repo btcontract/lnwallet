@@ -87,7 +87,6 @@
                 android:background="@drawable/border_yellow"
                 android:id="@+id/syncIndicator"
                 android:text="@string/sync"
-                android:visibility="gone"
                 android:textSize="12sp"/>
 
             <TextView

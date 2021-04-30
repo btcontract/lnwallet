@@ -1,5 +1,6 @@
 package immortan
 
+import akka.actor.{ActorRef, Props}
 import fr.acinq.eclair._
 import immortan.Channel._
 import immortan.ErrorCodes._
@@ -25,8 +26,9 @@ object ChannelHosted {
 }
 
 abstract class ChannelHosted extends Channel { me =>
-  def isBlockDayOutOfSync(currentBlockDay: Long): Boolean =
-    math.abs(currentBlockDay - LNParams.currentBlockDay) > 1
+  // We still need receiver actor to get CurrentBlockCount events
+  val receiver: ActorRef = LNParams.system actorOf Props(new Receiver)
+  def isOutOfSync(blockDay: Long): Boolean = math.abs(blockDay - LNParams.currentBlockDay) > 1
 
   def doProcess(change: Any): Unit =
     Tuple3(data, change, state) match {
@@ -58,7 +60,7 @@ abstract class ChannelHosted extends Channel { me =>
         val isRightRemoteUpdateNumber = localHalfSignedHC.lastCrossSignedState.remoteUpdates == remoteSU.localUpdates
         val isRightLocalUpdateNumber = localHalfSignedHC.lastCrossSignedState.localUpdates == remoteSU.remoteUpdates
         val isRemoteSigOk = localCompleteLCSS.verifyRemoteSig(localHalfSignedHC.remoteInfo.nodeId)
-        val isBlockDayWrong = isBlockDayOutOfSync(remoteSU.blockDay)
+        val isBlockDayWrong = isOutOfSync(remoteSU.blockDay)
 
         if (isBlockDayWrong) throw new RuntimeException("Their blockday is wrong")
         if (!isRemoteSigOk) throw new RuntimeException("Their signature is wrong")
@@ -259,7 +261,7 @@ abstract class ChannelHosted extends Channel { me =>
     val lcss1 = hc.nextLocalUnsignedLCSS(remoteSU.blockDay).copy(remoteSigOfLocal = remoteSU.localSigOfRemoteLCSS).withLocalSigOfRemote(hc.remoteInfo.nodeSpecificPrivKey)
     val hc1 = hc.copy(lastCrossSignedState = lcss1, localSpec = hc.nextLocalSpec, nextLocalUpdates = Nil, nextRemoteUpdates = Nil)
     val isRemoteSigOk = lcss1.verifyRemoteSig(hc.remoteInfo.nodeId)
-    val isBlockDayWrong = isBlockDayOutOfSync(remoteSU.blockDay)
+    val isBlockDayWrong = isOutOfSync(remoteSU.blockDay)
 
     if (isBlockDayWrong) {
       localSuspend(hc, ERR_HOSTED_WRONG_BLOCKDAY)

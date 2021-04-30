@@ -87,10 +87,9 @@ class ChannelMaster(val payBag: PaymentBag, val chanBag: ChannelBag, val dataBag
   val getPreimageMemo: LoadingCache[ByteVector32, PreimageTry] = memoize(payBag.getPreimage)
 
   val socketChannelListener: ConnectionListener = new ConnectionListener {
-    override def onOperational(worker: CommsTower.Worker, theirInit: Init): Unit = {
-      // Note that this may be sent multiple times after chain wallet reconnects
+    // Note that this may be sent multiple times after chain wallet reconnects
+    override def onOperational(worker: CommsTower.Worker, theirInit: Init): Unit =
       fromNode(worker.info.nodeId).foreach(_.chan process CMD_SOCKET_ONLINE)
-    }
 
     override def onMessage(worker: CommsTower.Worker, msg: LightningMessage): Unit = msg match {
       case nodeError: Error if nodeError.channelId == ByteVector32.Zeroes => fromNode(worker.info.nodeId).foreach(_.chan process nodeError)

@@ -135,14 +135,13 @@ class RemotePeerActivity extends BaseActivity with ExternalDataChecker { me =>
 
   def fundNewChannel(view: View): Unit = {
     val body = getLayoutInflater.inflate(R.layout.frag_input_fund_channel, null)
-    val chainBalanceMsat = WalletApp.lastWalletReady.totalBalance.toMilliSatoshi
     val manager = new RateManager(body, extraHint = None, LNParams.fiatRatesInfo.rates, WalletApp.fiatCode)
-    val canSend = LNParams.denomination.parsedWithSign(chainBalanceMsat, Colors.cardZero)
-    val canSendFiat = WalletApp.currentMsatInFiatHuman(chainBalanceMsat)
+    val canSend = LNParams.denomination.parsedWithSign(WalletApp.lastChainBalance.totalBalance, Colors.cardZero)
+    val canSendFiat = WalletApp.currentMsatInFiatHuman(WalletApp.lastChainBalance.totalBalance)
 
     def useMax(alert: AlertDialog): Unit = {
-      val balanceAsLong = WalletApp.lastWalletReady.totalBalance.toLong
-      manager.inputAmount.setText(balanceAsLong.toString)
+      val balanceSatLong = WalletApp.lastChainBalance.totalSatLong
+      manager.inputAmount.setText(balanceSatLong.toString)
     }
 
     def attempt(alert: AlertDialog): Unit = {
@@ -171,7 +170,7 @@ class RemotePeerActivity extends BaseActivity with ExternalDataChecker { me =>
 
     val worker = new ThrottledWork[Satoshi, MakeFundingTxResponse] {
       def work(amount: Satoshi): Observable[MakeFundingTxResponse] = Rx fromFutureOnIo NCFunderOpenHandler.makeFunding(LNParams.chainWallet, amount)
-      def process(amount: Satoshi, res: MakeFundingTxResponse): Unit = feeView.update(NCFunderOpenHandler.defFeerate, res.fee.toMilliSatoshi.toSome, showIssue = false)
+      def process(amount: Satoshi, res: MakeFundingTxResponse): Unit = feeView.update(NCFunderOpenHandler.defFeerate, Some(res.fee.toMilliSatoshi), showIssue = false)
       def error(exc: Throwable): Unit = feeView.update(NCFunderOpenHandler.defFeerate, None, showIssue = true)
     }
 

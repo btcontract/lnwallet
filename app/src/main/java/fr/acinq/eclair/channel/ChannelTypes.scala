@@ -20,15 +20,16 @@ import scodec.bits._
 import fr.acinq.eclair._
 import fr.acinq.bitcoin._
 import fr.acinq.eclair.wire._
+import fr.acinq.bitcoin.DeterministicWallet._
 import fr.acinq.eclair.transactions.Transactions._
 import fr.acinq.bitcoin.Crypto.{PrivateKey, PublicKey}
-import immortan.{LNParams, RemoteNodeInfo}
 import scodec.bits.{BitVector, ByteVector}
-
+import immortan.{LNParams, RemoteNodeInfo}
 import fr.acinq.eclair.blockchain.MakeFundingTxResponse
 import fr.acinq.eclair.crypto.Sphinx.PacketAndSecrets
 import fr.acinq.eclair.blockchain.fee.FeeratePerKw
-import fr.acinq.eclair.transactions.CommitmentSpec
+import fr.acinq.eclair.crypto.Generators
+import fr.acinq.eclair.transactions.{CommitmentSpec, Transactions}
 import fr.acinq.eclair.wire.Onion.FinalPayload
 import fr.acinq.eclair.payment.IncomingPacket
 import immortan.crypto.Tools
@@ -261,7 +262,35 @@ final case class DATA_CLOSING(commitments: NormalCommits, fundingTx: Option[Tran
 
 final case class DATA_WAIT_FOR_REMOTE_PUBLISH_FUTURE_COMMITMENT(commitments: NormalCommits, remoteChannelReestablish: ChannelReestablish) extends ChannelData with HasNormalCommitments
 
-final case class LocalParams(fundingKeyPath: DeterministicWallet.KeyPath, dustLimit: Satoshi, maxHtlcValueInFlightMsat: UInt64, channelReserve: Satoshi, htlcMinimum: MilliSatoshi,
+object ChannelKeys {
+  def fromPath(master: ExtendedPrivateKey, path: KeyPath): ChannelKeys = {
+    val fundingKey = derivePrivateKey(chain = path.path :+ hardened(0L), parent = master)
+    val revocationKey = derivePrivateKey(chain = path.path :+ hardened(1L), parent = master)
+    val paymentKey = derivePrivateKey(chain = path.path :+ hardened(2L), parent = master)
+    val delayedKey = derivePrivateKey(chain = path.path :+ hardened(3L), parent = master)
+    val htlcKey = derivePrivateKey(chain = path.path :+ hardened(4L), parent = master)
+    val shaBase = derivePrivateKey(chain = path.path :+ hardened(5L), parent = master)
+
+    val shaSeed = Crypto.sha256(shaBase.privateKey.value :+ 1.toByte)
+    ChannelKeys(path, shaSeed, fundingKey, revocationKey, paymentKey, delayedKey, htlcKey)
+  }
+
+  def newKeyPath(isFunder: Boolean): KeyPath = {
+    def nextHop: Long = secureRandom.nextInt & 0xFFFFFFFFL
+    val lastHop = if (isFunder) hardened(1) else hardened(0)
+    val path = Seq(nextHop, nextHop, nextHop, nextHop, nextHop, nextHop, nextHop, nextHop, lastHop)
+    KeyPath(path)
+  }
+}
+
+case class ChannelKeys(path: KeyPath, shaSeed: ByteVector32, fundingKey: ExtendedPrivateKey, revocationKey: ExtendedPrivateKey, paymentKey: ExtendedPrivateKey, delayedPaymentKey: ExtendedPrivateKey, htlcKey: ExtendedPrivateKey) {
+  def sign(tx: TransactionWithInputInfo, key: PrivateKey, remoteSecret: PrivateKey, txOwner: TxOwner, format: CommitmentFormat): ByteVector64 = Transactions.sign(tx, Generators.revocationPrivKey(key, remoteSecret), txOwner, format)
+  def sign(tx: TransactionWithInputInfo, key: PrivateKey, remotePoint: PublicKey, txOwner: TxOwner, format: CommitmentFormat): ByteVector64 = Transactions.sign(tx, Generators.derivePrivKey(key, remotePoint), txOwner, format)
+  def commitmentSecret(index: Long): PrivateKey = Generators.perCommitSecret(shaSeed, index)
+  def commitmentPoint(index: Long): PublicKey = Generators.perCommitPoint(shaSeed, index)
+}
+
+final case class LocalParams(keys: ChannelKeys, dustLimit: Satoshi, maxHtlcValueInFlightMsat: UInt64, channelReserve: Satoshi, htlcMinimum: MilliSatoshi,
                              toSelfDelay: CltvExpiryDelta, maxAcceptedHtlcs: Int, isFunder: Boolean, defaultFinalScriptPubKey: ByteVector, walletStaticPaymentBasepoint: PublicKey)
 
 final case class RemoteParams(dustLimit: Satoshi, maxHtlcValueInFlightMsat: UInt64, channelReserve: Satoshi, htlcMinimum: MilliSatoshi, toSelfDelay: CltvExpiryDelta, maxAcceptedHtlcs: Int,
@@ -284,15 +313,13 @@ object ChannelVersion {
   private val USE_STATIC_REMOTEKEY_BIT = 1
   private val USE_ANCHOR_OUTPUTS_BIT = 2
 
-  def fromBit(bit: Int): ChannelVersion = ChannelVersion(BitVector.low(LENGTH_BITS).set(bit).reverse)
-
   val ZEROES: ChannelVersion = ChannelVersion(bin"00000000000000000000000000000000")
 
   val STANDARD: ChannelVersion = ZEROES | fromBit(USE_PUBKEY_KEYPATH_BIT)
 
-  val STATIC_REMOTEKEY: ChannelVersion = STANDARD | fromBit(USE_STATIC_REMOTEKEY_BIT) // PUBKEY_KEYPATH + STATIC_REMOTEKEY
+  val STATIC_REMOTEKEY: ChannelVersion = STANDARD | fromBit(USE_STATIC_REMOTEKEY_BIT)
 
-  val ANCHOR_OUTPUTS: ChannelVersion = STATIC_REMOTEKEY | fromBit(USE_ANCHOR_OUTPUTS_BIT) // PUBKEY_KEYPATH + STATIC_REMOTEKEY + ANCHOR_OUTPUTS
+  def fromBit(bit: Int): ChannelVersion = ChannelVersion(BitVector.low(LENGTH_BITS).set(bit).reverse)
 }
 
 object HostedChannelVersion {
