@@ -30,7 +30,7 @@ object LocalBackup { me =>
 
   def askPermission(activity: AppCompatActivity): Unit = ActivityCompat.requestPermissions(activity, Array(WRITE_EXTERNAL_STORAGE), LOCAL_BACKUP_REQUEST_NUMBER)
 
-  def getSuffix(seed: ByteVector32): String = Crypto.hash160(seed).take(4).toHex
+  def getSuffix(seed: ByteVector): String = Crypto.hash160(seed).take(4).toHex
 
   def getNetwork(chainHash: ByteVector32): String = chainHash match {
     case Block.LivenetGenesisBlock.hash => "mainnet"
@@ -39,7 +39,7 @@ object LocalBackup { me =>
     case _ => "unknown"
   }
 
-  def getBackupFileUnsafe(chainHash: ByteVector32, seed: ByteVector32): File = {
+  def getBackupFileUnsafe(chainHash: ByteVector32, seed: ByteVector): File = {
     val fileName = s"$BACKUP_NAME-${me getNetwork chainHash}-${me getSuffix seed}$BACKUP_EXTENSION"
     val directory = new File(getExternalStorageDirectory, BACKUP_DIR)
     val backup = new File(directory, fileName)
@@ -47,7 +47,8 @@ object LocalBackup { me =>
     backup
   }
 
-  def getGraphResourceName(chainHash: ByteVector32): String = s"$GRAPH_NAME-${me getNetwork chainHash}$GRAPH_EXTENSION"
+  def getGraphResourceName(chainHash: ByteVector32): String =
+    s"$GRAPH_NAME-${me getNetwork chainHash}$GRAPH_EXTENSION"
 
   def getGraphFileUnsafe(chainHash: ByteVector32): File = {
     val directory = new File(getExternalStorageDirectory, BACKUP_DIR)
@@ -61,7 +62,7 @@ object LocalBackup { me =>
   def decryptBackup(backup: ByteVector, seed: ByteVector): Try[ByteVector] = Tools.chaChaDecrypt(Crypto.sha256(seed), backup)
 
   // It is assumed that database file already exists at this point
-  def encryptAndWritePlainBackup(context: Context, dbFileName: String, chainHash: ByteVector32, seed: ByteVector32): Unit = {
+  def encryptAndWritePlainBackup(context: Context, dbFileName: String, chainHash: ByteVector32, seed: ByteVector): Unit = {
     val dataBaseFile = new File(context.getDatabasePath(dbFileName).getPath)
     val plainBytes = ByteVector.view(Files toByteArray dataBaseFile)
     val backupFile = getBackupFileUnsafe(chainHash, seed)

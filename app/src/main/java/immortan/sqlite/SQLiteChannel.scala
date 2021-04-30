@@ -40,5 +40,6 @@ class SQLiteChannel(val db: DBInterface) extends ChannelBag {
     for (htlc <- htlcs) putHtlcInfo(sid, commitNumber, htlc.add.paymentHash, htlc.add.cltvExpiry)
   }
 
-  override def rmHtlcInfos(sid: ShortChannelId): Unit = db.change(HtlcInfoTable.killSql, sid.toLong: JLong)
+  override def rmHtlcInfos(sid: ShortChannelId): Unit =
+    db.change(HtlcInfoTable.killSql, sid.toLong: JLong)
 }

@@ -4,6 +4,7 @@ import immortan._
 import immortan.utils._
 import immortan.sqlite._
 import fr.acinq.eclair._
+import scala.concurrent.duration._
 import com.lightning.walletapp.sqlite._
 import com.lightning.walletapp.R.string._
 import fr.acinq.bitcoin.{Block, SatoshiLong}
@@ -12,8 +13,8 @@ import android.app.{Application, NotificationChannel, NotificationManager}
 import fr.acinq.eclair.blockchain.electrum.{CheckPoint, ElectrumClientPool}
 import android.content.{ClipData, ClipboardManager, Context, Intent, SharedPreferences}
 import fr.acinq.eclair.blockchain.electrum.ElectrumWallet.{TransactionReceived, WalletReady}
-import com.lightning.walletapp.utils.{AwaitService, DelayedNotification, UsedAddons, WebsocketBus}
-import fr.acinq.eclair.channel.CMD_CHECK_FEERATE
+import com.lightning.walletapp.utils.{AwaitService, DelayedNotification, LocalBackup, UsedAddons, WebsocketBus}
+import fr.acinq.eclair.channel.{CMD_CHECK_FEERATE, PersistentChannelData}
 import fr.acinq.eclair.router.Router.RouterConf
 import androidx.appcompat.app.AppCompatDelegate
 import immortan.utils.Denomination.formatFiat
@@ -22,6 +23,7 @@ import fr.acinq.eclair.wire.TrampolineOn
 import android.text.format.DateFormat
 import androidx.multidex.MultiDex
 import android.provider.Settings
+import rx.lang.scala.Observable
 import android.widget.Toast
 import android.os.Build
 import android.net.Uri
@@ -39,6 +41,16 @@ object WalletApp {
   final val dbFileNameMisc = "misc.db"
   final val dbFileNameGraph = "graph.db"
   final val dbFileNameEssential = "essential.db"
+
+  val backupSaveWorker: ThrottledWork[String, Any] = new ThrottledWork[String, Any] {
+    def process(cmd: String, result: Any): Unit = if (LocalBackup.isExternalStorageWritable) try {
+      LocalBackup.encryptAndWritePlainBackup(app, dbFileNameEssential, LNParams.chainHash, LNParams.secret.seed)
+    } catch none
+
+    // File saving gets delayed in case of frequent rapid updates
+    def work(cmd: String): Observable[Any] = Rx.ioQueue.delay(5.seconds)
+    def error(canNotHappen: Throwable): Unit = none
+  }
 
   final val USE_AUTH = "useAuth"
   final val FIAT_CODE = "fiatCode"
@@ -96,7 +108,13 @@ object WalletApp {
     val normalBag = new SQLiteNetwork(graphInterface, NormalChannelUpdateTable, NormalChannelAnnouncementTable, NormalExcludedChannelTable)
     val hostedBag = new SQLiteNetwork(graphInterface, HostedChannelUpdateTable, HostedChannelAnnouncementTable, HostedExcludedChannelTable)
     val payBag = new SQLitePaymentExtended(app, extDataBag.db, essentialInterface)
-    val chanBag = new SQLiteChannel(essentialInterface)
+
+    val chanBag = new SQLiteChannel(essentialInterface) {
+      override def put(data: PersistentChannelData): PersistentChannelData = {
+        backupSaveWorker.replaceWork("RESTART-DELAYED-BACKUP-SAVING")
+        super.put(data)
+      }
+    }
 
     LNParams.secret = secret
     LNParams.syncParams = new TestNetSyncParams

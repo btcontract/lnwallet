@@ -26,7 +26,7 @@ public class LocalBackupSpec {
     public void readAndWriteLocalBackup() {
         ByteVector fileContents = package$.MODULE$.randomBytes(1024 * 128);
         ByteVector32 chainHash = Block.LivenetGenesisBlock().hash();
-        ByteVector32 seed = package$.MODULE$.randomBytes32();
+        ByteVector seed = package$.MODULE$.randomBytes(32);
         String dbFileName = "essential.db";
 
         try {
@@ -44,7 +44,7 @@ public class LocalBackupSpec {
         try {
             // Correctly decrypt a backup file and copy it to database file location
             ByteVector cipherbytes = ByteVector.view(Files.toByteArray(LocalBackup.getBackupFileUnsafe(chainHash, seed)));
-            ByteVector plainbytes = LocalBackup.decryptBackup(cipherbytes, seed.bytes()).get();
+            ByteVector plainbytes = LocalBackup.decryptBackup(cipherbytes, seed).get();
             Assert.assertArrayEquals(plainbytes.toArray(), fileContents.toArray());
             LocalBackup.copyPlainDataToDbLocation(WalletApp.app(), dbFileName, plainbytes);
         } catch (Exception e) {
