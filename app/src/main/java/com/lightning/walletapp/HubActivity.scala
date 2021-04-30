@@ -135,7 +135,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
     def updateView: Unit = {
       val lnBalance = LNParams.cm.all.values.filter(Channel.isOperationalOrWaiting).map(Channel.estimateBalance)
       val cumulativeBalance = lnBalance.sum + WalletApp.lastChainBalance.totalBalance
-      val states = LNParams.cm.all.values.map(_.state)
+      val states = LNParams.cm.all.values.map(_.state).take(8)
 
       TransitionManager.beginDelayedTransition(view)
       channelIndicator.createIndicators(states.toArray)

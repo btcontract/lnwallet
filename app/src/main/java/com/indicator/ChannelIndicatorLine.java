@@ -33,18 +33,13 @@ public class ChannelIndicatorLine extends LinearLayout {
         initialize();
     }
 
-    public ChannelIndicatorLine(Context context, AttributeSet attrs, int defStyleAttr, int defStyleRes) {
-        super(context, attrs, defStyleAttr, defStyleRes);
-        initialize();
-    }
-
     public void initialize() {
         DisplayMetrics metrics = getResources().getDisplayMetrics();
         int miniSize = (int) (TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, DEFAULT_INDICATOR_HEIGHT, metrics) + 0.5f);
 
         mIndicatorHeight = miniSize;
         mIndicatorWidth = miniSize * 3;
-        mIndicatorMargin = 5;
+        mIndicatorMargin = 10;
 
         setOrientation(HORIZONTAL);
         setGravity(Gravity.START);
@@ -59,9 +54,8 @@ public class ChannelIndicatorLine extends LinearLayout {
             removeViews(count, childViewCount - count);
         } else if (count > childViewCount) {
             int addCount = count - childViewCount;
-            int orientation = getOrientation();
             for (int i = 0; i < addCount; i++) {
-                addIndicator(orientation);
+                addIndicator();
             }
         }
 
@@ -85,23 +79,17 @@ public class ChannelIndicatorLine extends LinearLayout {
                 indicator.setAlpha(0.6f);
             } else {
                 indicator.setBackgroundResource(R.drawable.indicator_item_open_sleeping);
-                indicator.setAlpha(1f);
+                indicator.setAlpha(0.8f);
             }
         }
     }
 
-    protected void addIndicator(int orientation) {
+    protected void addIndicator() {
         View indicator = new View(getContext());
         final LayoutParams params = generateDefaultLayoutParams();
         params.width = mIndicatorWidth;
         params.height = mIndicatorHeight;
-        if (orientation == HORIZONTAL) {
-            params.leftMargin = mIndicatorMargin;
-            params.rightMargin = mIndicatorMargin;
-        } else {
-            params.topMargin = mIndicatorMargin;
-            params.bottomMargin = mIndicatorMargin;
-        }
+        params.rightMargin = mIndicatorMargin;
         addView(indicator, params);
     }
 }

@@ -13,14 +13,13 @@ import fr.acinq.bitcoin.Crypto.{PrivateKey, PublicKey}
 import scala.concurrent.{Await, ExecutionContextExecutor}
 import immortan.sqlite.{DBInterface, PreparedQuery, RichCursor}
 import fr.acinq.eclair.router.Router.{PublicChannel, RouterConf}
+import fr.acinq.eclair.transactions.{DirectedHtlc, RemoteFulfill}
 import fr.acinq.eclair.channel.{ChannelKeys, LocalParams, PersistentChannelData}
-import fr.acinq.eclair.transactions.{DirectedHtlc, RemoteFulfill, Transactions}
 import akka.actor.{ActorRef, ActorSystem, PoisonPill, Props, SupervisorStrategy}
 import fr.acinq.eclair.blockchain.electrum.db.WalletDb
 import fr.acinq.eclair.router.ChannelUpdateExt
 import java.util.concurrent.atomic.AtomicLong
 import immortan.SyncMaster.ShortChanIdSet
-import fr.acinq.eclair.crypto.Generators
 import immortan.crypto.Noise.KeyPair
 import immortan.crypto.CanBeShutDown
 import akka.util.Timeout
@@ -53,18 +52,18 @@ object LNParams {
 
   // Variables to be assigned at runtime
 
-  var chainHash: ByteVector32 = Block.LivenetGenesisBlock.hash
-
   var secret: WalletSecret = _
-  var routerConf: RouterConf = _
-  var syncParams: SyncParams = _
-  var denomination: Denomination = _
-  var fiatRatesInfo: FiatRatesInfo = _
-  var feeRatesInfo: FeeRatesInfo = _
-  var trampoline: TrampolineOn = _
+  var chainHash: ByteVector32 = _
   var chainWallet: WalletExt = _
   var cm: ChannelMaster = _
+
   var ourInit: Init = _
+  var routerConf: RouterConf = _
+  var syncParams: SyncParams = _
+  var trampoline: TrampolineOn = _
+  var denomination: Denomination = _
+  var feeRatesInfo: FeeRatesInfo = _
+  var fiatRatesInfo: FiatRatesInfo = _
 
   // Last known chain tip (zero is unknown)
   val blockCount: AtomicLong = new AtomicLong(0L)
@@ -186,7 +185,6 @@ case class SwapInStateExt(state: SwapInState, nodeId: PublicKey)
 case class LastChainBalance(confirmed: Satoshi, unconfirmed: Satoshi, stamp: Long) {
   def isTooLongAgo: Boolean = System.currentTimeMillis - 3600 * 24 * 14 * 1000L < stamp
   val totalBalance: MilliSatoshi = confirmed.toMilliSatoshi + unconfirmed
-  val totalSatLong: Long = confirmed.toLong + unconfirmed.toLong
 }
 
 // Interfaces

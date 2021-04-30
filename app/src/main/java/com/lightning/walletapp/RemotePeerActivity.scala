@@ -140,8 +140,8 @@ class RemotePeerActivity extends BaseActivity with ExternalDataChecker { me =>
     val canSendFiat = WalletApp.currentMsatInFiatHuman(WalletApp.lastChainBalance.totalBalance)
 
     def useMax(alert: AlertDialog): Unit = {
-      val balanceSatLong = WalletApp.lastChainBalance.totalSatLong
-      manager.inputAmount.setText(balanceSatLong.toString)
+      val balanceSat = WalletApp.lastChainBalance.totalBalance.truncateToSatoshi
+      manager.inputAmount.setText(balanceSat.toLong.toString)
     }
 
     def attempt(alert: AlertDialog): Unit = {
