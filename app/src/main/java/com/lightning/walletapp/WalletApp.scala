@@ -29,7 +29,7 @@ import java.util.Date
 import scala.util.Try
 
 
-object WalletApp { me =>
+object WalletApp {
   var txDataBag: SQLiteTxExtended = _
   var extDataBag: SQLiteDataExtended = _
   var lastChainBalance: LastChainBalance = _
@@ -85,8 +85,6 @@ object WalletApp { me =>
       txDataBag = new SQLiteTxExtended(app, miscInterface)
       lastChainBalance = extDataBag.tryGetLastChainBalance getOrElse LastChainBalance(0L.sat, 0L.sat, 0L)
       usedAddons = extDataBag.tryGetAddons getOrElse UsedAddons(addons = List.empty)
-      if (app.isTablet) Table.DEFAULT_LIMIT.set(10)
-      else Table.DEFAULT_LIMIT.set(20)
     }
   }
 
@@ -191,7 +189,7 @@ object WalletApp { me =>
     LNParams.cm.notifyFSMs(LNParams.cm.allInChannelOutgoing, LNParams.cm.allIncomingResolutions, Nil, makeMissingOutgoingFSM = true)
   }
 
-  def syncAddonUpdate(fun: UsedAddons => UsedAddons): Unit = me synchronized {
+  def syncAddonUpdate(fun: UsedAddons => UsedAddons): Unit = synchronized {
     // Prevent races whenever multiple addons try to update data concurrently
     val usedAddons1: UsedAddons = fun(usedAddons)
     extDataBag.putAddons(usedAddons1)
