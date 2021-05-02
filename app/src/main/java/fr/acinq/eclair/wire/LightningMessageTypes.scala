@@ -18,7 +18,6 @@ package fr.acinq.eclair.wire
 
 import fr.acinq.eclair._
 import immortan.{ChannelMaster, LNParams}
-import scodec.bits.{BitVector, ByteVector}
 import fr.acinq.bitcoin.Crypto.{PrivateKey, PublicKey}
 import java.net.{Inet4Address, Inet6Address, InetAddress, InetSocketAddress}
 import fr.acinq.eclair.{CltvExpiry, CltvExpiryDelta, Features, MilliSatoshi, ShortChannelId, UInt64}
@@ -28,6 +27,7 @@ import fr.acinq.eclair.channel.ChannelVersion
 import fr.acinq.eclair.router.Announcements
 import java.nio.charset.StandardCharsets
 import com.google.common.base.Charsets
+import scodec.bits.ByteVector
 import immortan.crypto.Tools
 import scodec.DecodeResult
 import java.nio.ByteOrder
@@ -267,7 +267,7 @@ case class InitHostedChannel(maxHtlcValueInFlightMsat: UInt64, htlcMinimumMsat: 
                              liabilityDeadlineBlockdays: Int, minimalOnchainRefundAmountSatoshis: Satoshi, initialClientBalanceMsat: MilliSatoshi,
                              version: ChannelVersion) extends HostedChannelMessage
 
-case class HostedChannelBranding(rgbColor: Color, pngIcon: ByteVector, contactInfo: String) extends HostedChannelMessage
+case class HostedChannelBranding(rgbColor: Color, pngIcon: Option[ByteVector], pngBackground: Option[ByteVector], contactInfo: String) extends HostedChannelMessage
 
 case class LastCrossSignedState(isHost: Boolean, refundScriptPubKey: ByteVector, initHostedChannel: InitHostedChannel, blockDay: Long, localBalanceMsat: MilliSatoshi,
                                 remoteBalanceMsat: MilliSatoshi, localUpdates: Long, remoteUpdates: Long, incomingHtlcs: List[UpdateAddHtlc], outgoingHtlcs: List[UpdateAddHtlc],

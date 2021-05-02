@@ -183,7 +183,7 @@ case class UpdateAddHtlcExt(theirAdd: UpdateAddHtlc, remoteInfo: RemoteNodeInfo)
 case class SwapInStateExt(state: SwapInState, nodeId: PublicKey)
 
 case class LastChainBalance(confirmed: Satoshi, unconfirmed: Satoshi, stamp: Long) {
-  def isTooLongAgo: Boolean = System.currentTimeMillis - 3600 * 24 * 14 * 1000L < stamp
+  def isTooLongAgo: Boolean = System.currentTimeMillis - 3600 * 24 * 7 * 1000L < stamp
   val totalBalance: MilliSatoshi = confirmed.toMilliSatoshi + unconfirmed
 }
 

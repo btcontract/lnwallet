@@ -184,15 +184,14 @@ object WalletApp {
         LNParams.cm.initConnect
       }
 
-      override def onTransactionReceived(event: TransactionReceived): Unit =
-        if (event.received >= event.sent) {
-          val txDescription = TxDescription.defineDescription(LNParams.cm.all.values, event.walletAddreses, event.tx)
-          txDataBag.putTx(event, isIncoming = 1L, txDescription, lastChainBalance.totalBalance, LNParams.fiatRatesInfo.rates)
-        } else {
-          val txDescription = TxDescription.defineDescription(LNParams.cm.all.values, Nil, event.tx)
-          // Outgoing tx should already be present in db so this will fail silently unless sent from other wallet
-          txDataBag.putTx(event, 0L, txDescription, lastChainBalance.totalBalance, LNParams.fiatRatesInfo.rates)
-        }
+      override def onTransactionReceived(event: TransactionReceived): Unit = if (event.received >= event.sent) {
+        val txDescription = TxDescription.defineDescription(LNParams.cm.all.values, event.walletAddreses, event.tx)
+        txDataBag.putTx(event, isIncoming = 1L, txDescription, lastChainBalance.totalBalance, LNParams.fiatRatesInfo.rates)
+      } else {
+        val txDescription = TxDescription.defineDescription(LNParams.cm.all.values, Nil, event.tx)
+        // Outgoing tx should already be present in db so this will fail silently unless sent from other wallet
+        txDataBag.putTx(event, 0L, txDescription, lastChainBalance.totalBalance, LNParams.fiatRatesInfo.rates)
+      }
 
       override def onChainDisconnected: Unit = {
         // Remember to eventually stop accepting payments

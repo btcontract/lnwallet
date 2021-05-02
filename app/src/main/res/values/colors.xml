@@ -56,5 +56,5 @@
     <color name="grey_400">#BDBDBD</color>
     <color name="white">#FFFFFF</color>
     <color name="almostBlack">#1A1A1A</color>
-    <color name="accent">#ec2045</color>
+    <color name="ratingAccent">#ec2045</color>
 </resources>

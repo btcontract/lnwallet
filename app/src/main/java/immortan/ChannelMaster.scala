@@ -91,16 +91,16 @@ class ChannelMaster(val payBag: PaymentBag, val chanBag: ChannelBag, val dataBag
     override def onOperational(worker: CommsTower.Worker, theirInit: Init): Unit =
       fromNode(worker.info.nodeId).foreach(_.chan process CMD_SOCKET_ONLINE)
 
-    override def onMessage(worker: CommsTower.Worker, msg: LightningMessage): Unit = msg match {
-      case nodeError: Error if nodeError.channelId == ByteVector32.Zeroes => fromNode(worker.info.nodeId).foreach(_.chan process nodeError)
-      case channelUpdate: ChannelUpdate => fromNode(worker.info.nodeId).foreach(_.chan process channelUpdate)
-      case message: HasChannelId => sendTo(message, message.channelId)
+    override def onMessage(worker: CommsTower.Worker, message: LightningMessage): Unit = message match {
+      case msg: Error if msg.channelId == ByteVector32.Zeroes => fromNode(worker.info.nodeId).foreach(_.chan process msg)
+      case msg: ChannelUpdate => fromNode(worker.info.nodeId).foreach(_.chan process msg)
+      case msg: HasChannelId => sendTo(msg, msg.channelId)
       case _ => // Do nothing
     }
 
-    override def onHostedMessage(worker: CommsTower.Worker, msg: HostedChannelMessage): Unit = msg match {
-      case branding: HostedChannelBranding => dataBag.putBranding(worker.info.nodeId, branding)
-      case _ => hostedFromNode(worker.info.nodeId).foreach(_ process msg)
+    override def onHostedMessage(worker: CommsTower.Worker, message: HostedChannelMessage): Unit = message match {
+      case msg: HostedChannelBranding => dataBag.putBranding(worker.info.nodeId, msg)
+      case _ => hostedFromNode(worker.info.nodeId).foreach(_ process message)
     }
 
     override def onDisconnect(worker: CommsTower.Worker): Unit = {
