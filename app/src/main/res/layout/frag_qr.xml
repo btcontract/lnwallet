@@ -6,10 +6,6 @@
     android:padding="15dp">
 
     <TextView
-        android:maxLines="2"
-        android:ellipsize="end"
-        android:textSize="14sp"
-        android:maxWidth="200dp"
         android:id="@+id/qrLabel"
         android:paddingTop="10dp"
         android:paddingBottom="20dp"

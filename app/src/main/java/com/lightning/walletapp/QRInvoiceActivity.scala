@@ -1,17 +1,21 @@
 package com.lightning.walletapp
 
 import com.lightning.walletapp.R.string._
+import android.widget.{ImageView, RelativeLayout, TextView}
 import immortan.utils.{InputParser, PaymentRequestExt}
 import com.lightning.walletapp.BaseActivity.StringOps
-import android.widget.TextView
+import androidx.transition.TransitionManager
 import immortan.crypto.Tools
 import immortan.LNParams
 import android.os.Bundle
+import android.view.View
 
 
 class QRInvoiceActivity extends QRActivity with ExternalDataChecker { me =>
-  lazy private[this] val qrViewHolder = new QRViewHolder(me findViewById R.id.invoiceQr)
+  lazy private[this] val activityQRInvoiceMain = findViewById(R.id.activityQRInvoiceMain).asInstanceOf[RelativeLayout]
   lazy private[this] val invoiceQrCaption = findViewById(R.id.invoiceQrCaption).asInstanceOf[TextView]
+  lazy private[this] val invoiceSuccess = findViewById(R.id.invoiceSuccess).asInstanceOf[ImageView]
+  lazy private[this] val qrViewHolder = new QRViewHolder(me findViewById R.id.invoiceQr)
 
   def INIT(state: Bundle): Unit =
     if (WalletApp.isAlive && LNParams.isOperational) {
@@ -31,6 +35,11 @@ class QRInvoiceActivity extends QRActivity with ExternalDataChecker { me =>
       qrViewHolder.qrLabel setText amountHuman.html
       qrViewHolder.qrCode setImageBitmap bitmap
     }
+
+  def displaySuccess: Unit = {
+    TransitionManager.beginDelayedTransition(activityQRInvoiceMain)
+    invoiceSuccess setVisibility View.VISIBLE
+  }
 
   override def checkExternalData(whenNone: Runnable): Unit = InputParser.checkAndMaybeErase {
     case paymentRequestExt: PaymentRequestExt => showInvoice(paymentRequestExt)
