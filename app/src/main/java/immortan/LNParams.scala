@@ -40,10 +40,8 @@ object LNParams {
   val maxChainConnectionsCount: Int = 5
   val maxAcceptedHtlcs: Int = 483
 
-  val minHostedOnChainRefund: Satoshi = Satoshi(1000000L)
   val minPayment: MilliSatoshi = MilliSatoshi(5000L)
   val minFundingSatoshis: Satoshi = Satoshi(100000L)
-  val minHostedLiabilityBlockdays: Int = 365
   val minDustLimit: Satoshi = Satoshi(546L)
   val minDepthBlocks: Int = 3
 

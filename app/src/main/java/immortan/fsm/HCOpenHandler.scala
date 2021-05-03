@@ -26,7 +26,7 @@ abstract class HCOpenHandler(info: RemoteNodeInfo, peerSpecificSecret: ByteVecto
     override def onDisconnect(worker: CommsTower.Worker): Unit = CommsTower.rmListenerNative(info, me)
     override def onOperational(worker: CommsTower.Worker, theirInit: Init): Unit = freshChannel process CMD_SOCKET_ONLINE
 
-    override def onHostedMessage(worker: CommsTower.Worker, message: HostedChannelMessage): Unit = {
+    override def onHostedMessage(worker: CommsTower.Worker, message: HostedChannelMessage): Unit = message match {
       case msg: HostedChannelBranding => cm.dataBag.putBranding(worker.info.nodeId, msg)
       case _ => freshChannel process message
     }

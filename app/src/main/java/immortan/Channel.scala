@@ -4,7 +4,6 @@ import immortan.crypto.Tools._
 import fr.acinq.eclair.channel._
 import immortan.crypto.{CanBeRepliedTo, StateMachine}
 import fr.acinq.eclair.transactions.{RemoteFulfill, RemoteReject}
-import fr.acinq.eclair.blockchain.CurrentBlockCount
 import scala.concurrent.ExecutionContextExecutor
 import fr.acinq.eclair.wire.LightningMessage
 import immortan.Channel.channelContext
@@ -107,9 +106,10 @@ trait Channel extends StateMachine[ChannelData] with CanBeRepliedTo { me =>
     override def addReceived(add: UpdateAddHtlcExt): Unit = for (lst <- listeners) lst.addReceived(add)
   }
 
-  class Receiver extends Actor {
-    context.system.eventStream.subscribe(channel = classOf[CurrentBlockCount], subscriber = self)
-    override def receive: Receive = { case anyMessage => me process anyMessage }
+  class ActorEventsReceiver extends Actor {
+    override def receive: Receive = {
+      case msg => me process msg
+    }
   }
 }
 

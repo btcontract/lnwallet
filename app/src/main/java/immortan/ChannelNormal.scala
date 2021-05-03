@@ -32,7 +32,7 @@ object ChannelNormal {
 }
 
 abstract class ChannelNormal(bag: ChannelBag) extends Channel with Handlers { me =>
-  val receiver: ActorRef = LNParams.system actorOf Props(new Receiver)
+  val receiver: ActorRef = LNParams.system actorOf Props(new ActorEventsReceiver)
   val chainWallet: WalletExt
 
   def doProcess(change: Any): Unit =
@@ -392,12 +392,6 @@ abstract class ChannelNormal(bag: ChannelBag) extends Channel with Handlers { me
       case (wait: DATA_WAIT_FOR_FUNDING_LOCKED, _: ChannelReestablish, SLEEPING) =>
         BECOME(wait, WAIT_FUNDING_DONE)
         SEND(wait.lastSent)
-
-
-      case (_: HasNormalCommitments, _: CurrentBlockCount, OPEN | SLEEPING) => ??? // May need to force-close
-
-
-      case (_: HasNormalCommitments, _: CurrentBlockCount, OPEN | SLEEPING | CLOSING) => ??? // May need to further spend HTLC
 
 
       case (closing: DATA_CLOSING, WatchEventSpent(BITCOIN_OUTPUT_SPENT, tx), CLOSING) =>

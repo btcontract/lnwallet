@@ -3,9 +3,9 @@ package immortan.fsm
 import fr.acinq.eclair._
 import fr.acinq.eclair.wire._
 import immortan.fsm.IncomingPaymentProcessor._
+import fr.acinq.eclair.channel.{CMD_FAIL_HTLC, CMD_FULFILL_HTLC, ReasonableLocal, ReasonableTrampoline}
 import immortan.ChannelMaster.{OutgoingAdds, PreimageTry, ReasonableLocals, ReasonableTrampolines}
 import immortan.{ChannelMaster, InFlightPayments, LNParams, PaymentInfo, PaymentStatus}
-import fr.acinq.eclair.channel.{ReasonableLocal, ReasonableTrampoline}
 import immortan.crypto.{CanBeShutDown, StateMachine}
 import fr.acinq.eclair.transactions.RemoteFulfill
 import fr.acinq.eclair.router.RouteCalculation
@@ -88,13 +88,12 @@ class IncomingPaymentReceiver(val fullTag: FullPaymentTag, cm: ChannelMaster) ex
 
   // Utils
 
-  def fulfill(preimage: ByteVector32, adds: ReasonableLocals): Unit = {
-    for (local <- adds) cm.sendTo(local.fulfillCommand(preimage), local.add.channelId)
-  }
+  def fulfill(preimage: ByteVector32, adds: ReasonableLocals): Unit =
+    for (local <- adds) cm.sendTo(CMD_FULFILL_HTLC(preimage, local.add), local.add.channelId)
 
   def abort(data1: IncomingAborted, adds: ReasonableLocals): Unit = data1.failure match {
-    case None => for (local <- adds) cm.sendTo(local.failCommand(LNParams incorrectDetails local.add.amountMsat), local.add.channelId)
-    case Some(specificFail) => for (local <- adds) cm.sendTo(local.failCommand(specificFail), local.add.channelId)
+    case None => for (local <- adds) cm.sendTo(CMD_FAIL_HTLC(Right(LNParams incorrectDetails local.add.amountMsat), local.secret, local.add), local.add.channelId)
+    case Some(specificLocalFail) => for (local <- adds) cm.sendTo(CMD_FAIL_HTLC(Right(specificLocalFail), local.secret, local.add), local.add.channelId)
   }
 
   def becomeAborted(data1: IncomingAborted, adds: ReasonableLocals): Unit = {
@@ -249,13 +248,11 @@ class TrampolinePaymentRelayer(val fullTag: FullPaymentTag, cm: ChannelMaster) e
     case _ =>
   }
 
-  def fulfill(preimage: ByteVector32, adds: ReasonableTrampolines): Unit = {
-    for (local <- adds) cm.sendTo(local.fulfillCommand(preimage), local.add.channelId)
-  }
+  def fulfill(preimage: ByteVector32, adds: ReasonableTrampolines): Unit =
+    for (local <- adds) cm.sendTo(CMD_FULFILL_HTLC(preimage, local.add), local.add.channelId)
 
-  def abort(data1: TrampolineAborted, adds: ReasonableTrampolines): Unit = {
-    for (local <- adds) cm.sendTo(local.failCommand(data1.failure), local.add.channelId)
-  }
+  def abort(data1: TrampolineAborted, adds: ReasonableTrampolines): Unit =
+    for (local <- adds) cm.sendTo(CMD_FAIL_HTLC(Right(data1.failure), local.secret, local.add), local.add.channelId)
 
   def becomeSendingOrAborted(adds: ReasonableTrampolines): Unit = {
     require(adds.nonEmpty, "A set of incoming HTLCs must be non-empty")

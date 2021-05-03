@@ -202,8 +202,8 @@ object WalletApp {
 
     // Get up channels and payment FSMs
     LNParams.cm.all = Channel.load(listeners = Set(LNParams.cm), chanBag)
-    // This is a critically important update which will create all in/routed/out FSMs if we still have pending payments in channels
-    LNParams.cm.notifyFSMs(LNParams.cm.allInChannelOutgoing, LNParams.cm.allIncomingResolutions, Nil, makeMissingOutgoingFSM = true)
+    // This is a critically important inital update which will create all in/routed/out FSMs
+    LNParams.cm.notifyFSMs(LNParams.cm.allInChannelOutgoing, LNParams.cm.allIncomingResolutions)
   }
 
   def syncAddonUpdate(fun: UsedAddons => UsedAddons): Unit = synchronized {

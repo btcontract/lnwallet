@@ -293,16 +293,13 @@ object LightningMessageCodecs {
       (millisatoshi withContext "htlcMinimumMsat") ::
       (uint16 withContext "maxAcceptedHtlcs") ::
       (millisatoshi withContext "channelCapacityMsat") ::
-      (uint16 withContext "liabilityDeadlineBlockdays") ::
-      (satoshi withContext "minimalOnchainRefundAmountSatoshis") ::
       (millisatoshi withContext "initialClientBalanceMsat") ::
       (channelVersionCodec withContext "version")
   }.as[InitHostedChannel]
 
-  val hostedChannelBrandingCodec = {
+  lazy val hostedChannelBrandingCodec = {
     (rgb withContext "rgbColor") ::
       (optional(bool8, varsizebinarydata) withContext "pngIcon") ::
-      (optional(bool8, varsizebinarydata) withContext "pngBackground") ::
       (variableSizeBytes(uint16, utf8) withContext "contactInfo")
   }.as[HostedChannelBranding]
 
@@ -336,9 +333,6 @@ object LightningMessageCodecs {
       (bytes64 withContext "localSigOfRemoteLCSS")
   }.as[StateOverride]
 
-  val refundPendingCodec =
-    (uint32 withContext "startedAt").as[RefundPending]
-
   lazy val announcementSignatureCodec = {
     (bytes64 withContext "nodeSignature") ::
       (bool8 withContext "wantsReply")
@@ -358,28 +352,47 @@ object LightningMessageCodecs {
   lazy val replyPreimagesCodec = (listOfN(uint16, bytes32) withContext "preimages").as[ReplyPreimages]
 
   final val HC_INVOKE_HOSTED_CHANNEL_TAG = 65535
+
   final val HC_INIT_HOSTED_CHANNEL_TAG = 65533
+
   final val HC_LAST_CROSS_SIGNED_STATE_TAG = 65531
+
   final val HC_STATE_UPDATE_TAG = 65529
+
   final val HC_STATE_OVERRIDE_TAG = 65527
+
   final val HC_HOSTED_CHANNEL_BRANDING_TAG = 65525
-  final val HC_REFUND_PENDING_TAG = 65523
-  final val HC_ANNOUNCEMENT_SIGNATURE_TAG = 65521
-  final val HC_RESIZE_CHANNEL_TAG = 65519
-  final val HC_QUERY_PUBLIC_HOSTED_CHANNELS_TAG = 65517
-  final val HC_REPLY_PUBLIC_HOSTED_CHANNELS_END_TAG = 65515
-  final val HC_QUERY_PREIMAGES_TAG = 65513
-  final val HC_REPLY_PREIMAGES_TAG = 65511
+
+  final val HC_ANNOUNCEMENT_SIGNATURE_TAG = 65523
+
+  final val HC_RESIZE_CHANNEL_TAG = 65521
+
+  final val HC_QUERY_PUBLIC_HOSTED_CHANNELS_TAG = 65519
+
+  final val HC_REPLY_PUBLIC_HOSTED_CHANNELS_END_TAG = 65517
+
+  final val HC_QUERY_PREIMAGES_TAG = 65515
+
+  final val HC_REPLY_PREIMAGES_TAG = 65513
+
 
   final val PHC_ANNOUNCE_GOSSIP_TAG = 64513
+
   final val PHC_ANNOUNCE_SYNC_TAG = 64511
+
   final val PHC_UPDATE_GOSSIP_TAG = 64509
+
   final val PHC_UPDATE_SYNC_TAG = 64507
 
+
   final val HC_UPDATE_ADD_HTLC_TAG = 63505
+
   final val HC_UPDATE_FULFILL_HTLC_TAG = 63503
+
   final val HC_UPDATE_FAIL_HTLC_TAG = 63501
+
   final val HC_UPDATE_FAIL_MALFORMED_HTLC_TAG = 63499
+
   final val HC_ERROR_TAG = 63497
 
   // SWAP-IN
@@ -455,15 +468,23 @@ object LightningMessageCodecs {
   }.as[SwapOutTransactionDenied]
 
   final val SWAP_IN_REQUEST_MESSAGE_TAG = 55037
+
   final val SWAP_IN_RESPONSE_MESSAGE_TAG = 55035
+
   final val SWAP_IN_PAYMENT_REQUEST_MESSAGE_TAG = 55033
+
   final val SWAP_IN_PAYMENT_DENIED_MESSAGE_TAG = 55031
+
   final val SWAP_IN_STATE_MESSAGE_TAG = 55029
 
   final val SWAP_OUT_REQUEST_MESSAGE_TAG = 55027
+
   final val SWAP_OUT_FEERATES_MESSAGE_TAG = 55025
+
   final val SWAP_OUT_TRANSACTION_REQUEST_MESSAGE_TAG = 55023
+
   final val SWAP_OUT_TRANSACTION_RESPONSE_MESSAGE_TAG = 55021
+
   final val SWAP_OUT_TRANSACTION_DENIED_MESSAGE_TAG = 55019
 
   // TRAMPOLINE STATUS
@@ -528,7 +549,6 @@ object LightningMessageCodecs {
       case HC_INVOKE_HOSTED_CHANNEL_TAG => invokeHostedChannelCodec
       case HC_INIT_HOSTED_CHANNEL_TAG => initHostedChannelCodec
       case HC_STATE_OVERRIDE_TAG => stateOverrideCodec
-      case HC_REFUND_PENDING_TAG => refundPendingCodec
       case HC_RESIZE_CHANNEL_TAG => resizeChannelCodec
       case HC_STATE_UPDATE_TAG => stateUpdateCodec
 
@@ -576,7 +596,6 @@ object LightningMessageCodecs {
     case msg: InvokeHostedChannel => UnknownMessage(HC_INVOKE_HOSTED_CHANNEL_TAG, invokeHostedChannelCodec.encode(msg).require.toByteVector)
     case msg: InitHostedChannel => UnknownMessage(HC_INIT_HOSTED_CHANNEL_TAG, initHostedChannelCodec.encode(msg).require.toByteVector)
     case msg: StateOverride => UnknownMessage(HC_STATE_OVERRIDE_TAG, stateOverrideCodec.encode(msg).require.toByteVector)
-    case msg: RefundPending => UnknownMessage(HC_REFUND_PENDING_TAG, refundPendingCodec.encode(msg).require.toByteVector)
     case msg: ResizeChannel => UnknownMessage(HC_RESIZE_CHANNEL_TAG, resizeChannelCodec.encode(msg).require.toByteVector)
     case msg: StateUpdate => UnknownMessage(HC_STATE_UPDATE_TAG, stateUpdateCodec.encode(msg).require.toByteVector)
 

@@ -221,7 +221,7 @@ class ChannelMaster(val payBag: PaymentBag, val chanBag: ChannelBag, val dataBag
     case _ => None // Has never been sent or ABORTED by now
   }
 
-  def notifyFSMs(out: Map[FullPaymentTag, OutgoingAdds], in: Iterable[IncomingResolution], rejects: Seq[RemoteReject], makeMissingOutgoingFSM: Boolean): Unit = {
+  def notifyFSMs(out: Map[FullPaymentTag, OutgoingAdds], in: Iterable[IncomingResolution], rejects: Seq[RemoteReject] = Nil): Unit = {
     in.foreach { case finalResolve: FinalResolution => sendTo(finalResolve, finalResolve.theirAdd.channelId) case _ => } // First, immediately resolve invalid adds
     val partialIncoming = in.collect { case resolve: ReasonableResolution => resolve }.groupBy(_.fullTag) // Then, collect reasonable adds which need further analysis
     val bag = InFlightPayments(out, partialIncoming)
@@ -229,14 +229,16 @@ class ChannelMaster(val payBag: PaymentBag, val chanBag: ChannelBag, val dataBag
     bag.allTags.foreach {
       case fullTag if PaymentTagTlv.TRAMPLOINE_ROUTED == fullTag.tag && !inProcessors.contains(fullTag) => inProcessors += new TrampolinePaymentRelayer(fullTag, me).tuple
       case fullTag if PaymentTagTlv.FINAL_INCOMING == fullTag.tag && !inProcessors.contains(fullTag) => inProcessors += new IncomingPaymentReceiver(fullTag, me).tuple
-      case fullTag if PaymentTagTlv.LOCALLY_SENT == fullTag.tag && makeMissingOutgoingFSM => opm process CreateSenderFSM(fullTag, localPaymentListener)
+      case fullTag if PaymentTagTlv.LOCALLY_SENT == fullTag.tag => opm process CreateSenderFSM(fullTag, localPaymentListener)
       case _ => // Do nothing
     }
 
-    // An FSM may have been created, but now no related payments are left
-    // this specific change is used by FSMs to properly finalize themselves
-    for (inFSM <- inProcessors.values) inFSM doProcess bag
-    for (reject <- rejects) opm process reject
+    // An FSM was created, but now no related payments are left
+    // this change is used by FSMs to properly finalize themselves
+    for (incomingFSM <- inProcessors.values) incomingFSM doProcess bag
+    // Send another part only after current failure has been cross-signed
+    for (ourRejectOfTheirAdd <- rejects) opm process ourRejectOfTheirAdd
+    // Maybe remove successful outgoing FSMs
     opm process bag
   }
 
@@ -261,8 +263,9 @@ class ChannelMaster(val payBag: PaymentBag, val chanBag: ChannelBag, val dataBag
   }
 
   override def stateUpdated(rejects: Seq[RemoteReject] = Nil): Unit = {
-    // Outgoing FSM should have been created on app startup, here we specifically do not ever recreate it
-    notifyFSMs(allInChannelOutgoing, allIncomingResolutions, rejects, makeMissingOutgoingFSM = false)
+    notifyFSMs(allInChannelOutgoing, allIncomingResolutions, rejects)
+    // Sign all fails and fulfills that could have been sent above
+    all.values.foreach(_ process CMD_SIGN)
     notifyStateUpdated
   }
 
