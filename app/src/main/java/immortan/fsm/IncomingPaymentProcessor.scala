@@ -38,7 +38,7 @@ case class IncomingRevealed(preimage: ByteVector32) extends IncomingProcessorDat
 case class IncomingAborted(failure: Option[FailureMessage] = None) extends IncomingProcessorData
 
 class IncomingPaymentReceiver(val fullTag: FullPaymentTag, cm: ChannelMaster) extends IncomingPaymentProcessor {
-  def askCovered(adds: ReasonableLocals, info: PaymentInfo): Boolean = info.pr.amount.exists(asked => amountIn(adds) >= asked)
+  def askCovered(adds: ReasonableLocals, info: PaymentInfo): Boolean = info.prExt.pr.amount.exists(amountIn(adds).>=)
   def amountIn(adds: ReasonableLocals): MilliSatoshi = adds.map(_.add.amountMsat).sum
 
   require(fullTag.tag == PaymentTagTlv.FINAL_INCOMING)
@@ -58,10 +58,10 @@ class IncomingPaymentReceiver(val fullTag: FullPaymentTag, cm: ChannelMaster) ex
       val preimageTry: PreimageTry = cm.getPreimageMemo.get(fullTag.paymentHash)
 
       cm.getPaymentInfoMemo.get(fullTag.paymentHash).toOption match {
-        case None if preimageTry.isSuccess => becomeRevealed(preimageTry.get, adds) // We did not ask for this, but have a preimage: fulfill anyway
-        case Some(alreadyRevealed) if alreadyRevealed.isIncoming && PaymentStatus.SUCCEEDED == alreadyRevealed.status => becomeRevealed(alreadyRevealed.preimage, adds)
+        case None if preimageTry.isSuccess => becomeRevealed(preimageTry.get, adds) // We did not ask for this but have a preimage: fulfill anyway
+        case Some(isRevealed) if isRevealed.isIncoming && PaymentStatus.SUCCEEDED == isRevealed.status => becomeRevealed(isRevealed.preimage, adds)
         case _ if adds.exists(_.add.cltvExpiry.toLong < LNParams.blockCount.get + LNParams.cltvRejectThreshold) => becomeAborted(IncomingAborted(None), adds)
-        case Some(covered) if covered.isIncoming && covered.pr.amount.isDefined && askCovered(adds, covered) => becomeRevealed(covered.preimage, adds)
+        case Some(covered) if covered.isIncoming && covered.prExt.pr.amount.isDefined && askCovered(adds, covered) => becomeRevealed(covered.preimage, adds)
         case None => becomeAborted(IncomingAborted(None), adds) // We did not ask for this and there is no preimage: nothing to do but fail
         case _ => // Do nothing, wait for more parts or a timeout
       }

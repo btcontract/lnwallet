@@ -2,7 +2,7 @@
     <style name="AppTheme" parent="Theme.AppCompat">
         <item name="colorPrimaryDark">@color/bg</item>
         <item name="colorAccent">@color/colorAccent</item>
-        <item name="fontFamily">@font/lato_regular</item>
+        <item name="android:fontFamily">@font/lato_regular</item>
         <item name="android:textColor">@color/text</item>
         <item name="android:textSize">18sp</item>
     </style>

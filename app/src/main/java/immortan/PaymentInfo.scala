@@ -2,12 +2,11 @@ package immortan
 
 import fr.acinq.eclair._
 import immortan.utils.ImplicitJsonFormats._
-import immortan.utils.{Denomination, LNUrl}
-import immortan.crypto.Tools.{Bytes, Fiat2Btc}
 import fr.acinq.eclair.channel.{DATA_CLOSING, DATA_NEGOTIATING, HasNormalCommitments}
+import immortan.utils.{Denomination, LNUrl, PaymentRequestExt}
 import fr.acinq.bitcoin.{ByteVector32, Satoshi, Transaction}
 import fr.acinq.eclair.wire.{FullPaymentTag, PaymentTagTlv}
-import fr.acinq.eclair.payment.PaymentRequest
+import immortan.crypto.Tools.{Bytes, Fiat2Btc}
 import fr.acinq.bitcoin.Crypto.PublicKey
 import fr.acinq.eclair.MilliSatoshi
 import scodec.bits.ByteVector
@@ -43,10 +42,10 @@ case class PaymentInfo(prString: String, preimage: ByteVector32, status: String,
   val tag: Int = if (isIncoming) PaymentTagTlv.FINAL_INCOMING else PaymentTagTlv.LOCALLY_SENT
   val fullTag: FullPaymentTag = FullPaymentTag(paymentHash, paymentSecret, tag)
 
+  lazy val prExt: PaymentRequestExt = PaymentRequestExt.fromRaw(prString)
   lazy val description: PaymentDescription = to[PaymentDescription](descriptionString)
   lazy val fiatRateSnapshot: Fiat2Btc = to[Fiat2Btc](fiatRatesString)
   lazy val action: PaymentAction = to[PaymentAction](actionString)
-  lazy val pr: PaymentRequest = PaymentRequest.read(prString)
 }
 
 // Payment actions

@@ -140,13 +140,13 @@ abstract class ChannelHosted extends Channel { me =>
 
 
       // CMD_SIGN will be sent from ChannelMaster strictly after outgoing FSM sends this command
-      case (hc: HostedCommits, cmd: CMD_FAIL_HTLC, OPEN | SLEEPING | SUSPENDED) if !hc.alreadyReplied(cmd.theirAdd.id) =>
+      case (hc: HostedCommits, cmd: CMD_FAIL_HTLC, OPEN) if !hc.alreadyReplied(cmd.theirAdd.id) =>
         val msg = OutgoingPacket.buildHtlcFailure(cmd, theirAdd = cmd.theirAdd)
         StoreBecomeSend(hc.addLocalProposal(msg), state, msg)
 
 
       // CMD_SIGN will be sent from ChannelMaster strictly after outgoing FSM sends this command
-      case (hc: HostedCommits, cmd: CMD_FAIL_MALFORMED_HTLC, OPEN | SLEEPING | SUSPENDED) if !hc.alreadyReplied(cmd.theirAdd.id) =>
+      case (hc: HostedCommits, cmd: CMD_FAIL_MALFORMED_HTLC, OPEN) if !hc.alreadyReplied(cmd.theirAdd.id) =>
         val msg = UpdateFailMalformedHtlc(hc.channelId, cmd.theirAdd.id, cmd.onionHash, cmd.failureCode)
         StoreBecomeSend(hc.addLocalProposal(msg), state, msg)
 

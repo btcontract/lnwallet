@@ -33,7 +33,7 @@ class QRChainActivity extends QRActivity { me =>
     }
 
     private def updateView(address: String, holder: QRViewHolder): Unit =
-      runInFutureProcessOnUI(QRActivity.get(address, qrSize), onFail) { bitmap =>
+      runInFutureProcessOnUI(QRActivity.get(address.toUpperCase, qrSize), onFail) { bitmap =>
         def share: Unit = runInFutureProcessOnUI(shareData(bitmap, address), onFail)(Tools.none)
         holder.qrCopy setOnClickListener onButtonTap(WalletApp.app copy address)
         holder.qrShare setOnClickListener onButtonTap(share)
@@ -66,7 +66,7 @@ class QRChainActivity extends QRActivity { me =>
         chainQrCodes.setAdapter(adapter)
       }
 
-      setContentView(R.layout.activity_qr_chain)
+      setContentView(R.layout.activity_qr_chain_addresses)
       chainQrCaption.setText(getString(dialog_receive_btc).html)
     } else {
       WalletApp.freePossiblyUsedResouces

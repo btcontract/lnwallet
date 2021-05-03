@@ -84,7 +84,7 @@ case class NormalCommits(channelVersion: ChannelVersion, remoteInfo: RemoteNodeI
   val availableForSend: MilliSatoshi = {
     // we need to base the next current commitment on the last sig we sent, even if we didn't yet receive their revocation
     val reduced = CommitmentSpec.reduce(latestRemoteCommit.spec, remoteChanges.acked, localChanges.proposed)
-    val balanceNoFees = (reduced.toRemote - remoteParams.channelReserve).max(0.msat)
+    val balanceNoFees = reduced.toRemote - remoteParams.channelReserve
     if (localParams.isFunder) {
       // The funder always pays the on-chain fees, so we must subtract that from the amount we can send.
       val commitFees = commitTxFeeMsat(remoteParams.dustLimit, reduced, channelVersion.commitmentFormat)
@@ -94,14 +94,14 @@ case class NormalCommits(channelVersion: ChannelVersion, remoteInfo: RemoteNodeI
       val amountToReserve = commitFees.max(funderFeeBuffer)
       if (balanceNoFees - amountToReserve < offeredHtlcTrimThreshold(remoteParams.dustLimit, reduced, channelVersion.commitmentFormat)) {
         // htlc will be trimmed
-        (balanceNoFees - amountToReserve).max(0.msat)
+        balanceNoFees - amountToReserve
       } else {
         // htlc will have an output in the commitment tx, so there will be additional fees.
         val commitFees1 = commitFees + htlcOutputFee(reduced.feeratePerKw, channelVersion.commitmentFormat)
         // we take the additional fees for that htlc output into account in the fee buffer at a x2 feerate increase
         val funderFeeBuffer1 = funderFeeBuffer + htlcOutputFee(reduced.feeratePerKw * 2, channelVersion.commitmentFormat)
         val amountToReserve1 = commitFees1.max(funderFeeBuffer1)
-        (balanceNoFees - amountToReserve1).max(0.msat)
+        balanceNoFees - amountToReserve1
       }
     } else {
       // The fundee doesn't pay on-chain fees.
@@ -111,7 +111,7 @@ case class NormalCommits(channelVersion: ChannelVersion, remoteInfo: RemoteNodeI
 
   val availableForReceive: MilliSatoshi = {
     val reduced = CommitmentSpec.reduce(localCommit.spec, localChanges.acked, remoteChanges.proposed)
-    val balanceNoFees = (reduced.toRemote - localParams.channelReserve).max(0.msat)
+    val balanceNoFees = reduced.toRemote - localParams.channelReserve
     if (localParams.isFunder) {
       // The fundee doesn't pay on-chain fees so we don't take those into account when receiving.
       balanceNoFees
@@ -124,14 +124,14 @@ case class NormalCommits(channelVersion: ChannelVersion, remoteInfo: RemoteNodeI
       val amountToReserve = commitFees.max(funderFeeBuffer)
       if (balanceNoFees - amountToReserve < receivedHtlcTrimThreshold(localParams.dustLimit, reduced, channelVersion.commitmentFormat)) {
         // htlc will be trimmed
-        (balanceNoFees - amountToReserve).max(0.msat)
+        balanceNoFees - amountToReserve
       } else {
         // htlc will have an output in the commitment tx, so there will be additional fees.
         val commitFees1 = commitFees + htlcOutputFee(reduced.feeratePerKw, channelVersion.commitmentFormat)
         // we take the additional fees for that htlc output into account in the fee buffer at a x2 feerate increase
         val funderFeeBuffer1 = funderFeeBuffer + htlcOutputFee(reduced.feeratePerKw * 2, channelVersion.commitmentFormat)
         val amountToReserve1 = commitFees1.max(funderFeeBuffer1)
-        (balanceNoFees - amountToReserve1).max(0.msat)
+        balanceNoFees - amountToReserve1
       }
     }
   }

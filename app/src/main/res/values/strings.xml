@@ -55,7 +55,7 @@
 
     <string name="dialog_receive_btc"><![CDATA[Receive to <strong>Bitcoin</strong> Address]]></string>
     <string name="dialog_receive_ln"><![CDATA[Receive to <strong>Lightning</strong> Invoice]]></string>
-    <string name="dialog_receive_ln_title">Lightning Invoice Amount</string>
+    <string name="dialog_optional_ln_description">optional description</string>
 
     <string name="dialog_can_send"><![CDATA[<strong>can send</strong> %1$s]]></string>
     <string name="dialog_can_receive"><![CDATA[<strong>can receive</strong> %1$s]]></string>
@@ -68,6 +68,11 @@
     <string name="error_could_not_decrypt"><![CDATA[<strong>Backup decryption failed</strong>.<br><br>Make sure that both backup file and recovery phrase are correct.<br><br>Error details:<br><br>%1$s]]></string>
     <string name="error_wrong_phrase"><![CDATA[<strong>A phrase must be 12 or 24 words long</strong>.<br><br><strong>All words must be different</strong>.]]></string>
     <string name="error_nothing_useful">Nothing useful is found</string>
+
+    <string name="error_ln_receive_waiting"><![CDATA[Can\'t request Lightning payments because none of your channels is open yet, please wait for more funding confirmations.]]></string>
+    <string name="error_ln_receive_no_update"><![CDATA[Can\'t request Lightning payments because receiving data is not yet available, please wait for more funding confirmations.]]></string>
+    <string name="error_ln_receive_reserve"><![CDATA[Can\'t request Lightning payments because first you need to spend at least <b>%1$s</b> to make some space for receiving.]]></string>
+    <string name="error_ln_receive_no_chans"><![CDATA[Can\'t request Lightning payments because no operational payment channels are present.]]></string>
 
     <string name="error_ln_payment_low_balance">Can not proceed because Lightning wallet does not have enough funds</string>
     <string name="error_ln_payment_in_flight">Can not proceed because this payment is already in-flight</string>

@@ -90,20 +90,18 @@ class RemotePeerActivity extends BaseActivity with ExternalDataChecker { me =>
   private var whenBackPressed: Runnable = UITask(finish)
   private var remoteNodeInfo: RemoteNodeInfo = _
 
-  override def checkExternalData(whenNone: Runnable): Unit =
-    InputParser.checkAndMaybeErase {
-      case remoteInfo: RemoteNodeInfo =>
-        peerIpAddress.setText(remoteInfo.address.toString)
-        peerNodeKey.setText(remoteInfo.nodeId.toString.humanFour)
-        CommsTower.listenNative(Set(viewUpdatingListener, incomingAcceptingListener), remoteInfo)
-        whenBackPressed = UITask(CommsTower disconnectNative remoteInfo)
-        remoteNodeInfo = remoteInfo
+  def activateInfo(remoteInfo: RemoteNodeInfo): Unit = {
+    whenBackPressed = UITask(CommsTower disconnectNative remoteInfo)
+    CommsTower.listenNative(Set(viewUpdatingListener, incomingAcceptingListener), remoteInfo)
+    peerNodeKey.setText(remoteInfo.nodeId.toString.humanFour)
+    peerIpAddress.setText(remoteInfo.address.toString)
+    remoteNodeInfo = remoteInfo
+  }
 
-      case _ =>
-        // Not interested in anything else
-        // so we retreat back right away
-        finish
-    }
+  override def checkExternalData(whenNone: Runnable): Unit = InputParser.checkAndMaybeErase {
+    case remoteNodeInfo: RemoteNodeInfo => activateInfo(remoteNodeInfo)
+    case _ => finish
+  }
 
   override def onBackPressed: Unit =
     whenBackPressed.run
@@ -163,7 +161,7 @@ class RemotePeerActivity extends BaseActivity with ExternalDataChecker { me =>
     val feeView = new FeeView(body) {
       override def update(rate: FeeratePerKw, feeOpt: Option[MilliSatoshi], showIssue: Boolean): Unit = {
         // We update fee view and button availability at once so user can't proceed if there are tx issues
-        updateButton(getPositiveButton(alert), feeOpt.isDefined)
+        manager.updateOkButton(getPositiveButton(alert), feeOpt.isDefined)
         super.update(rate, feeOpt, showIssue)
       }
     }
@@ -187,14 +185,16 @@ class RemotePeerActivity extends BaseActivity with ExternalDataChecker { me =>
   def sharePeerSpecificNodeId(view: View): Unit =
     share(remoteNodeInfo.nodeSpecificPubKey.toString)
 
-  def requestHostedChannel(view: View): Unit =
-    mkCheckForm(alertDialog => removeAndProceedWithTimeout(alertDialog)(doRequestHostedChannel), none,
-      new AlertDialog.Builder(me).setTitle(rpa_request_hc).setMessage(getString(rpa_hc_warn).html), dialog_ok, dialog_cancel)
+  def requestHostedChannel(view: View): Unit = {
+    val builder = new AlertDialog.Builder(me).setTitle(rpa_request_hc).setMessage(getString(rpa_hc_warn).html)
+    mkCheckForm(doRequestHostedChannel, none, builder, dialog_ok, dialog_cancel)
+  }
 
-  private def doRequestHostedChannel: Unit = {
-    // Switch view first since HC may throw immediately
+  private def doRequestHostedChannel(alert: AlertDialog): Unit = {
+    // Important: switch view first here since HC may throw immediately
     switchView(showProgress = true)
     stopAcceptingIncomingOffers
+    alert.dismiss
 
     // We only need local params to extract defaultFinalScriptPubKey
     val localParams = LNParams.makeChannelParams(remoteNodeInfo, LNParams.chainWallet, isFunder = false, LNParams.minFundingSatoshis)

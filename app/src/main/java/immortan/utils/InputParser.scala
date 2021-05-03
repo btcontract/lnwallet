@@ -59,6 +59,11 @@ object PaymentRequestExt {
     val noUri: Try[Uri] = Failure(new RuntimeException)
     PaymentRequestExt(noUri, PaymentRequest.read(raw), raw)
   }
+
+  def from(pr: PaymentRequest): PaymentRequestExt = {
+    val noUri: Try[Uri] = Failure(new RuntimeException)
+    PaymentRequestExt(noUri, pr, PaymentRequest write pr)
+  }
 }
 
 case class PaymentRequestExt(uri: Try[Uri], pr: PaymentRequest, raw: String) {

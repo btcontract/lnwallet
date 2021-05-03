@@ -29,7 +29,7 @@ import scala.util.Try
 object LNParams {
   val blocksPerDay: Int = 144 // On average we can expect this many blocks per day
   val cltvRejectThreshold: Int = 144 // Reject incoming payment if CLTV expiry is closer than this to current chain tip when HTLC arrives
-  val incomingPaymentCltvExpiry: Int = 144 + 72 // Ask payer to set final CLTV expiry to payer's current chain tip + this many blocks
+  val incomingFinalCltvExpiry: CltvExpiryDelta = CltvExpiryDelta(144 + 72) // Ask payer to set final CLTV expiry to payer's current chain tip + this many blocks
 
   val routingCltvExpiryDelta: CltvExpiryDelta = CltvExpiryDelta(144 * 2) // Ask relayer to set CLTV expiry delta for our channel to this much blocks
   val maxCltvExpiryDelta: CltvExpiryDelta = CltvExpiryDelta(1008) // A relative expiry per single channel hop can not exceed this much blocks

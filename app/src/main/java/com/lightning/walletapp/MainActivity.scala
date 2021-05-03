@@ -18,7 +18,8 @@ import immortan.LNParams
 
 
 object ClassNames {
-  val chainQrActivityClass: Class[QRChainActivity] = classOf[QRChainActivity]
+  val qrChainActivityClass: Class[QRChainActivity] = classOf[QRChainActivity]
+  val qrInvoiceActivityClass: Class[QRInvoiceActivity] = classOf[QRInvoiceActivity]
   val remotePeerActivityClass: Class[RemotePeerActivity] = classOf[RemotePeerActivity]
   val mainActivityClass: Class[MainActivity] = classOf[MainActivity]
   val hubActivityClass: Class[HubActivity] = classOf[HubActivity]

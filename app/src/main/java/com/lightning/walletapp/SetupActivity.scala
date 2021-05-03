@@ -112,10 +112,11 @@ class SetupActivity extends BaseActivity { me =>
     def maybeProceed(alert: AlertDialog): Unit = {
       val mnemonic: String = recoveryPhrase.getText.toString.toLowerCase.trim
       val pureMnemonic = mnemonic.replaceAll("[^a-zA-Z0-9']+", SEPARATOR).split(SEPARATOR).toList
+      alert.dismiss
 
       try {
         MnemonicCode.validate(pureMnemonic, englishWordList)
-        removeAndProceedWithTimeout(alert)(onMnemonic apply pureMnemonic)
+        onMnemonic(pureMnemonic)
       } catch {
         case _: Throwable =>
           val message = getString(R.string.error_wrong_phrase)

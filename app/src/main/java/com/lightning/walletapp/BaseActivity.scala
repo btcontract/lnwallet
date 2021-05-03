@@ -154,12 +154,6 @@ trait BaseActivity extends AppCompatActivity { me =>
     list
   }
 
-  def removeAndProceedWithTimeout(prev: Dialog)(exe: => Unit): Unit = {
-    // Add some delay between dismissing previous popup and doing something next
-    timer.schedule(exe, 225)
-    prev.dismiss
-  }
-
   implicit def str2View(textFieldData: CharSequence): LinearLayout = {
     val view = getLayoutInflater.inflate(R.layout.frag_top_tip, null).asInstanceOf[LinearLayout]
     clickableTextField(view findViewById R.id.titleTip) setText textFieldData
@@ -197,7 +191,12 @@ trait BaseActivity extends AppCompatActivity { me =>
 
     val alert = showForm(bld.create)
     val posAct = me onButtonTap ok(alert)
-    val negAct = me onButtonTap removeAndProceedWithTimeout(alert)(no)
+
+    val negAct = me onButtonTap {
+      alert.dismiss
+      no
+    }
+
     if (-1 != noRes) getNegativeButton(alert) setOnClickListener negAct
     if (-1 != okRes) getPositiveButton(alert) setOnClickListener posAct
     alert
@@ -252,6 +251,12 @@ trait BaseActivity extends AppCompatActivity { me =>
     val extraInputLayout: TextInputLayout = content.findViewById(R.id.extraInputLayout).asInstanceOf[TextInputLayout]
     val extraInput: EditText = content.findViewById(R.id.fiatInputAmount).asInstanceOf[EditText]
 
+    def updateOkButton(button: Button, isEnabled: Boolean): Unit = UITask {
+      val alpha = if (isEnabled) 1F else 0.3F
+      button.setEnabled(isEnabled)
+      button.setAlpha(alpha)
+    }.run
+
     def bigDecimalFrom(input: CurrencyEditText, times: Long = 1L): BigDecimal = (input.getNumericValueBigDecimal: BigDecimal) * times
     def resultMsat: MilliSatoshi = MilliSatoshi(bigDecimalFrom(inputAmount, times = 1000L).toLong)
     def resultSat: Satoshi = resultMsat.truncateToSatoshi
@@ -286,12 +291,6 @@ trait BaseActivity extends AppCompatActivity { me =>
     val bitcoinFee: TextView = content.findViewById(R.id.bitcoinFee).asInstanceOf[TextView]
     val fiatFee: TextView = content.findViewById(R.id.fiatFee).asInstanceOf[TextView]
 
-    def updateButton(okButton: Button, isEnabled: Boolean): Unit = UITask {
-      val alpha = if (isEnabled) 1F else 0.3F
-      okButton.setEnabled(isEnabled)
-      okButton.setAlpha(alpha)
-    }.run
-
     def update(rate: FeeratePerKw, feeOpt: Option[MilliSatoshi], showIssue: Boolean): Unit = UITask {
       feeOpt.map(fee => LNParams.denomination.parsedWithSign(fee, Colors.cardZero).html).foreach(bitcoinFee.setText)
       feeOpt.map(fee => WalletApp.currentMsatInFiatHuman(fee).html).foreach(fiatFee.setText)
@@ -313,12 +312,16 @@ trait BaseActivity extends AppCompatActivity { me =>
 
     lg match { case Some(text) => largeText setText text case None => largeText setVisibility View.GONE }
     sm match { case Some(text) => smallText setText text case None => smallText setVisibility View.GONE }
-    def cancel: Unit = removeAndProceedWithTimeout(alert) { isCancelled = true }
+
+    def cancel: Unit = {
+      isCancelled = true
+      alert.dismiss
+    }
   }
 }
 
 trait QRActivity extends BaseActivity { me =>
-  lazy val qrSize: Int = getResources getDimensionPixelSize R.dimen.bitmap_qr_size
+  lazy val qrSize: Int = getResources getDimensionPixelSize R.dimen.qr_size
 
   def shareData(bitmap: Bitmap, bech32: String): Unit = {
     val paymentRequestFilePath = new File(getCacheDir, "images")

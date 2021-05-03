@@ -7,11 +7,11 @@ import fr.acinq.eclair.channel._
 import scala.util.{Failure, Success}
 import fr.acinq.bitcoin.{ByteVector32, Satoshi, Script}
 import immortan.ChannelListener.{Malfunction, Transition}
+import fr.acinq.eclair.transactions.{Scripts, Transactions}
 import immortan.Channel.{WAIT_FOR_ACCEPT, WAIT_FUNDING_DONE}
 import fr.acinq.eclair.blockchain.MakeFundingTxResponse
 import concurrent.ExecutionContext.Implicits.global
 import fr.acinq.eclair.blockchain.fee.FeeratePerKw
-import fr.acinq.eclair.transactions.Scripts
 import fr.acinq.bitcoin.Crypto.PublicKey
 import scala.concurrent.Future
 
@@ -20,7 +20,13 @@ object NCFunderOpenHandler {
   val dummyLocal: PublicKey = randomKey.publicKey
   val dummyRemote: PublicKey = randomKey.publicKey
 
-  val defFeerate: FeeratePerKw = LNParams.feeRatesInfo.onChainFeeConf.feeEstimator.getFeeratePerKw(target = LNParams.feeRatesInfo.onChainFeeConf.feeTargets.fundingBlockTarget)
+  val defFeerate: FeeratePerKw = {
+    val target = LNParams.feeRatesInfo.onChainFeeConf.feeTargets.fundingBlockTarget
+    LNParams.feeRatesInfo.onChainFeeConf.feeEstimator.getFeeratePerKw(target)
+  }
+
+  def typicalFee: MilliSatoshi = Transactions.weight2fee(defFeerate, 750).toMilliSatoshi
+
   def makeFunding(chainWallet: WalletExt, fundingAmount: Satoshi, local: PublicKey = dummyLocal, remote: PublicKey = dummyRemote, feeratePerKw: FeeratePerKw = defFeerate): Future[MakeFundingTxResponse] =
     chainWallet.wallet.makeFundingTx(Script.write(Script pay2wsh Scripts.multiSig2of2(local, remote).toList), fundingAmount, feeratePerKw)
 }

@@ -4,31 +4,36 @@ import immortan._
 import immortan.utils._
 import fr.acinq.eclair._
 import immortan.crypto.Tools._
-
 import scala.concurrent.duration._
 import com.lightning.walletapp.Colors._
 import com.lightning.walletapp.R.string._
+
 import android.os.{Bundle, Handler}
 import android.view.{View, ViewGroup}
 import rx.lang.scala.{Subject, Subscription}
+import fr.acinq.bitcoin.{ByteVector32, Crypto}
 import com.androidstudy.networkmanager.{Monitor, Tovuti}
 import immortan.sqlite.{PaymentTable, RelayTable, Table, TxTable}
 import android.widget.{BaseAdapter, ImageView, LinearLayout, ListView, RelativeLayout, TextView}
 import fr.acinq.eclair.blockchain.electrum.ElectrumWallet.WalletReady
+import fr.acinq.eclair.payment.PaymentRequest.PaymentRequestFeatures
 import com.lightning.walletapp.BaseActivity.StringOps
 import org.ndeftools.util.activity.NfcReaderActivity
-
 import concurrent.ExecutionContext.Implicits.global
 import com.github.mmin18.widget.RealtimeBlurView
 import androidx.recyclerview.widget.RecyclerView
+import fr.acinq.eclair.payment.PaymentRequest
+import androidx.transition.TransitionManager
 import com.indicator.ChannelIndicatorLine
+import androidx.appcompat.app.AlertDialog
 import fr.acinq.eclair.wire.PaymentTagTlv
 import android.database.ContentObserver
-import androidx.transition.TransitionManager
+import immortan.fsm.NCFunderOpenHandler
 import org.ndeftools.Message
 
 
 class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataChecker with ChoiceReceiver { me =>
+  def lnBalance: MilliSatoshi = LNParams.cm.all.values.filter(Channel.isOperationalOrWaiting).map(Channel.estimateBalance).sum
   private[this] lazy val bottomBlurringArea = findViewById(R.id.bottomBlurringArea).asInstanceOf[RealtimeBlurView]
   private[this] lazy val bottomActionBar = findViewById(R.id.bottomActionBar).asInstanceOf[LinearLayout]
   private[this] lazy val contentWindow = findViewById(R.id.contentWindow).asInstanceOf[RelativeLayout]
@@ -74,7 +79,11 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
           holder.meta setText txMeta(txInfo).html
           setTypeIcon(holder, txInfo)
 
-        case _ =>
+        case paymentInfo: PaymentInfo =>
+          holder.cardContainer setOnClickListener onButtonTap {
+            me goTo ClassNames.qrInvoiceActivityClass
+            InputParser.value = paymentInfo.prExt
+          }
       }
 
       view
@@ -132,20 +141,19 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
       listCaption.setVisibility(somePaymentsPresent)
     }
 
-    def updateView: Unit = {
-      val lnBalance = LNParams.cm.all.values.filter(Channel.isOperationalOrWaiting).map(Channel.estimateBalance)
-      val cumulativeBalance = lnBalance.sum + WalletApp.lastChainBalance.totalBalance
+    def updateView: Unit = lnBalance match { case currentLnBalance =>
+      val walletBalance = currentLnBalance + WalletApp.lastChainBalance.totalBalance
       val states = LNParams.cm.all.values.map(_.state).take(8)
 
       TransitionManager.beginDelayedTransition(view)
       channelIndicator.createIndicators(states.toArray)
       channelStateIndicators setVisibility BaseActivity.viewMap(states.nonEmpty)
-      totalFiatBalance setText WalletApp.currentMsatInFiatHuman(cumulativeBalance).html
-      totalBalance setText LNParams.denomination.parsedWithSign(cumulativeBalance, totalZero).html
+      totalFiatBalance setText WalletApp.currentMsatInFiatHuman(walletBalance).html
+      totalBalance setText LNParams.denomination.parsedWithSign(walletBalance, totalZero).html
       syncIndicator setVisibility BaseActivity.viewMap(!WalletApp.lastChainBalance.isTooLongAgo)
 
       totalLightningBalance setVisibility BaseActivity.viewMap(states.nonEmpty)
-      totalLightningBalance setText LNParams.denomination.parsedWithSign(lnBalance.sum, lnCardZero).html
+      totalLightningBalance setText LNParams.denomination.parsedWithSign(currentLnBalance, lnCardZero).html
       totalBitcoinBalance setText LNParams.denomination.parsedWithSign(WalletApp.lastChainBalance.totalBalance, btcCardZero).html
       totalBitcoinBalance setVisibility BaseActivity.viewMap(WalletApp.lastChainBalance.totalBalance != 0L.msat)
       receiveBitcoinTip setVisibility BaseActivity.viewMap(WalletApp.lastChainBalance.totalBalance == 0L.msat)
@@ -301,9 +309,62 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
     case _ => whenNone.run
   }
 
+  // Important: order of cases matters here
   override def onChoiceMade(tag: String, pos: Int): Unit = (tag, pos) match {
-    case (CHOICE_RECEIVE_TAG, 0) => me goTo ClassNames.chainQrActivityClass
+    case (CHOICE_RECEIVE_TAG, 1) if !LNParams.cm.all.values.exists(Channel.isOperationalOrWaiting) =>
+      snack(contentWindow, getString(error_ln_receive_no_chans).html, dialog_ok, _.dismiss)
+
+    case (CHOICE_RECEIVE_TAG, 1) if LNParams.cm.all.values.forall(Channel.isWaiting) =>
+      snack(contentWindow, getString(error_ln_receive_waiting).html, dialog_ok, _.dismiss)
+
+    case (CHOICE_RECEIVE_TAG, 1) if LNParams.cm.allSortedReceivable.isEmpty =>
+      snack(contentWindow, getString(error_ln_receive_no_update).html, dialog_ok, _.dismiss)
+
+    case (CHOICE_RECEIVE_TAG, 1) if LNParams.cm.allSortedReceivable.last.commits.availableForReceive < MilliSatoshi(0L) =>
+      val reserveHuman = LNParams.denomination.parsedWithSign(-LNParams.cm.allSortedReceivable.head.commits.availableForReceive, cardZero)
+      snack(contentWindow, getString(error_ln_receive_reserve).format(reserveHuman).html, dialog_ok, _.dismiss)
+
     case (CHOICE_RECEIVE_TAG, 1) =>
+      val body = getLayoutInflater.inflate(R.layout.frag_input_fiat_converter, null)
+      val commits = LNParams.cm.maxReceivable(LNParams.cm.allSortedReceivable).head.commits
+      val manager = new RateManager(body, getString(dialog_optional_ln_description).toSome, LNParams.fiatRatesInfo.rates, WalletApp.fiatCode)
+      val canReceive = LNParams.denomination.parsedWithSign(commits.availableForReceive, Colors.cardZero)
+      val canReceiveFiat = WalletApp.currentMsatInFiatHuman(commits.availableForReceive)
+
+      def useMax(alert: AlertDialog): Unit = {
+        val balanceSat = commits.availableForReceive.truncateToSatoshi
+        manager.inputAmount.setText(balanceSat.toLong.toString)
+      }
+
+      def attempt(alert: AlertDialog): Unit = {
+        val preimage: ByteVector32 = randomBytes32
+        val hash: ByteVector32 = Crypto.sha256(preimage)
+        val invoiceKey = LNParams.secret.keys.fakeInvoiceKey(hash)
+        val description = PlainDescription(manager.extraInput.getText.toString)
+        val hop = List(commits.updateOpt.map(_ extraHop commits.remoteInfo.nodeId).toList)
+        val features = PaymentRequestFeatures(Features.VariableLengthOnion.optional, Features.PaymentSecret.optional, Features.BasicMultiPartPayment.optional).toSome
+        val prExt = PaymentRequestExt from PaymentRequest(LNParams.chainHash, Some(manager.resultMsat), hash, invoiceKey, description.invoiceText, LNParams.incomingFinalCltvExpiry, hop, features)
+        LNParams.cm.payBag.replaceIncomingPayment(prExt, preimage, description, lnBalance, LNParams.fiatRatesInfo.rates, NCFunderOpenHandler.typicalFee)
+        me goTo ClassNames.qrInvoiceActivityClass
+        InputParser.value = prExt
+        alert.dismiss
+      }
+
+      val builder = titleBodyAsViewBuilder(title = getString(dialog_receive_ln).html, manager.content)
+      val alert = mkCheckFormNeutral(attempt, none, useMax, builder, dialog_ok, dialog_cancel, dialog_max)
+      manager.hintFiatDenom.setText(getString(dialog_can_receive).format(canReceiveFiat).html)
+      manager.hintDenom.setText(getString(dialog_can_receive).format(canReceive).html)
+      manager.updateOkButton(getPositiveButton(alert), isEnabled = false)
+
+      manager.inputAmount addTextChangedListener onTextChange { _ =>
+        val notTooLow: Boolean = LNParams.minPayment <= manager.resultMsat
+        val notTooHigh: Boolean = commits.availableForReceive >= manager.resultMsat
+        manager.updateOkButton(getPositiveButton(alert), notTooLow && notTooHigh)
+      }
+
+    case (CHOICE_RECEIVE_TAG, 0) =>
+      me goTo ClassNames.qrChainActivityClass
+
     case _ =>
   }
 
@@ -327,9 +388,8 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
       val txEvents = Rx.uniqueFirstAndLastWithinWindow(txEventStream, 1.second).doOnNext(_ => reloadTxInfos)
       val paymentEvents = Rx.uniqueFirstAndLastWithinWindow(paymentEventStream, 1.second).doOnNext(_ => reloadPaymentInfos)
       val relayEvents = Rx.uniqueFirstAndLastWithinWindow(relayEventStream, 1.second).doOnNext(_ => reloadRelayedPreimageInfos)
-
-      statusSubscription = statusEvents.merge(stateEvents).subscribe(_ => UITask(walletCards.updateView).run).toSome
       val paymentRelatedEvents = txEvents.merge(paymentEvents).merge(relayEvents).doOnNext(_ => updAllInfos).merge(stateEvents)
+      statusSubscription = statusEvents.merge(stateEvents).subscribe(_ => UITask(walletCards.updateView).run).toSome
       streamSubscription = paymentRelatedEvents.subscribe(_ => UITask(updatePaymentList).run).toSome
 
       WalletApp.txDataBag.db txWrap {
@@ -386,7 +446,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
   }
 
   def goToReceiveBitcoinPage(view: View): Unit =
-    me goTo ClassNames.chainQrActivityClass
+    me goTo ClassNames.qrChainActivityClass
 
   // VIEW UPDATERS
 
