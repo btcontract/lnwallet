@@ -16,7 +16,6 @@ import com.androidstudy.networkmanager.{Monitor, Tovuti}
 import immortan.sqlite.{PaymentTable, RelayTable, Table, TxTable}
 import android.widget.{BaseAdapter, ImageView, LinearLayout, ListView, RelativeLayout, TextView}
 import fr.acinq.eclair.blockchain.electrum.ElectrumWallet.WalletReady
-import fr.acinq.eclair.payment.PaymentRequest.PaymentRequestFeatures
 import com.lightning.walletapp.BaseActivity.StringOps
 import org.ndeftools.util.activity.NfcReaderActivity
 import concurrent.ExecutionContext.Implicits.global
@@ -342,8 +341,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
         val invoiceKey = LNParams.secret.keys.fakeInvoiceKey(hash)
         val description = PlainDescription(manager.extraInput.getText.toString)
         val hop = List(commits.updateOpt.map(_ extraHop commits.remoteInfo.nodeId).toList)
-        val features = PaymentRequestFeatures(Features.VariableLengthOnion.optional, Features.PaymentSecret.optional, Features.BasicMultiPartPayment.optional).toSome
-        val prExt = PaymentRequestExt from PaymentRequest(LNParams.chainHash, Some(manager.resultMsat), hash, invoiceKey, description.invoiceText, LNParams.incomingFinalCltvExpiry, hop, features)
+        val prExt = PaymentRequestExt from PaymentRequest(LNParams.chainHash, Some(manager.resultMsat), hash, invoiceKey, description.invoiceText, LNParams.incomingFinalCltvExpiry, hop)
         LNParams.cm.payBag.replaceIncomingPayment(prExt, preimage, description, lnBalance, LNParams.fiatRatesInfo.rates, NCFunderOpenHandler.typicalFee)
         me goTo ClassNames.qrInvoiceActivityClass
         InputParser.value = prExt
