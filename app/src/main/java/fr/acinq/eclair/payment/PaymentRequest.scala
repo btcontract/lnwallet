@@ -135,7 +135,7 @@ object PaymentRequest {
             extraHops: List[ExtraHops],
             features: Option[PaymentRequestFeatures] = Some(basicFeatures),
             fallbackAddress: Option[String] = None,
-            expirySeconds: Option[Long] = Some(DEFAULT_EXPIRY_SECONDS * 24 * 7),
+            expirySeconds: Option[Long] = Some(3600 * 24 * 7),
             timestamp: Long = System.currentTimeMillis() / 1000L): PaymentRequest = {
 
     val prefix = prefixes(chainHash)

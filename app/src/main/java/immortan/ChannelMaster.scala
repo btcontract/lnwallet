@@ -172,7 +172,7 @@ class ChannelMaster(val payBag: PaymentBag, val chanBag: ChannelBag, val dataBag
   def allIncomingResolutions: Iterable[IncomingResolution] = all.values.flatMap(Channel.chanAndCommitsOpt).flatMap(_.commits.crossSignedIncoming).map(initResolveMemo.get)
   def allInChannelOutgoing: Map[FullPaymentTag, OutgoingAdds] = all.values.flatMap(Channel.chanAndCommitsOpt).flatMap(_.commits.allOutgoing).groupBy(_.fullTag)
 
-  def closingsPublished: Iterable[ForceCloseCommitPublished] = all.values.map(_.data).collect { case c: DATA_CLOSING => c.forceCloseCommitPublished }.flatten
+  def closingsPublished: Iterable[ForceCloseCommitPublished] = all.values.map(_.data).collect { case closing: DATA_CLOSING => closing.forceCloseCommitPublished }.flatten
   def pendingRefundsAmount(publishes: Iterable[ForceCloseCommitPublished] = Nil): Satoshi = publishes.flatMap(_.delayedRefundsLeft).map(_.txOut.head.amount).sum
 
   def fromNode(nodeId: PublicKey): Iterable[ChanAndCommits] = all.values.flatMap(Channel.chanAndCommitsOpt).filter(_.commits.remoteInfo.nodeId == nodeId)
@@ -191,7 +191,7 @@ class ChannelMaster(val payBag: PaymentBag, val chanBag: ChannelBag, val dataBag
   def allSortedSendable: Seq[ChanAndCommits] = operationalCncs.sortBy(_.commits.availableForSend)
 
   def maxReceivable(sorted: Seq[ChanAndCommits] = Nil): Seq[ChanAndCommits] = {
-    // Sorting example: (5/Open, 30/Open, 50/Sleeping, 60/Open, 100/Open) -> (50/Sleeping, 60/Open, 100/Open) -> 60/Open, ...
+    // Sorting example: (5/Open, 30/Open, 50/Sleeping, 60/Open, 100/Open) -> (50/Sleeping, 60/Open, 100/Open) -> 60/Open as first one
     val viable = sorted.dropWhile(_.commits.availableForReceive * Math.max(sorted.size - 2, 1) < sorted.last.commits.availableForReceive)
     viable.sortBy(cnc => Channel isOperationalAndOpen cnc.chan compare false)
   }
