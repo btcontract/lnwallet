@@ -170,13 +170,14 @@ abstract class ChannelHosted extends Channel { me =>
         val hc1 = hc.resizeProposal.filter(_ isRemoteResized remoteLCSS).map(hc.withResize).getOrElse(hc) // But they may have a resized one
         val weAreEven = localLCSS.remoteUpdates == remoteLCSS.localUpdates && localLCSS.localUpdates == remoteLCSS.remoteUpdates
         val weAreAhead = localLCSS.remoteUpdates > remoteLCSS.localUpdates || localLCSS.localUpdates > remoteLCSS.remoteUpdates
-        val isLocalSigOk = remoteLCSS.verifyRemoteSig(hc.remoteInfo.nodeSpecificPubKey)
-        val isRemoteSigOk = remoteLCSS.reverse.verifyRemoteSig(hc.remoteInfo.nodeId)
+        val isLocalSigOk = remoteLCSS.verifyRemoteSig(hc1.remoteInfo.nodeSpecificPubKey)
+        val isRemoteSigOk = remoteLCSS.reverse.verifyRemoteSig(hc1.remoteInfo.nodeId)
 
         if (!isRemoteSigOk) localSuspend(hc1, ERR_HOSTED_WRONG_REMOTE_SIG)
         else if (!isLocalSigOk) localSuspend(hc1, ERR_HOSTED_WRONG_LOCAL_SIG)
         else if (weAreAhead || weAreEven) {
           SEND(List(localLCSS) ++ hc1.resizeProposal ++ hc1.nextLocalUpdates:_*)
+          // Forget about their unsigned updates, they are expected to resend
           BECOME(hc1.copy(nextRemoteUpdates = Nil), OPEN)
           process(CMD_SIGN)
         } else {
@@ -189,10 +190,18 @@ abstract class ChannelHosted extends Channel { me =>
 
           val hc2 = hc1.copy(nextLocalUpdates = localUpdatesAccounted, nextRemoteUpdates = remoteUpdatesAccounted)
           val syncedLCSS = hc2.nextLocalUnsignedLCSS(remoteLCSS.blockDay).copy(localSigOfRemote = remoteLCSS.remoteSigOfLocal, remoteSigOfLocal = remoteLCSS.localSigOfRemote)
-          val syncedCommits = hc2.copy(lastCrossSignedState = syncedLCSS, localSpec = hc2.nextLocalSpec, nextLocalUpdates = localUpdatesLeftover, nextRemoteUpdates = Nil)
-          if (syncedLCSS.reverse != remoteLCSS) StoreBecomeSend(restoreCommits(remoteLCSS.reverse, hc2.remoteInfo), OPEN, remoteLCSS.reverse) // We are too far behind, restore from their data
-          else StoreBecomeSend(syncedCommits, OPEN, List(syncedLCSS) ++ hc2.resizeProposal ++ localUpdatesLeftover:_*) // We are behind but our own future cross-signed state is reachable
-          process(CMD_SIGN)
+
+          if (syncedLCSS.reverse == remoteLCSS) {
+            // We have fallen behind a bit but have all the data required to successfully synchronize such that an updated state is reached
+            val hc3 = hc2.copy(lastCrossSignedState = syncedLCSS, localSpec = hc2.nextLocalSpec, nextLocalUpdates = localUpdatesLeftover, nextRemoteUpdates = Nil)
+            StoreBecomeSend(hc3, OPEN, List(syncedLCSS) ++ hc2.resizeProposal ++ localUpdatesLeftover:_*)
+            process(CMD_SIGN)
+          } else {
+            // We are too far behind, restore from their data
+            val hc3 = restoreCommits(remoteLCSS.reverse, hc2.remoteInfo)
+            StoreBecomeSend(data1 = hc3, state1 = OPEN, remoteLCSS.reverse)
+            events.stateUpdated(fakeFailedOurAdds(hc1, hc3).toList)
+          }
         }
 
 
@@ -210,8 +219,8 @@ abstract class ChannelHosted extends Channel { me =>
 
       case (hc: HostedCommits, resize: ResizeChannel, OPEN | SLEEPING) if hc.resizeProposal.isEmpty =>
         // Can happen if we have sent a resize earlier, but then lost channel data and restored from their
-        val isLocalSigOk = resize.verifyClientSig(hc.remoteInfo.nodeSpecificPubKey)
-        if (isLocalSigOk) me STORE hc.copy(resizeProposal = resize.toSome)
+        val isLocalSigOk: Boolean = resize.verifyClientSig(hc.remoteInfo.nodeSpecificPubKey)
+        if (isLocalSigOk) StoreBecomeSend(hc.copy(resizeProposal = resize.toSome), state)
         else localSuspend(hc, ERR_HOSTED_INVALID_RESIZE)
 
 
@@ -219,7 +228,11 @@ abstract class ChannelHosted extends Channel { me =>
         StoreBecomeSend(hc.copy(remoteError = remoteError.toSome), SUSPENDED)
 
 
-      case (hc: HostedCommits, CMD_HOSTED_STATE_OVERRIDE(remoteSO), SUSPENDED) =>
+      case (hc: HostedCommits, remoteSO: StateOverride, SUSPENDED) =>
+        StoreBecomeSend(hc.copy(overrideProposal = remoteSO.toSome), SUSPENDED)
+
+
+      case (hc: HostedCommits, cmd @ CMD_HOSTED_STATE_OVERRIDE(remoteSO), SUSPENDED) =>
         // User has manually accepted a proposed remote override, now make sure all remote-provided parameters check out
         val localBalance: MilliSatoshi = hc.lastCrossSignedState.initHostedChannel.channelCapacityMsat - remoteSO.localBalanceMsat
 
@@ -228,12 +241,17 @@ abstract class ChannelHosted extends Channel { me =>
             localUpdates = remoteSO.remoteUpdates, remoteUpdates = remoteSO.localUpdates, blockDay = remoteSO.blockDay, remoteSigOfLocal = remoteSO.localSigOfRemoteLCSS)
             .withLocalSigOfRemote(hc.remoteInfo.nodeSpecificPrivKey)
 
-        if (localBalance < 0L.msat) throw new RuntimeException("Provided updated local balance is larger than capacity")
-        if (remoteSO.localUpdates < hc.lastCrossSignedState.remoteUpdates) throw new RuntimeException("Provided local update number from remote host is wrong")
-        if (remoteSO.remoteUpdates < hc.lastCrossSignedState.localUpdates) throw new RuntimeException("Provided remote update number from remote host is wrong")
-        if (remoteSO.blockDay < hc.lastCrossSignedState.blockDay) throw new RuntimeException("Provided override blockday from remote host is not acceptable")
-        require(completeLocalLCSS.verifyRemoteSig(hc.remoteInfo.nodeId), "Provided override signature from remote host is wrong")
-        StoreBecomeSend(restoreCommits(completeLocalLCSS, hc.remoteInfo), OPEN, completeLocalLCSS.stateUpdate)
+        val isRemoteSigOk = completeLocalLCSS.verifyRemoteSig(hc.remoteInfo.nodeId)
+        val hc1 = restoreCommits(completeLocalLCSS, hc.remoteInfo)
+
+        if (localBalance < 0L.msat) throw CMDException(new RuntimeException("Provided updated local balance is larger than capacity"), cmd)
+        if (remoteSO.localUpdates < hc.lastCrossSignedState.remoteUpdates) throw CMDException(new RuntimeException("Provided local update number from remote host is wrong"), cmd)
+        if (remoteSO.remoteUpdates < hc.lastCrossSignedState.localUpdates) throw CMDException(new RuntimeException("Provided remote update number from remote host is wrong"), cmd)
+        if (remoteSO.blockDay < hc.lastCrossSignedState.blockDay) throw CMDException(new RuntimeException("Provided override blockday from remote host is not acceptable"), cmd)
+        if (!isRemoteSigOk) throw CMDException(new RuntimeException("Provided override signature from remote host is wrong"), cmd)
+        StoreBecomeSend(hc1, OPEN, completeLocalLCSS.stateUpdate)
+        events.stateUpdated(fakeFailedOurAdds(hc, hc1).toList)
+
 
       case (null, wait: WaitRemoteHostedReply, null) => super.become(wait, WAIT_FOR_INIT)
       case (null, hc: HostedCommits, null) if hc.getError.isDefined => super.become(hc, SUSPENDED)
@@ -253,6 +271,10 @@ abstract class ChannelHosted extends Channel { me =>
     StoreBecomeSend(hc1, SUSPENDED, localError)
   }
 
+  def fakeFailedOurAdds(hc: HostedCommits, hc1: HostedCommits): Set[RemoteUpdateFail] =
+    // When overriding or synchronizing with remote state from future we may have local outgoing adds which need to be failed in outgoing FSM
+    for (ourAdd <- hc.allOutgoing -- hc1.allOutgoing) yield RemoteUpdateFail(UpdateFailHtlc(hc.channelId, ourAdd.id, reason = ByteVector.empty), ourAdd)
+
   def attemptStateUpdate(remoteSU: StateUpdate, hc: HostedCommits): Unit = {
     val lcss1 = hc.nextLocalUnsignedLCSS(remoteSU.blockDay).copy(remoteSigOfLocal = remoteSU.localSigOfRemoteLCSS).withLocalSigOfRemote(hc.remoteInfo.nodeSpecificPrivKey)
     val hc1 = hc.copy(lastCrossSignedState = lcss1, localSpec = hc.nextLocalSpec, nextLocalUpdates = Nil, nextRemoteUpdates = Nil)
@@ -263,6 +285,7 @@ abstract class ChannelHosted extends Channel { me =>
       localSuspend(hc, ERR_HOSTED_WRONG_BLOCKDAY)
     } else if (remoteSU.remoteUpdates < lcss1.localUpdates) {
       // Persist unsigned remote updates to use them on re-sync
+      // we do not update runtime data because ours is newer one
       process(CMD_SIGN)
       me STORE hc
     } else if (!isRemoteSigOk) {

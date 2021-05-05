@@ -298,6 +298,7 @@ object ChannelCodecs {
       (optional(bool8, lengthDelimited(errorCodec)) withContext "localError") ::
       (optional(bool8, lengthDelimited(errorCodec)) withContext "remoteError") ::
       (optional(bool8, lengthDelimited(resizeChannelCodec)) withContext "resizeProposal") ::
+      (optional(bool8, lengthDelimited(stateOverrideCodec)) withContext "overrideProposal") ::
       (int64 withContext "startedAt")
   }.as[HostedCommits]
 

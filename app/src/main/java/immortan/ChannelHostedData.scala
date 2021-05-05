@@ -16,7 +16,7 @@ case class WaitRemoteHostedStateUpdate(remoteInfo: RemoteNodeInfo, hc: HostedCom
 
 case class HostedCommits(remoteInfo: RemoteNodeInfo, lastCrossSignedState: LastCrossSignedState, nextLocalUpdates: List[UpdateMessage], nextRemoteUpdates: List[UpdateMessage],
                          localSpec: CommitmentSpec, updateOpt: Option[ChannelUpdate], localError: Option[Error], remoteError: Option[Error], resizeProposal: Option[ResizeChannel] = None,
-                         startedAt: Long = System.currentTimeMillis) extends PersistentChannelData with Commitments { me =>
+                         overrideProposal: Option[StateOverride] = None, startedAt: Long = System.currentTimeMillis) extends PersistentChannelData with Commitments { me =>
 
   val nextTotalLocal: Long = lastCrossSignedState.localUpdates + nextLocalUpdates.size
 

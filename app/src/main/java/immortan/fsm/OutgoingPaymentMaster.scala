@@ -277,8 +277,8 @@ class OutgoingPaymentSender(val fullTag: FullPaymentTag, val listener: OutgoingP
   def doProcess(msg: Any): Unit = (msg, state) match {
     case (CMDException(_, cmd: CMD_ADD_HTLC), ABORTED) => me abortMaybeNotify data.withoutPartId(cmd.partId)
     case (remoteReject: RemoteReject, ABORTED) => me abortMaybeNotify data.withoutPartId(remoteReject.ourAdd.partId)
-    case (bag: InFlightPayments, SUCCEEDED) if data.inFlightParts.isEmpty && !bag.out.contains(fullTag) => listener.wholePaymentSucceeded(data)
     case (remoteReject: RemoteReject, INIT) => me abortMaybeNotify data.withLocalFailure(NOT_RETRYING_NO_DETAILS, remoteReject.ourAdd.amountMsat)
+    case (bag: InFlightPayments, SUCCEEDED) if data.inFlightParts.isEmpty && !bag.out.contains(fullTag) => listener.wholePaymentSucceeded(data)
 
     case (cmd: SendMultiPart, INIT | ABORTED) =>
       val chans = opm.rightNowSendable(cmd.allowedChans, cmd.totalFeeReserve)
@@ -358,10 +358,15 @@ class OutgoingPaymentSender(val fullTag: FullPaymentTag, val listener: OutgoingP
         val otherOpt = singleCapableCncCandidates.collectFirst { case (cnc, sendable) if sendable >= wait.amount => cnc }
 
         otherOpt match {
-          case None => me abortMaybeNotify data.withoutPartId(wait.partId).withLocalFailure(PEER_COULD_NOT_PARSE_ONION, wait.amount)
           case Some(otherCapableCnc) => become(data.copy(parts = data.parts + wait.oneMoreLocalAttempt(otherCapableCnc).tuple), PENDING)
+          case None => me abortMaybeNotify data.withoutPartId(wait.partId).withLocalFailure(PEER_COULD_NOT_PARSE_ONION, wait.amount)
         }
       }
+
+    case (reject: RemoteUpdateFail, PENDING) if reject.fail.reason.isEmpty =>
+      // This is a special case when HC gets overridden with in-flight outgoing payments AND there was no app restart
+      // in this specific case an outgoing FSM could have tried to re-send this failed payment otherwise, this is undesired
+      me abortMaybeNotify data.withoutPartId(reject.ourAdd.partId).withLocalFailure(NOT_RETRYING_NO_DETAILS, data.cmd.actualTotal)
 
     case (reject: RemoteUpdateFail, PENDING) =>
       // TODO: this is only viable for base and trampoline-to-legacy MPP

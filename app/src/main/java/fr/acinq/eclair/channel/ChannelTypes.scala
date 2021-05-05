@@ -295,7 +295,7 @@ final case class RemoteParams(dustLimit: Satoshi, maxHtlcValueInFlightMsat: UInt
 
 case class ChannelVersion(bits: BitVector) {
   val commitmentFormat: CommitmentFormat = if (hasAnchorOutputs) AnchorOutputsCommitmentFormat else DefaultCommitmentFormat
-  def |(other: ChannelVersion): ChannelVersion = ChannelVersion(bits | other.bits)
+  def | (other: ChannelVersion): ChannelVersion = ChannelVersion(bits | other.bits)
   def isSet(bit: Int): Boolean = bits.reverse.get(bit)
 
   def hasPubkeyKeyPath: Boolean = isSet(ChannelVersion.USE_PUBKEY_KEYPATH_BIT)
