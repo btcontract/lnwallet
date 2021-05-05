@@ -25,7 +25,6 @@ import scodec.bits.ByteVector
 
 
 object EclairWallet {
-  type TxAndFee = (Transaction, Satoshi)
   type DepthAndDoubleSpent = (Long, Boolean)
   type Address2PrivKey = Map[String, ExtendedPrivateKey]
   final val OPT_IN_FULL_RBF = TxIn.SEQUENCE_FINAL - 2
@@ -47,6 +46,8 @@ trait EclairWallet {
 
   def doubleSpent(tx: Transaction): Future[DepthAndDoubleSpent]
 }
+
+case class TxAndFee(tx: Transaction, fee: Satoshi, spendingAll: Boolean)
 
 case class OnChainBalance(confirmed: Satoshi, unconfirmed: Satoshi) {
   val totalBalance: Satoshi = confirmed + unconfirmed

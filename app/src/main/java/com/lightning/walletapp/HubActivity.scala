@@ -10,12 +10,13 @@ import com.lightning.walletapp.R.string._
 
 import android.os.{Bundle, Handler}
 import android.view.{View, ViewGroup}
-import rx.lang.scala.{Subject, Subscription}
-import fr.acinq.bitcoin.{ByteVector32, Crypto}
+import rx.lang.scala.{Observable, Subject, Subscription}
 import com.androidstudy.networkmanager.{Monitor, Tovuti}
 import immortan.sqlite.{PaymentTable, RelayTable, Table, TxTable}
-import android.widget.{BaseAdapter, ImageView, LinearLayout, ListView, RelativeLayout, TextView}
-import fr.acinq.eclair.blockchain.electrum.ElectrumWallet.WalletReady
+import fr.acinq.bitcoin.{ByteVector32, Crypto, Satoshi, SatoshiLong}
+import fr.acinq.eclair.blockchain.fee.{FeeratePerKw, FeeratePerVByte}
+import fr.acinq.eclair.blockchain.electrum.ElectrumWallet.{TransactionReceived, WalletReady}
+import android.widget.{BaseAdapter, EditText, ImageView, LinearLayout, ListView, RelativeLayout, ScrollView, TextView}
 import com.lightning.walletapp.BaseActivity.StringOps
 import org.ndeftools.util.activity.NfcReaderActivity
 import concurrent.ExecutionContext.Implicits.global
@@ -23,12 +24,14 @@ import com.github.mmin18.widget.RealtimeBlurView
 import androidx.recyclerview.widget.RecyclerView
 import fr.acinq.eclair.payment.PaymentRequest
 import androidx.transition.TransitionManager
+import fr.acinq.eclair.blockchain.TxAndFee
 import com.indicator.ChannelIndicatorLine
 import androidx.appcompat.app.AlertDialog
 import fr.acinq.eclair.wire.PaymentTagTlv
 import android.database.ContentObserver
 import immortan.fsm.NCFunderOpenHandler
 import org.ndeftools.Message
+import scala.util.Try
 
 
 class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataChecker with ChoiceReceiver { me =>
@@ -79,14 +82,43 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
           setTypeIcon(holder, txInfo)
 
         case paymentInfo: PaymentInfo =>
-          holder.cardContainer setOnClickListener onButtonTap {
-            me goTo ClassNames.qrInvoiceActivityClass
-            InputParser.value = paymentInfo.prExt
-          }
       }
 
       view
     }
+
+    private def setTypeIcon(holder: PaymentLineViewHolder, info: TxInfo): Unit = info.description match {
+      case _: PlainTxDescription if info.isIncoming => holder.setPaymentTypeVisibility(visible = R.id.btcIncoming)
+      case _: OpReturnTxDescription => holder.setPaymentTypeVisibility(visible = R.id.btcOutgoing)
+      case _: ChanRefundingTxDescription => holder.setPaymentTypeVisibility(visible = R.id.lnBtc)
+      case _: ChanFundingTxDescription => holder.setPaymentTypeVisibility(visible = R.id.btcLn)
+      case _: PlainTxDescription => holder.setPaymentTypeVisibility(visible = R.id.btcOutgoing)
+      case _: HtlcClaimTxDescription => holder.setPaymentTypeVisibility(visible = R.id.lnBtc)
+      case _: PenaltyTxDescription => holder.setPaymentTypeVisibility(visible = R.id.lnBtc)
+    }
+
+    private def txDescription(info: TxInfo): String = info.description match {
+      case _: ChanRefundingTxDescription => getString(tx_description_refunding)
+      case _: HtlcClaimTxDescription => getString(tx_description_htlc_claim)
+      case _: ChanFundingTxDescription => getString(tx_description_funding)
+      case _: OpReturnTxDescription => getString(tx_description_op_return)
+      case _: PenaltyTxDescription => getString(tx_description_penalty)
+      case plainTxDescription: PlainTxDescription =>
+        val shortOpt = plainTxDescription.addresses.headOption.map(_.shortAddress)
+        val htmlOpt = shortOpt.map(short => s" <font color=$cardZero>$short</font>")
+        getString(tx_btc) + htmlOpt.getOrElse(new String)
+    }
+
+    private def txMeta(info: TxInfo): String =
+      if (info.isDeeplyBuried) WalletApp.app.when(info.date)
+      else if (info.isDoubleSpent) getString(tx_state_double_spent)
+      else if (info.depth > 0) getString(tx_state_confs).format(info.depth, LNParams.minDepthBlocks)
+      else getString(tx_state_unconfirmed)
+
+    private def txStatusIcon(info: TxInfo): Int =
+      if (info.isDeeplyBuried) R.drawable.baseline_done_24
+      else if (info.isDoubleSpent) R.drawable.baseline_block_24
+      else R.drawable.baseline_hourglass_empty_24
   }
 
   class PaymentLineViewHolder(itemView: View) extends RecyclerView.ViewHolder(itemView) { self =>
@@ -103,6 +135,8 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
     val meta: TextView = itemView.findViewById(R.id.meta).asInstanceOf[TextView]
     itemView.setTag(self)
   }
+
+  // LIST CAPTION CLASS
 
   class WalletCardsViewHolder {
     val view: LinearLayout = getLayoutInflater.inflate(R.layout.frag_wallet_cards, null).asInstanceOf[LinearLayout]
@@ -232,39 +266,6 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
     if newDepth != txInfo.depth || newDoubleSpent != txInfo.isDoubleSpent
   } WalletApp.txDataBag.updStatus(txInfo.txid, newDepth, newDoubleSpent)
 
-  def setTypeIcon(holder: PaymentLineViewHolder, info: TxInfo): Unit = info.description match {
-    case _: PlainTxDescription if info.isIncoming => holder.setPaymentTypeVisibility(visible = R.id.btcIncoming)
-    case _: OpReturnTxDescription => holder.setPaymentTypeVisibility(visible = R.id.btcOutgoing)
-    case _: ChanRefundingTxDescription => holder.setPaymentTypeVisibility(visible = R.id.lnBtc)
-    case _: ChanFundingTxDescription => holder.setPaymentTypeVisibility(visible = R.id.btcLn)
-    case _: PlainTxDescription => holder.setPaymentTypeVisibility(visible = R.id.btcOutgoing)
-    case _: HtlcClaimTxDescription => holder.setPaymentTypeVisibility(visible = R.id.lnBtc)
-    case _: PenaltyTxDescription => holder.setPaymentTypeVisibility(visible = R.id.lnBtc)
-  }
-
-  def txDescription(info: TxInfo): String = info.description match {
-    case _: ChanRefundingTxDescription => getString(tx_description_refunding)
-    case _: HtlcClaimTxDescription => getString(tx_description_htlc_claim)
-    case _: ChanFundingTxDescription => getString(tx_description_funding)
-    case _: OpReturnTxDescription => getString(tx_description_op_return)
-    case _: PenaltyTxDescription => getString(tx_description_penalty)
-    case plainTxDescription: PlainTxDescription =>
-      val shortOpt = plainTxDescription.addresses.headOption.map(_.shortAddress)
-      val htmlOpt = shortOpt.map(short => s" <font color=$cardZero>$short</font>")
-      getString(tx_btc) + htmlOpt.getOrElse(new String)
-  }
-
-  def txMeta(info: TxInfo): String =
-    if (info.isDeeplyBuried) WalletApp.app.when(info.date)
-    else if (info.isDoubleSpent) getString(tx_state_double_spent)
-    else if (info.depth > 0) getString(tx_state_confs).format(info.depth, LNParams.minDepthBlocks)
-    else getString(tx_state_unconfirmed)
-
-  def txStatusIcon(info: TxInfo): Int =
-    if (info.isDeeplyBuried) R.drawable.baseline_done_24
-    else if (info.isDoubleSpent) R.drawable.baseline_block_24
-    else R.drawable.baseline_hourglass_empty_24
-
   // NFC
 
   def readEmptyNdefMessage: Unit = WalletApp.app quickToast error_nothing_useful
@@ -304,6 +305,85 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
     case _: RemoteNodeInfo => me goTo ClassNames.remotePeerActivityClass
     case _: PaymentRequestExt =>
     case uri: BitcoinUri if uri.isValid =>
+      val body = getLayoutInflater.inflate(R.layout.frag_input_send_chain_tx, null).asInstanceOf[ScrollView]
+      val manager = new RateManager(body, getString(dialog_add_memo).toSome, getString(dialog_visibility_private), LNParams.fiatRatesInfo.rates, WalletApp.fiatCode)
+      val canSend = LNParams.denomination.parsedWithSign(WalletApp.lastChainBalance.totalBalance, Colors.cardZero)
+      val canSendFiat = WalletApp.currentMsatInFiatHuman(WalletApp.lastChainBalance.totalBalance)
+
+      val customFeerate = body.findViewById(R.id.customFeerate).asInstanceOf[EditText]
+      val customFeerateOption = body.findViewById(R.id.customFeerateOption).asInstanceOf[TextView]
+      val customFeerateHint = body.findViewById(R.id.customFeerateHint).asInstanceOf[TextView]
+
+      var chosenFeerate: FeeratePerKw = {
+        val target = LNParams.feeRatesInfo.onChainFeeConf.feeTargets.mutualCloseBlockTarget
+        LNParams.feeRatesInfo.onChainFeeConf.feeEstimator.getFeeratePerKw(target)
+      }
+
+      def finalize(txAndFee: TxAndFee, isCommitted: Boolean): Unit = if (isCommitted) {
+        val spentAmount = if (txAndFee.spendingAll) manager.resultSat - txAndFee.fee else manager.resultSat
+        val event = TransactionReceived(txAndFee.tx, depth = 0L, received = 0L.sat, spentAmount, walletAddreses = uri.address :: Nil, feeOpt = txAndFee.fee.toSome)
+        WalletApp.txDataBag.putTx(event, isIncoming = 0L, PlainTxDescription(uri.address :: Nil), WalletApp.lastChainBalance.totalBalance, LNParams.fiatRatesInfo.rates)
+      } else {
+
+      }
+
+      def attemptSendChainTransaction(alert: AlertDialog): Unit = {
+        for {
+          txAndFee <- LNParams.chainWallet.wallet.sendPayment(manager.resultSat, uri.address, chosenFeerate)
+          isCommitted <- LNParams.chainWallet.wallet.commit(txAndFee.tx)
+        } finalize(txAndFee, isCommitted)
+        alert.dismiss
+      }
+
+      val alert = mkCheckFormNeutral(attemptSendChainTransaction, none, _ => manager.updateText(WalletApp.lastChainBalance.totalBalance),
+        titleBodyAsViewBuilder(getString(dialog_send_btc).format(uri.address.shortAddress, BaseActivity formattedBitcoinUri uri).html, manager.content),
+        dialog_ok, dialog_cancel, if (uri.amount.isDefined) -1 else dialog_max)
+
+      val feeView = new FeeView(body) {
+        override def update(rate: FeeratePerKw, feeOpt: Option[MilliSatoshi], showIssue: Boolean): Unit = {
+          // We update fee view and button availability at once so user can't proceed if there are tx issues
+          manager.updateOkButton(getPositiveButton(alert), feeOpt.isDefined)
+          super.update(rate, feeOpt, showIssue)
+        }
+      }
+
+      val worker = new ThrottledWork[Satoshi, TxAndFee] {
+        def work(amount: Satoshi): Observable[TxAndFee] = Rx fromFutureOnIo LNParams.chainWallet.wallet.sendPayment(manager.resultSat, uri.address, chosenFeerate)
+        def process(amount: Satoshi, txAndFee: TxAndFee): Unit = feeView.update(chosenFeerate, Some(txAndFee.fee.toMilliSatoshi), showIssue = false)
+        def error(exc: Throwable): Unit = feeView.update(chosenFeerate, None, showIssue = manager.resultSat >= LNParams.minDustLimit)
+      }
+
+      manager.hintDenom.setText(getString(dialog_can_send).format(canSend).html)
+      manager.hintFiatDenom.setText(getString(dialog_can_send).format(canSendFiat).html)
+      customFeerate.setText(FeeratePerVByte(chosenFeerate).feerate.toLong.toString)
+      feeView.update(chosenFeerate, feeOpt = None, showIssue = false).run
+
+      manager.inputAmount addTextChangedListener onTextChange { _ =>
+        worker.addWork(manager.resultSat)
+      }
+
+      customFeerate addTextChangedListener onTextChange { newFeerate =>
+        Try(newFeerate.toString.toLong.sat).foreach { perVByteSat =>
+          val newFeeratePerVByte = FeeratePerVByte(perVByteSat)
+          chosenFeerate = FeeratePerKw(newFeeratePerVByte)
+          worker.addWork(manager.resultSat)
+        }
+      }
+
+      uri.amount.foreach { asked =>
+        manager.updateText(asked)
+        manager.inputAmount.setEnabled(false)
+        manager.fiatInputAmount.setEnabled(false)
+
+      }
+
+      customFeerateOption setOnClickListener onButtonTap {
+        customFeerateHint setVisibility View.VISIBLE
+        customFeerateOption setVisibility View.GONE
+        customFeerate setVisibility View.VISIBLE
+        customFeerate.requestFocus
+      }
+
     case _: LNUrl =>
     case _ => whenNone.run
   }
@@ -324,16 +404,11 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
       snack(contentWindow, getString(error_ln_receive_reserve).format(reserveHuman).html, dialog_ok, _.dismiss)
 
     case (CHOICE_RECEIVE_TAG, 1) =>
-      val body = getLayoutInflater.inflate(R.layout.frag_input_fiat_converter, null)
       val commits = LNParams.cm.maxReceivable(LNParams.cm.allSortedReceivable).head.commits
-      val manager = new RateManager(body, getString(dialog_optional_ln_description).toSome, LNParams.fiatRatesInfo.rates, WalletApp.fiatCode)
+      val body = getLayoutInflater.inflate(R.layout.frag_input_fiat_converter, null).asInstanceOf[ViewGroup]
+      val manager = new RateManager(body, getString(dialog_add_description).toSome, getString(dialog_visibility_public), LNParams.fiatRatesInfo.rates, WalletApp.fiatCode)
       val canReceive = LNParams.denomination.parsedWithSign(commits.availableForReceive, Colors.cardZero)
       val canReceiveFiat = WalletApp.currentMsatInFiatHuman(commits.availableForReceive)
-
-      def useMax(alert: AlertDialog): Unit = {
-        val balanceSat = commits.availableForReceive.truncateToSatoshi
-        manager.inputAmount.setText(balanceSat.toLong.toString)
-      }
 
       def attempt(alert: AlertDialog): Unit = {
         val preimage: ByteVector32 = randomBytes32
@@ -348,8 +423,9 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
         alert.dismiss
       }
 
-      val builder = titleBodyAsViewBuilder(title = getString(dialog_receive_ln).html, manager.content)
-      val alert = mkCheckFormNeutral(attempt, none, useMax, builder, dialog_ok, dialog_cancel, dialog_max)
+      val alert = mkCheckFormNeutral(attempt, none, _ => manager.updateText(commits.availableForReceive),
+        titleBodyAsViewBuilder(getString(dialog_receive_ln).html, manager.content), dialog_ok, dialog_cancel, dialog_max)
+
       manager.hintFiatDenom.setText(getString(dialog_can_receive).format(canReceiveFiat).html)
       manager.hintDenom.setText(getString(dialog_can_receive).format(canReceive).html)
       manager.updateOkButton(getPositiveButton(alert), isEnabled = false)
@@ -434,7 +510,10 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
     runInFutureProcessOnUI(InputParser.recordValue(WalletApp.app.getBufferUnsafe),
       _ => explainClipboardFailure.run)(_ => me checkExternalData explainClipboardFailure)
 
-  def bringScanner(view: View): Unit = callScanner(me)
+  def bringScanner(view: View): Unit = {
+    updatePaymentList
+    callScanner(me)
+  }
 
   def bringReceiveOptions(view: View): Unit = {
     val options = Array(dialog_receive_btc, dialog_receive_ln).map(res => getString(res).html)

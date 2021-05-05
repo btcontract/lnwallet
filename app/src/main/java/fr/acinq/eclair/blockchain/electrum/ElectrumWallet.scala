@@ -28,6 +28,7 @@ import fr.acinq.eclair.blockchain.electrum.db.WalletDb
 import fr.acinq.eclair.blockchain.bitcoind.rpc.Error
 import fr.acinq.eclair.blockchain.fee.FeeratePerKw
 import fr.acinq.eclair.transactions.Transactions
+import fr.acinq.eclair.blockchain.TxAndFee
 import scala.annotation.tailrec
 import scodec.bits.ByteVector
 
@@ -445,13 +446,13 @@ class ElectrumWallet(seed: ByteVector, client: ActorRef, params: ElectrumWallet.
 
     case Event(CompleteTransaction(tx, feeRatePerKw, sequenceFlag), data) =>
       Try(data.completeTransaction(tx, feeRatePerKw, dustLimit, allowSpendUnconfirmed, sequenceFlag)) match {
-        case Success((tx1, fee1)) => stay replying CompleteTransactionResponse(Some(tx1, fee1))
+        case Success(txAndFee) => stay replying CompleteTransactionResponse(Some(txAndFee))
         case _ => stay replying CompleteTransactionResponse(None)
       }
 
     case Event(SendAll(publicKeyScript, feeRatePerKw, sequenceFlag), data) =>
       Try(data.spendAll(publicKeyScript, feeRatePerKw, dustLimit, sequenceFlag)) match {
-        case Success((tx, fee)) => stay replying SendAllResponse(Some(tx, fee))
+        case Success(txAndFee) => stay replying SendAllResponse(Some(txAndFee))
         case _ => stay replying SendAllResponse(None)
       }
 
@@ -863,7 +864,7 @@ object ElectrumWallet {
      *         our utxos spent by this tx are locked and won't be available for spending
      *         until the tx has been cancelled. If the tx is committed, they will be removed
      */
-    def completeTransaction(tx: Transaction, feeRatePerKw: FeeratePerKw, dustLimit: Satoshi, allowSpendUnconfirmed: Boolean, sequenceFlag: Long): (Transaction, Satoshi) = {
+    def completeTransaction(tx: Transaction, feeRatePerKw: FeeratePerKw, dustLimit: Satoshi, allowSpendUnconfirmed: Boolean, sequenceFlag: Long): TxAndFee = {
       require(tx.txIn.isEmpty, "cannot complete a tx that already has inputs")
       val amount = tx.txOut.map(_.amount).sum
       require(amount > dustLimit, "amount to send is below dust limit")
@@ -916,7 +917,7 @@ object ElectrumWallet {
 
       // and add the completed tx to the locks
       val fee = selected.map(s => Satoshi(s.item.value)).sum - tx3.txOut.map(_.amount).sum
-      (tx3, fee)
+      TxAndFee(tx3, fee, spendingAll = false)
     }
 
     def signTransaction(tx: Transaction): Transaction = {
@@ -963,7 +964,7 @@ object ElectrumWallet {
      * @return a (tx, fee) tuple, tx is a signed transaction that spends all our balance and
      *         fee is the associated bitcoin network fee
      */
-    def spendAll(publicKeyScript: ByteVector, feeRatePerKw: FeeratePerKw, dustLimit: Satoshi, sequenceFlag: Long): (Transaction, Satoshi) = {
+    def spendAll(publicKeyScript: ByteVector, feeRatePerKw: FeeratePerKw, dustLimit: Satoshi, sequenceFlag: Long): TxAndFee = {
       // use confirmed and unconfirmed balance
       val amount = balance._1 + balance._2
       val tx = Transaction(version = 2, txIn = Nil, txOut = TxOut(amount, publicKeyScript) :: Nil, lockTime = 0)
@@ -972,11 +973,10 @@ object ElectrumWallet {
       val fee = Transactions.weight2fee(feeRatePerKw, tx1.weight())
       require(amount - fee > dustLimit, "amount to send is below dust limit")
       val tx2 = tx1.copy(txOut = TxOut(amount - fee, publicKeyScript) :: Nil)
-      val tx3 = signTransaction(tx2)
-      (tx3, fee)
+      TxAndFee(signTransaction(tx2), fee, spendingAll = true)
     }
 
-    def spendAll(publicKeyScript: Seq[ScriptElt], feeRatePerKw: FeeratePerKw, dustLimit: Satoshi, sequenceFlag: Long): (Transaction, Satoshi) =
+    def spendAll(publicKeyScript: Seq[ScriptElt], feeRatePerKw: FeeratePerKw, dustLimit: Satoshi, sequenceFlag: Long): TxAndFee =
       spendAll(Script.write(publicKeyScript), feeRatePerKw, dustLimit, sequenceFlag)
   }
 

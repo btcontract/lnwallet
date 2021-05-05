@@ -9,11 +9,11 @@ import java.io.{File, FileOutputStream}
 import android.graphics.{Bitmap, Color}
 import android.graphics.Color.{BLACK, WHITE}
 import android.content.{DialogInterface, Intent}
-import immortan.utils.{Denomination, InputParser}
 import immortan.crypto.Tools.{Fiat2Btc, none, runAnd}
 import com.google.zxing.{BarcodeFormat, EncodeHintType}
 import android.text.{Editable, Html, Spanned, TextWatcher}
 import androidx.core.content.{ContextCompat, FileProvider}
+import immortan.utils.{BitcoinUri, Denomination, InputParser}
 import com.google.android.material.snackbar.{BaseTransientBottomBar, Snackbar}
 import android.widget.{ArrayAdapter, Button, EditText, ImageView, LinearLayout, ListView, TextView}
 import com.cottacush.android.currencyedittext.CurrencyEditText
@@ -37,7 +37,6 @@ import androidx.core.app.ActivityCompat
 import fr.acinq.bitcoin.Satoshi
 import scala.concurrent.Future
 import scodec.bits.ByteVector
-import android.app.Dialog
 import android.os.Bundle
 import immortan.LNParams
 
@@ -47,10 +46,15 @@ object BaseActivity {
 
   implicit class StringOps(source: String) {
     def s2hex: String = ByteVector.view(source getBytes "UTF-8").toHex
-    def noSpaces: String = source.replace(" ", "").replace("\u00A0", "")
-    def shortAddress: String = s"${source take 4} &middot; ${source takeRight 4}"
+    def shortAddress: String = s"${source take 4} <sup><small><small>&#8230;</small></small></sup> ${source takeRight 4}"
     def humanFour: String = source.grouped(4).mkString(s"\u0020")
     def html: Spanned = Html.fromHtml(source)
+  }
+
+  def formattedBitcoinUri(uri: BitcoinUri): String = {
+    val formattedLabel = uri.label.map(label => s"<br><br><b>$label</b>").getOrElse(new String)
+    val formattedMessage = uri.message.map(message => s"<br><i>$message<i>").getOrElse(new String)
+    formattedLabel + formattedMessage
   }
 }
 
@@ -240,14 +244,16 @@ trait BaseActivity extends AppCompatActivity { me =>
 
   // Fiat / BTC converter
 
-  class RateManager(val content: View, extraHint: Option[String], rates: Fiat2Btc, fiatCode: String) {
+  class RateManager(val content: ViewGroup, extraText: Option[String], visibilityHint: String, rates: Fiat2Btc, fiatCode: String) {
     val fiatInputAmount: CurrencyEditText = content.findViewById(R.id.fiatInputAmount).asInstanceOf[CurrencyEditText]
+    val fiatInputAmountHint: TextView = content.findViewById(R.id.fiatInputAmountHint).asInstanceOf[TextView]
     val inputAmount: CurrencyEditText = content.findViewById(R.id.inputAmount).asInstanceOf[CurrencyEditText]
+    val inputAmountHint: TextView = content.findViewById(R.id.inputAmountHint).asInstanceOf[TextView]
     val hintFiatDenom: TextView = clickableTextField(content findViewById R.id.hintFiatDenom)
     val hintDenom: TextView = clickableTextField(content findViewById R.id.hintDenom)
 
-    val inputAmountHint: TextView = content.findViewById(R.id.inputAmountHint).asInstanceOf[TextView]
-    val fiatInputAmountHint: TextView = content.findViewById(R.id.fiatInputAmountHint).asInstanceOf[TextView]
+    val extraInputOption: TextView = content.findViewById(R.id.extraInputOption).asInstanceOf[TextView]
+    val extraInputVisibility: TextView = content.findViewById(R.id.extraInputVisibility).asInstanceOf[TextView]
     val extraInputLayout: TextInputLayout = content.findViewById(R.id.extraInputLayout).asInstanceOf[TextInputLayout]
     val extraInput: EditText = content.findViewById(R.id.fiatInputAmount).asInstanceOf[EditText]
 
@@ -257,6 +263,7 @@ trait BaseActivity extends AppCompatActivity { me =>
       button.setAlpha(alpha)
     }.run
 
+    def updateText(value: MilliSatoshi): Unit = runAnd(inputAmount.requestFocus)(inputAmount setText value.truncateToSatoshi.toLong.toString)
     def bigDecimalFrom(input: CurrencyEditText, times: Long = 1L): BigDecimal = (input.getNumericValueBigDecimal: BigDecimal) * times
     def resultMsat: MilliSatoshi = MilliSatoshi(bigDecimalFrom(inputAmount, times = 1000L).toLong)
     def resultSat: Satoshi = resultMsat.truncateToSatoshi
@@ -273,13 +280,33 @@ trait BaseActivity extends AppCompatActivity { me =>
         .map(LNParams.denomination.asString)
         .getOrElse(null)
 
-    extraHint match {
-      case Some(hint) => extraInputLayout setHint hint
-      case None => extraInputLayout setVisibility View.GONE
+    def revealExtraInput: Unit = {
+      extraInputLayout setVisibility View.VISIBLE
+      extraInputOption setVisibility View.GONE
     }
 
-    fiatInputAmount addTextChangedListener onTextChange { _ => if (fiatInputAmount.hasFocus) inputAmount setText updatedSat }
-    inputAmount addTextChangedListener onTextChange { _ => if (inputAmount.hasFocus) fiatInputAmount setText updatedFiat }
+    extraText match {
+      case Some(hintText) =>
+        extraInputLayout setHint hintText
+        extraInputOption setText hintText
+        extraInputVisibility setText visibilityHint
+        extraInputOption setOnClickListener onButtonTap(revealExtraInput)
+        extraInputVisibility setOnClickListener onButtonTap(revealExtraInput)
+
+      case None =>
+        extraInputLayout setVisibility View.GONE
+        extraInputOption setVisibility View.GONE
+        extraInputVisibility setVisibility View.GONE
+    }
+
+    fiatInputAmount addTextChangedListener onTextChange { _ =>
+      if (fiatInputAmount.hasFocus) inputAmount setText updatedSat
+    }
+
+    inputAmount addTextChangedListener onTextChange { _ =>
+      if (inputAmount.hasFocus) fiatInputAmount setText updatedFiat
+    }
+
     inputAmountHint setText LNParams.denomination.sign.toUpperCase
     fiatInputAmountHint setText fiatCode.toUpperCase
     inputAmount.requestFocus
@@ -294,7 +321,7 @@ trait BaseActivity extends AppCompatActivity { me =>
     def update(rate: FeeratePerKw, feeOpt: Option[MilliSatoshi], showIssue: Boolean): Unit = UITask {
       feeOpt.map(fee => LNParams.denomination.parsedWithSign(fee, Colors.cardZero).html).foreach(bitcoinFee.setText)
       feeOpt.map(fee => WalletApp.currentMsatInFiatHuman(fee).html).foreach(fiatFee.setText)
-      feeRate setText getString(dialog_sat_vbyte).format(rate.toLong / 1000).html
+      feeRate setText getString(dialog_fee_sat_vbyte).format(rate.toLong / 1000).html
       bitcoinFee setVisibility BaseActivity.viewMap(feeOpt.isDefined)
       fiatFee setVisibility BaseActivity.viewMap(feeOpt.isDefined)
       txIssues setVisibility BaseActivity.viewMap(showIssue)

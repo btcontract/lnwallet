@@ -29,15 +29,19 @@ trait FeeProvider {
 
 case object CannotRetrieveFeerates extends RuntimeException("cannot retrieve feerates: channels may be at risk")
 
-/** Fee rate in satoshi-per-bytes. */
-case class FeeratePerByte(feerate: Satoshi)
-
-/** Fee rate in satoshi-per-virtual-bytes. */
-case class FeeratePerVByte(feerate: Satoshi)
-
 object FeeratePerByte {
   def apply(feeratePerKw: FeeratePerKw): FeeratePerByte = FeeratePerByte(FeeratePerKB(feeratePerKw).feerate / 1000)
 }
+
+/** Fee rate in satoshi-per-bytes. */
+case class FeeratePerByte(feerate: Satoshi)
+
+object FeeratePerVByte {
+  def apply(feeratePerKw: FeeratePerKw): FeeratePerVByte = FeeratePerVByte(feeratePerKw.feerate / 1000)
+}
+
+/** Fee rate in satoshi-per-virtual-bytes. */
+case class FeeratePerVByte(feerate: Satoshi)
 
 /** Fee rate in satoshi-per-kilo-bytes (1 kB = 1000 bytes). */
 case class FeeratePerKB(feerate: Satoshi) extends Ordered[FeeratePerKB] {

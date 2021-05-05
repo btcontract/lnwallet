@@ -19,15 +19,15 @@ package fr.acinq.eclair.blockchain.electrum
 import fr.acinq.eclair.blockchain.EclairWallet._
 import fr.acinq.eclair.blockchain.electrum.ElectrumWallet._
 import fr.acinq.eclair.blockchain.electrum.ElectrumClient.BroadcastTransaction
-import fr.acinq.eclair.blockchain.fee.FeeratePerKw
-import fr.acinq.eclair.addressToPublicKeyScript
-import akka.pattern.ask
-
 import fr.acinq.bitcoin.{ByteVector32, OP_PUSHDATA, OP_RETURN, Satoshi, Script, Transaction, TxIn, TxOut}
-import fr.acinq.eclair.blockchain.{EclairWallet, MakeFundingTxResponse, OnChainBalance}
+import fr.acinq.eclair.blockchain.{EclairWallet, MakeFundingTxResponse, OnChainBalance, TxAndFee}
 import scala.concurrent.{ExecutionContext, Future}
 import akka.actor.{ActorRef, ActorSystem}
+
+import fr.acinq.eclair.blockchain.fee.FeeratePerKw
+import fr.acinq.eclair.addressToPublicKeyScript
 import scodec.bits.ByteVector
+import akka.pattern.ask
 
 
 class ElectrumEclairWallet(val wallet: ActorRef, chainHash: ByteVector32)(implicit system: ActorSystem, ec: ExecutionContext, timeout: akka.util.Timeout) extends EclairWallet {
@@ -40,14 +40,14 @@ class ElectrumEclairWallet(val wallet: ActorRef, chainHash: ByteVector32)(implic
     getBalance.flatMap {
       case chainBalance if chainBalance.totalBalance == amount =>
         (wallet ? SendAll(pubkeyScript, feeRatePerKw, TxIn.SEQUENCE_FINAL)).mapTo[SendAllResponse].map {
-          case SendAllResponse(Some((tx1, fee1))) => MakeFundingTxResponse(tx1, 0, fee1)
+          case SendAllResponse(Some(txAndFee)) => MakeFundingTxResponse(txAndFee.tx, 0, txAndFee.fee)
           case SendAllResponse(None) => throw new RuntimeException
         }
 
       case _ =>
         val tx = Transaction(version = 2, txIn = Nil, txOut = TxOut(amount, pubkeyScript) :: Nil, lockTime = 0)
         (wallet ? CompleteTransaction(tx, feeRatePerKw, TxIn.SEQUENCE_FINAL)).mapTo[CompleteTransactionResponse].map {
-          case CompleteTransactionResponse(Some((tx1, fee1))) => MakeFundingTxResponse(tx1, 0, fee1)
+          case CompleteTransactionResponse(Some(txAndFee)) => MakeFundingTxResponse(txAndFee.tx, 0, txAndFee.fee)
           case CompleteTransactionResponse(None) => throw new RuntimeException
         }
     }
@@ -71,11 +71,11 @@ class ElectrumEclairWallet(val wallet: ActorRef, chainHash: ByteVector32)(implic
 
   override def sendPreimageBroadcast(preimages: Set[ByteVector32], feeRatePerKw: FeeratePerKw): Future[TxAndFee] = {
     val txOuts = preimages.toList.map(_.bytes).map(OP_PUSHDATA.apply).grouped(2).map(OP_RETURN :: _).map(Script.write).map(TxOut(Satoshi(0L), _))
-    val rbfRequest = CompleteTransaction(Transaction(version = 2, txIn = Nil, txOut = txOuts.toList, lockTime = 0), feeRatePerKw, OPT_IN_FULL_RBF)
+    val rbfPreimageReq = CompleteTransaction(Transaction(version = 2, txIn = Nil, txOut = txOuts.toList, lockTime = 0), feeRatePerKw, OPT_IN_FULL_RBF)
 
-    (wallet ? rbfRequest).mapTo[CompleteTransactionResponse].map {
-      case CompleteTransactionResponse(Some(completeSignedTxAndFee)) => completeSignedTxAndFee
+    (wallet ? rbfPreimageReq).mapTo[CompleteTransactionResponse].map {
       case CompleteTransactionResponse(None) => throw new RuntimeException
+      case CompleteTransactionResponse(Some(txAndFee)) => txAndFee
     }
   }
 
@@ -85,15 +85,15 @@ class ElectrumEclairWallet(val wallet: ActorRef, chainHash: ByteVector32)(implic
     getBalance.flatMap {
       case chainBalance if chainBalance.totalBalance == amount =>
         (wallet ? SendAll(publicKeyScript, feeRatePerKw, OPT_IN_FULL_RBF)).mapTo[SendAllResponse].map {
-          case SendAllResponse(Some(completeSignedTxAndFee)) => completeSignedTxAndFee
           case SendAllResponse(None) => throw new RuntimeException
+          case SendAllResponse(Some(txAndFee)) => txAndFee
         }
 
       case _ =>
         val tx = Transaction(version = 2, txIn = Nil, txOut = TxOut(amount, publicKeyScript) :: Nil, lockTime = 0)
         (wallet ? CompleteTransaction(tx, feeRatePerKw, OPT_IN_FULL_RBF)).mapTo[CompleteTransactionResponse].map {
-          case CompleteTransactionResponse(Some(completeSignedTxAndFee)) => completeSignedTxAndFee
           case CompleteTransactionResponse(None) => throw new RuntimeException
+          case CompleteTransactionResponse(Some(txAndFee)) => txAndFee
         }
     }
   }

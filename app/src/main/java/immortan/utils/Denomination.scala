@@ -2,7 +2,6 @@ package immortan.utils
 
 import java.text._
 import fr.acinq.eclair._
-import fr.acinq.bitcoin.Satoshi
 
 
 object Denomination {

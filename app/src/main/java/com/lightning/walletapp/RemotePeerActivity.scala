@@ -6,6 +6,8 @@ import fr.acinq.eclair.wire._
 import immortan.crypto.Tools._
 import fr.acinq.eclair.Features._
 import com.lightning.walletapp.R.string._
+
+import android.view.{View, ViewGroup}
 import fr.acinq.bitcoin.{ByteVector32, Satoshi}
 import immortan.utils.{InputParser, Rx, ThrottledWork}
 import android.widget.{LinearLayout, ProgressBar, TextView}
@@ -18,7 +20,6 @@ import androidx.appcompat.app.AlertDialog
 import com.ornach.nobobutton.NoboButton
 import rx.lang.scala.Observable
 import android.os.Bundle
-import android.view.View
 
 
 class RemotePeerActivity extends BaseActivity with ExternalDataChecker { me =>
@@ -132,15 +133,10 @@ class RemotePeerActivity extends BaseActivity with ExternalDataChecker { me =>
   }
 
   def fundNewChannel(view: View): Unit = {
-    val body = getLayoutInflater.inflate(R.layout.frag_input_fund_channel, null)
-    val manager = new RateManager(body, extraHint = None, LNParams.fiatRatesInfo.rates, WalletApp.fiatCode)
+    val body = getLayoutInflater.inflate(R.layout.frag_input_fund_channel, null).asInstanceOf[ViewGroup]
+    val manager = new RateManager(body, None, new String, LNParams.fiatRatesInfo.rates, WalletApp.fiatCode)
     val canSend = LNParams.denomination.parsedWithSign(WalletApp.lastChainBalance.totalBalance, Colors.cardZero)
     val canSendFiat = WalletApp.currentMsatInFiatHuman(WalletApp.lastChainBalance.totalBalance)
-
-    def useMax(alert: AlertDialog): Unit = {
-      val balanceSat = WalletApp.lastChainBalance.totalBalance.truncateToSatoshi
-      manager.inputAmount.setText(balanceSat.toLong.toString)
-    }
 
     def attempt(alert: AlertDialog): Unit = {
       NCFunderOpenHandler.makeFunding(LNParams.chainWallet, manager.resultSat) foreach { fakeFunding =>
@@ -155,8 +151,8 @@ class RemotePeerActivity extends BaseActivity with ExternalDataChecker { me =>
       alert.dismiss
     }
 
-    val builder = titleBodyAsViewBuilder(title = getString(rpa_open_nc), body = manager.content)
-    val alert = mkCheckFormNeutral(attempt, none, useMax, builder, dialog_ok, dialog_cancel, dialog_max)
+    val alert = mkCheckFormNeutral(attempt, none, _ => manager.updateText(WalletApp.lastChainBalance.totalBalance),
+      titleBodyAsViewBuilder(getString(rpa_open_nc), manager.content), dialog_ok, dialog_cancel, dialog_max)
 
     val feeView = new FeeView(body) {
       override def update(rate: FeeratePerKw, feeOpt: Option[MilliSatoshi], showIssue: Boolean): Unit = {
@@ -169,12 +165,11 @@ class RemotePeerActivity extends BaseActivity with ExternalDataChecker { me =>
     val worker = new ThrottledWork[Satoshi, MakeFundingTxResponse] {
       def work(amount: Satoshi): Observable[MakeFundingTxResponse] = Rx fromFutureOnIo NCFunderOpenHandler.makeFunding(LNParams.chainWallet, amount)
       def process(amount: Satoshi, res: MakeFundingTxResponse): Unit = feeView.update(NCFunderOpenHandler.defFeerate, Some(res.fee.toMilliSatoshi), showIssue = false)
-      def error(exc: Throwable): Unit = feeView.update(NCFunderOpenHandler.defFeerate, None, showIssue = true)
+      def error(exc: Throwable): Unit = feeView.update(NCFunderOpenHandler.defFeerate, None, showIssue = manager.resultSat >= LNParams.minFundingSatoshis)
     }
 
     manager.inputAmount addTextChangedListener onTextChange { _ =>
-      if (manager.resultSat >= LNParams.minFundingSatoshis) worker.addWork(manager.resultSat)
-      else feeView.update(NCFunderOpenHandler.defFeerate, feeOpt = None, showIssue = false)
+      worker.addWork(manager.resultSat)
     }
 
     manager.hintDenom.setText(getString(dialog_can_send).format(canSend).html)

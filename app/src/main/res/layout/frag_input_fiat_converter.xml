@@ -49,15 +49,29 @@
 
     <com.google.android.material.textfield.TextInputLayout
         android:id="@+id/extraInputLayout"
-        style="@style/FillingView">
+        style="@style/FillingView"
+        android:visibility="gone">
 
         <EditText
-            style="@style/XYMarginFillingView"
+            style="@style/FillingView"
+            android:layout_marginLeft="13dp"
+            android:layout_marginRight="13dp"
             android:id="@+id/extraInput"
             android:inputType="text"
             android:maxLines="1"/>
 
     </com.google.android.material.textfield.TextInputLayout>
+
+    <TextView
+        style="@style/XMarginFillingView"
+        android:id="@+id/extraInputOption"
+        android:textStyle="bold"/>
+
+    <TextView
+        style="@style/XMarginFillingView"
+        android:id="@+id/extraInputVisibility"
+        android:layout_marginBottom="25dp"
+        android:textStyle="italic"/>
 
     <View style="@style/GrayDivider"/>
 </LinearLayout>
