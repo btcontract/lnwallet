@@ -1,11 +1,10 @@
 package immortan
 
-import fr.acinq.eclair._
 import immortan.utils.ImplicitJsonFormats._
 import fr.acinq.eclair.channel.{DATA_CLOSING, DATA_NEGOTIATING, HasNormalCommitments}
-import immortan.utils.{Denomination, LNUrl, PaymentRequestExt}
 import fr.acinq.bitcoin.{ByteVector32, Satoshi, Transaction}
 import fr.acinq.eclair.wire.{FullPaymentTag, PaymentTagTlv}
+import immortan.utils.{LNUrl, PaymentRequestExt}
 import immortan.crypto.Tools.{Bytes, Fiat2Btc}
 import fr.acinq.bitcoin.Crypto.PublicKey
 import fr.acinq.eclair.MilliSatoshi
@@ -116,11 +115,6 @@ case class TxInfo(txString: String, txidString: String, depth: Long, receivedSat
   lazy val description: TxDescription = to[TxDescription](descriptionString)
   lazy val txid: ByteVector32 = ByteVector32.fromValidHex(txidString)
   lazy val tx: Transaction = Transaction.read(txString)
-
-  def directedParsedWithSign(denomination: Denomination, zeroColor: String): String = {
-    if (isIncoming) "+" + denomination.parsedWithSign(receivedSat.toMilliSatoshi, zeroColor)
-    else "-" + denomination.parsedWithSign(sentSat.toMilliSatoshi, zeroColor)
-  }
 }
 
 sealed trait TxDescription

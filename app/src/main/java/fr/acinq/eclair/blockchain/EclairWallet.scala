@@ -47,7 +47,7 @@ trait EclairWallet {
   def doubleSpent(tx: Transaction): Future[DepthAndDoubleSpent]
 }
 
-case class TxAndFee(tx: Transaction, fee: Satoshi, spendingAll: Boolean)
+case class TxAndFee(tx: Transaction, fee: Satoshi)
 
 case class OnChainBalance(confirmed: Satoshi, unconfirmed: Satoshi) {
   val totalBalance: Satoshi = confirmed + unconfirmed

@@ -917,7 +917,7 @@ object ElectrumWallet {
 
       // and add the completed tx to the locks
       val fee = selected.map(s => Satoshi(s.item.value)).sum - tx3.txOut.map(_.amount).sum
-      TxAndFee(tx3, fee, spendingAll = false)
+      TxAndFee(tx3, fee)
     }
 
     def signTransaction(tx: Transaction): Transaction = {
@@ -973,7 +973,7 @@ object ElectrumWallet {
       val fee = Transactions.weight2fee(feeRatePerKw, tx1.weight())
       require(amount - fee > dustLimit, "amount to send is below dust limit")
       val tx2 = tx1.copy(txOut = TxOut(amount - fee, publicKeyScript) :: Nil)
-      TxAndFee(signTransaction(tx2), fee, spendingAll = true)
+      TxAndFee(signTransaction(tx2), fee)
     }
 
     def spendAll(publicKeyScript: Seq[ScriptElt], feeRatePerKw: FeeratePerKw, dustLimit: Satoshi, sequenceFlag: Long): TxAndFee =

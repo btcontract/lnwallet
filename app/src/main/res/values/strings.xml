@@ -112,6 +112,7 @@
 
     <string name="payment_incoming">Incoming payment</string>
     <string name="payment_outgoing">Outgoing payment</string>
+    <string name="tx_notice_sent_to_self"><![CDATA[<i>Sent to self</i>]]></string>
 
     <string name="tx_description_op_return">Preimage broadcast</string>
     <string name="tx_description_funding">Lightning channel funding</string>

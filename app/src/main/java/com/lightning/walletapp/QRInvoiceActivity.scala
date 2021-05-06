@@ -40,6 +40,7 @@ class QRInvoiceActivity extends QRActivity with ExternalDataChecker { me =>
       def share: Unit = runInFutureProcessOnUI(shareData(bitmap, prExt.raw), onFail)(Tools.none)
       val amountHuman = LNParams.denomination.parsedWithSign(prExt.pr.amount.get, Colors.totalZero)
       qrViewHolder.qrCopy setOnClickListener onButtonTap(WalletApp.app copy prExt.raw)
+      qrViewHolder.qrCode setOnClickListener onButtonTap(WalletApp.app copy prExt.raw)
       qrViewHolder.qrShare setOnClickListener onButtonTap(share)
       qrViewHolder.qrLabel setText amountHuman.html
       qrViewHolder.qrCode setImageBitmap bitmap

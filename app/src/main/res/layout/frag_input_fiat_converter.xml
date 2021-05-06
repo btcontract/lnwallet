@@ -47,7 +47,8 @@
 
     <com.google.android.material.textfield.TextInputLayout
         android:id="@+id/extraInputLayout"
-        style="@style/FillingView">
+        style="@style/FillingView"
+        android:visibility="gone">
 
         <EditText
             style="@style/FillingView"

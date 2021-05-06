@@ -296,7 +296,6 @@ trait BaseActivity extends AppCompatActivity { me =>
         extraInputVisibility setOnClickListener revealExtraInputListener
 
       case None =>
-        extraInputLayout setVisibility View.GONE
         extraInputOption setVisibility View.GONE
         extraInputVisibility setVisibility View.GONE
     }

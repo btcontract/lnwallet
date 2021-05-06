@@ -36,6 +36,7 @@ class QRChainActivity extends QRActivity { me =>
       runInFutureProcessOnUI(QRActivity.get(address.toUpperCase, qrSize), onFail) { bitmap =>
         def share: Unit = runInFutureProcessOnUI(shareData(bitmap, address), onFail)(Tools.none)
         holder.qrCopy setOnClickListener onButtonTap(WalletApp.app copy address)
+        holder.qrCode setOnClickListener onButtonTap(WalletApp.app copy address)
         holder.qrShare setOnClickListener onButtonTap(share)
         holder.qrLabel setText address.shortAddress.html
         holder.qrCode setImageBitmap bitmap

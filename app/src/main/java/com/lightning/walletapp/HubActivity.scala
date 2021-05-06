@@ -77,7 +77,8 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
           holder.detailsAndStatus setVisibility View.VISIBLE
           holder.description setText txDescription(txInfo).html
           holder.statusIcon setImageResource txStatusIcon(txInfo)
-          holder.amount setText LNParams.denomination.directedWithSign(txInfo.receivedSat.toMilliSatoshi, txInfo.sentSat.toMilliSatoshi, cardZero, txInfo.isIncoming).html
+          if (!txInfo.isIncoming && Satoshi(0L) == txInfo.sentSat) holder.amount setText getString(tx_notice_sent_to_self).html
+          else holder.amount setText LNParams.denomination.directedWithSign(txInfo.receivedSat.toMilliSatoshi, txInfo.sentSat.toMilliSatoshi, cardZero, txInfo.isIncoming).html
           holder.cardContainer setBackgroundResource R.drawable.panel_payment_passive_bg
           holder.meta setText txMeta(txInfo).html
           setTypeIcon(holder, txInfo)
