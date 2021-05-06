@@ -7,14 +7,14 @@ import fr.acinq.eclair._
 import scala.concurrent.duration._
 import com.lightning.walletapp.sqlite._
 import com.lightning.walletapp.R.string._
-import fr.acinq.bitcoin.{Block, SatoshiLong}
+import fr.acinq.bitcoin.{Block, Satoshi, SatoshiLong}
 import immortan.crypto.Tools.{Fiat2Btc, none, runAnd}
+import fr.acinq.eclair.channel.{CMD_CHECK_FEERATE, PersistentChannelData}
 import android.app.{Application, NotificationChannel, NotificationManager}
 import fr.acinq.eclair.blockchain.electrum.{CheckPoint, ElectrumClientPool}
 import android.content.{ClipData, ClipboardManager, Context, Intent, SharedPreferences}
 import fr.acinq.eclair.blockchain.electrum.ElectrumWallet.{TransactionReceived, WalletReady}
 import com.lightning.walletapp.utils.{AwaitService, DelayedNotification, LocalBackup, UsedAddons, WebsocketBus}
-import fr.acinq.eclair.channel.{CMD_CHECK_FEERATE, PersistentChannelData}
 import fr.acinq.eclair.router.Router.RouterConf
 import androidx.appcompat.app.AppCompatDelegate
 import immortan.utils.Denomination.formatFiat
@@ -171,7 +171,6 @@ object WalletApp {
     }
 
     LNParams.chainWallet.eventsCatcher ! new WalletEventsListener {
-      // CurrentBlockCount is handled separately is Channel.Receiver
       override def onChainSynchronized(event: WalletReady): Unit = {
         // The main point of this is to use unix timestamp instead of chain tip stamp to define whether we are deeply in past
         lastChainBalance = LastChainBalance(event.confirmedBalance, event.unconfirmedBalance, System.currentTimeMillis)
@@ -184,13 +183,16 @@ object WalletApp {
         LNParams.cm.initConnect
       }
 
-      override def onTransactionReceived(event: TransactionReceived): Unit = if (event.received >= event.sent) {
-        val txDescription = TxDescription.defineDescription(LNParams.cm.all.values, event.walletAddreses, event.tx)
-        txDataBag.putTx(event, isIncoming = 1L, txDescription, lastChainBalance.totalBalance, LNParams.fiatRatesInfo.rates)
-      } else {
-        val txDescription = TxDescription.defineDescription(LNParams.cm.all.values, Nil, event.tx)
-        // Outgoing tx should already be present in db so this will fail silently unless sent from other wallet
-        txDataBag.putTx(event, 0L, txDescription, lastChainBalance.totalBalance, LNParams.fiatRatesInfo.rates)
+      override def onTransactionReceived(event: TransactionReceived): Unit = {
+        def putTx(received: Satoshi, sent: Satoshi, description: TxDescription, isIncoming: Long): Unit =
+          txDataBag.putTx(event.tx, event.depth, received, sent, event.feeOpt, description, isIncoming,
+            lastChainBalance.totalBalance, LNParams.fiatRatesInfo.rates)
+
+        Tuple2(txDataBag.descriptions.get(event.tx.txid), event.sent > event.received) match {
+          case (Some(knownOutgoingDescription), true) => putTx(0L.sat, event.sent - event.received - event.feeOpt.getOrElse(0L.sat), knownOutgoingDescription, isIncoming = 0L)
+          case (None, true) => putTx(0L.sat, event.sent - event.received - event.feeOpt.getOrElse(0L.sat), TxDescription.define(LNParams.cm.all.values, Nil, event.tx), isIncoming = 0L)
+          case _ => putTx(event.received - event.sent, sent = 0L.sat, TxDescription.define(LNParams.cm.all.values, event.walletAddreses, event.tx), isIncoming = 1L)
+        }
       }
 
       override def onChainDisconnected: Unit = {

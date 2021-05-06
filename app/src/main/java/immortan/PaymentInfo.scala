@@ -142,7 +142,7 @@ case class HtlcClaimTxDescription(nodeId: PublicKey) extends ChanTxDescription
 case class PenaltyTxDescription(nodeId: PublicKey) extends ChanTxDescription
 
 object TxDescription {
-  def defineDescription(chans: Iterable[Channel], walletAddresses: List[String], tx: Transaction): TxDescription =
+  def define(chans: Iterable[Channel], walletAddresses: List[String], tx: Transaction): TxDescription =
     defineChannelRelation(chans, tx) getOrElse PlainTxDescription(walletAddresses)
 
   def defineChannelRelation(chans: Iterable[Channel], tx: Transaction): Option[TxDescription] = chans.map(_.data).collectFirst {

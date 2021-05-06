@@ -1,31 +1,63 @@
-<org.apmem.tools.layouts.FlowLayout
+<LinearLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:f="http://schemas.android.com/tools"
-    style="@style/XYMarginFillingView"
-    f:layout_newLine="true">
+    style="@style/StandardLinearLayout">
 
-    <TextView
-        style="@style/ChipTextGrayMargin"
-        android:background="@drawable/border_green"
-        android:id="@+id/feeRate"/>
+    <org.apmem.tools.layouts.FlowLayout
+        style="@style/XYMarginFillingView"
+        f:layout_newLine="true">
 
-    <TextView
-        style="@style/ChipTextGrayMargin"
-        android:background="@drawable/border_yellow"
-        android:text="@string/dialog_insufficient_funds"
-        android:visibility="invisible"
-        android:id="@+id/txIssues"/>
+        <TextView
+            style="@style/ChipTextGrayMargin"
+            android:background="@drawable/border_green"
+            android:id="@+id/feeRate"/>
 
-    <TextView
-        style="@style/ChipTextGrayMargin"
-        android:background="@drawable/border_green"
-        android:visibility="invisible"
-        android:id="@+id/bitcoinFee"/>
+        <TextView
+            style="@style/ChipTextGrayMargin"
+            android:background="@drawable/border_yellow"
+            android:text="@string/dialog_insufficient_funds"
+            android:visibility="invisible"
+            android:id="@+id/txIssues"/>
 
-    <TextView
-        style="@style/ChipTextGrayMargin"
-        android:background="@drawable/border_green"
-        android:visibility="invisible"
-        android:id="@+id/fiatFee"/>
+        <TextView
+            style="@style/ChipTextGrayMargin"
+            android:background="@drawable/border_green"
+            android:visibility="invisible"
+            android:id="@+id/bitcoinFee"/>
 
-</org.apmem.tools.layouts.FlowLayout>
+        <TextView
+            style="@style/ChipTextGrayMargin"
+            android:background="@drawable/border_green"
+            android:visibility="invisible"
+            android:id="@+id/fiatFee"/>
+
+    </org.apmem.tools.layouts.FlowLayout>
+
+    <FrameLayout
+        style="@style/XYMarginFillingView"
+        android:layout_marginTop="-25dp">
+
+        <TextView
+            style="@style/BoundedView"
+            android:id="@+id/customFeerateOption"
+            android:text="@string/dialog_change_feerate"
+            android:layout_marginStart="2dp"
+            android:layout_marginTop="10dp"
+            android:textStyle="bold"/>
+
+        <EditText
+            style="@style/FillingView"
+            android:id="@+id/customFeerate"
+            android:inputType="number"
+            android:visibility="gone"
+            android:maxLines="1"/>
+
+        <TextView
+            style="@style/InputHintView"
+            android:id="@+id/customFeerateHint"
+            android:text="@string/dialog_sat_vbyte"
+            android:layout_marginEnd="2dp"
+            android:visibility="gone"/>
+
+    </FrameLayout>
+</LinearLayout>

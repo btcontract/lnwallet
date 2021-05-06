@@ -3,7 +3,6 @@
     xmlns:android="http://schemas.android.com/apk/res/android">
 
     <FrameLayout style="@style/FillingView">
-
         <com.cottacush.android.currencyedittext.CurrencyEditText
             style="@style/XSmallMarginFillingView"
             android:focusableInTouchMode="true"
@@ -27,7 +26,6 @@
         android:id="@+id/hintFiatDenom"/>
 
     <FrameLayout style="@style/FillingView">
-
         <com.cottacush.android.currencyedittext.CurrencyEditText
             style="@style/XSmallMarginFillingView"
             android:imeOptions="actionDone"
@@ -49,8 +47,7 @@
 
     <com.google.android.material.textfield.TextInputLayout
         android:id="@+id/extraInputLayout"
-        style="@style/FillingView"
-        android:visibility="gone">
+        style="@style/FillingView">
 
         <EditText
             style="@style/FillingView"

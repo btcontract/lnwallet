@@ -95,7 +95,8 @@ case class CMDException(error: RuntimeException, cmd: Command) extends RuntimeEx
 
 
 case class INPUT_INIT_FUNDER(remoteInfo: RemoteNodeInfo, temporaryChannelId: ByteVector32, fakeFunding: MakeFundingTxResponse, pushAmount: MilliSatoshi,
-                             initialFeeratePerKw: FeeratePerKw, localParams: LocalParams, remoteInit: Init, channelFlags: Byte, channelVersion: ChannelVersion)
+                             fundingFeeratePerKw: FeeratePerKw, initialFeeratePerKw: FeeratePerKw, localParams: LocalParams, remoteInit: Init,
+                             channelFlags: Byte, channelVersion: ChannelVersion)
 
 case class INPUT_INIT_FUNDEE(remoteInfo: RemoteNodeInfo, localParams: LocalParams, remoteInit: Init, channelVersion: ChannelVersion, theirOpen: OpenChannel)
 

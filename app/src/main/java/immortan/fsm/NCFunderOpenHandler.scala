@@ -7,11 +7,11 @@ import fr.acinq.eclair.channel._
 import scala.util.{Failure, Success}
 import fr.acinq.bitcoin.{ByteVector32, Satoshi, Script}
 import immortan.ChannelListener.{Malfunction, Transition}
-import fr.acinq.eclair.transactions.{Scripts, Transactions}
 import immortan.Channel.{WAIT_FOR_ACCEPT, WAIT_FUNDING_DONE}
 import fr.acinq.eclair.blockchain.MakeFundingTxResponse
 import concurrent.ExecutionContext.Implicits.global
 import fr.acinq.eclair.blockchain.fee.FeeratePerKw
+import fr.acinq.eclair.transactions.Scripts
 import fr.acinq.bitcoin.Crypto.PublicKey
 import scala.concurrent.Future
 
@@ -20,19 +20,17 @@ object NCFunderOpenHandler {
   val dummyLocal: PublicKey = randomKey.publicKey
   val dummyRemote: PublicKey = randomKey.publicKey
 
-  val defFeerate: FeeratePerKw = {
-    val target = LNParams.feeRatesInfo.onChainFeeConf.feeTargets.fundingBlockTarget
-    LNParams.feeRatesInfo.onChainFeeConf.feeEstimator.getFeeratePerKw(target)
+  def makeFunding(chainWallet: WalletExt, fundingAmount: Satoshi, feeratePerKw: FeeratePerKw, local: PublicKey = dummyLocal, remote: PublicKey = dummyRemote): Future[MakeFundingTxResponse] = {
+    val program = Script.write(Script pay2wsh Scripts.multiSig2of2(local, remote).toList)
+    chainWallet.wallet.makeFundingTx(program, fundingAmount, feeratePerKw)
   }
-
-  def typicalFee: MilliSatoshi = Transactions.weight2fee(defFeerate, 750).toMilliSatoshi
-
-  def makeFunding(chainWallet: WalletExt, fundingAmount: Satoshi, local: PublicKey = dummyLocal, remote: PublicKey = dummyRemote, feeratePerKw: FeeratePerKw = defFeerate): Future[MakeFundingTxResponse] =
-    chainWallet.wallet.makeFundingTx(Script.write(Script pay2wsh Scripts.multiSig2of2(local, remote).toList), fundingAmount, feeratePerKw)
 }
 
-abstract class NCFunderOpenHandler(info: RemoteNodeInfo, fakeFunding: MakeFundingTxResponse, cw: WalletExt, cm: ChannelMaster) {
-  // Important: this must be initiated when chain tip is actually known
+// Important: this must be initiated when chain tip is actually known
+
+abstract class NCFunderOpenHandler(info: RemoteNodeInfo, fakeFunding: MakeFundingTxResponse,
+                                   fundingFeeratePerKw: FeeratePerKw, cw: WalletExt, cm: ChannelMaster) {
+
   def onEstablished(channel: ChannelNormal): Unit
   def onFailure(err: Throwable): Unit
 
@@ -53,15 +51,15 @@ abstract class NCFunderOpenHandler(info: RemoteNodeInfo, fakeFunding: MakeFundin
     }
 
     override def onOperational(worker: CommsTower.Worker, theirInit: Init): Unit =
-      freshChannel process INPUT_INIT_FUNDER(info, tempChannelId, fakeFunding, pushAmount = 0L.msat,
+      freshChannel process INPUT_INIT_FUNDER(info, tempChannelId, fakeFunding, pushAmount = 0L.msat, fundingFeeratePerKw,
         initialFeeratePerKw = LNParams.feeRatesInfo.onChainFeeConf.getCommitmentFeerate(ChannelVersion.STATIC_REMOTEKEY, None),
         localParams = LNParams.makeChannelParams(info, freshChannel.chainWallet, isFunder = true, fakeFunding.fundingAmount),
         theirInit, channelFlags = 0.toByte, ChannelVersion.STATIC_REMOTEKEY)
 
     override def onBecome: PartialFunction[Transition, Unit] = {
       case (_, _: DATA_WAIT_FOR_ACCEPT_CHANNEL, data: DATA_WAIT_FOR_FUNDING_INTERNAL, WAIT_FOR_ACCEPT, WAIT_FOR_ACCEPT) =>
-        val future = NCFunderOpenHandler.makeFunding(cw, data.initFunder.fakeFunding.fundingAmount, data.lastSent.fundingPubkey, data.remoteParams.fundingPubKey)
-        future onComplete { case Failure(reason) => onException(freshChannel, data, reason) case Success(realFunding) => freshChannel process realFunding }
+        val future = NCFunderOpenHandler.makeFunding(cw, data.initFunder.fakeFunding.fundingAmount, data.initFunder.fundingFeeratePerKw, data.lastSent.fundingPubkey, data.remoteParams.fundingPubKey)
+        future onComplete { case Failure(failureReason) => onException(freshChannel, data, failureReason) case Success(realFundingTx) => freshChannel process realFundingTx }
 
       case (_, _: DATA_WAIT_FOR_FUNDING_INTERNAL, data: DATA_WAIT_FOR_FUNDING_SIGNED, WAIT_FOR_ACCEPT, WAIT_FOR_ACCEPT) =>
         // Once funding tx becomes known peer will start sending messages using a real channel ID, not a temp one

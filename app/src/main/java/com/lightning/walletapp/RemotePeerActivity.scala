@@ -15,10 +15,10 @@ import immortan.fsm.{HCOpenHandler, NCFundeeOpenHandler, NCFunderOpenHandler}
 import fr.acinq.eclair.blockchain.MakeFundingTxResponse
 import com.lightning.walletapp.BaseActivity.StringOps
 import concurrent.ExecutionContext.Implicits.global
-import fr.acinq.eclair.blockchain.fee.FeeratePerKw
 import androidx.appcompat.app.AlertDialog
 import com.ornach.nobobutton.NoboButton
 import rx.lang.scala.Observable
+import java.util.TimerTask
 import android.os.Bundle
 
 
@@ -82,9 +82,9 @@ class RemotePeerActivity extends BaseActivity with ExternalDataChecker { me =>
       }
 
       switchView(showProgress = false)
-      viewNoFeatureSupport setVisibility BaseActivity.viewMap(!criticalSupportAvailable)
-      viewYesFeatureSupport setVisibility BaseActivity.viewMap(criticalSupportAvailable)
-      optionHostedChannel setVisibility BaseActivity.viewMap(checkFeature apply HostedChannels)
+      viewNoFeatureSupport setVisibility BaseActivity.goneMap(!criticalSupportAvailable)
+      viewYesFeatureSupport setVisibility BaseActivity.goneMap(criticalSupportAvailable)
+      optionHostedChannel setVisibility BaseActivity.goneMap(checkFeature apply HostedChannels)
     }.run
   }
 
@@ -133,14 +133,14 @@ class RemotePeerActivity extends BaseActivity with ExternalDataChecker { me =>
   }
 
   def fundNewChannel(view: View): Unit = {
-    val body = getLayoutInflater.inflate(R.layout.frag_input_fund_channel, null).asInstanceOf[ViewGroup]
-    val manager = new RateManager(body, None, new String, LNParams.fiatRatesInfo.rates, WalletApp.fiatCode)
+    val body = getLayoutInflater.inflate(R.layout.frag_input_on_chain, null).asInstanceOf[ViewGroup]
+    val manager = new RateManager(body, None, visHintRes = -1, LNParams.fiatRatesInfo.rates, WalletApp.fiatCode)
     val canSend = LNParams.denomination.parsedWithSign(WalletApp.lastChainBalance.totalBalance, Colors.cardZero)
     val canSendFiat = WalletApp.currentMsatInFiatHuman(WalletApp.lastChainBalance.totalBalance)
 
     def attempt(alert: AlertDialog): Unit = {
-      NCFunderOpenHandler.makeFunding(LNParams.chainWallet, manager.resultSat) foreach { fakeFunding =>
-        new NCFunderOpenHandler(remoteNodeInfo, fakeFunding, LNParams.chainWallet, LNParams.cm) {
+      NCFunderOpenHandler.makeFunding(LNParams.chainWallet, manager.resultSat, feeView.rate) foreach { fakeFunding =>
+        new NCFunderOpenHandler(remoteNodeInfo, fakeFunding, feeView.rate, LNParams.chainWallet, LNParams.cm) {
           override def onEstablished(chan: ChannelNormal): Unit = disconnectListenersAndFinish
           override def onFailure(reason: Throwable): Unit = revertAndInform(reason)
         }
@@ -151,30 +151,38 @@ class RemotePeerActivity extends BaseActivity with ExternalDataChecker { me =>
       alert.dismiss
     }
 
-    val alert = mkCheckFormNeutral(attempt, none, _ => manager.updateText(WalletApp.lastChainBalance.totalBalance),
-      titleBodyAsViewBuilder(getString(rpa_open_nc), manager.content), dialog_ok, dialog_cancel, dialog_max)
+    lazy val alert = mkCheckFormNeutral(attempt, none, _ => manager.updateText(WalletApp.lastChainBalance.totalBalance),
+      titleBodyAsViewBuilder(getString(rpa_open_nc), manager.content), dialog_pay, dialog_cancel, dialog_max)
 
-    val feeView = new FeeView(body) {
-      override def update(rate: FeeratePerKw, feeOpt: Option[MilliSatoshi], showIssue: Boolean): Unit = {
-        // We update fee view and button availability at once so user can't proceed if there are tx issues
-        manager.updateOkButton(getPositiveButton(alert), feeOpt.isDefined)
-        super.update(rate, feeOpt, showIssue)
+    lazy val feeView = new FeeView(body) {
+      override def update(feeOpt: Option[MilliSatoshi], showIssue: Boolean): TimerTask = {
+        manager.updateOkButton(getPositiveButton(alert), feeOpt.isDefined).run
+        super.update(feeOpt, showIssue)
       }
+
+      rate = {
+        val target = LNParams.feeRatesInfo.onChainFeeConf.feeTargets.fundingBlockTarget
+        LNParams.feeRatesInfo.onChainFeeConf.feeEstimator.getFeeratePerKw(target)
+      }
+
+      // Rate for funding tx can not be adjusted
+      customFeerateOption setVisibility View.GONE
+      customFeerateHint setVisibility View.GONE
     }
 
-    val worker = new ThrottledWork[Satoshi, MakeFundingTxResponse] {
-      def work(amount: Satoshi): Observable[MakeFundingTxResponse] = Rx fromFutureOnIo NCFunderOpenHandler.makeFunding(LNParams.chainWallet, amount)
-      def process(amount: Satoshi, res: MakeFundingTxResponse): Unit = feeView.update(NCFunderOpenHandler.defFeerate, Some(res.fee.toMilliSatoshi), showIssue = false)
-      def error(exc: Throwable): Unit = feeView.update(NCFunderOpenHandler.defFeerate, None, showIssue = manager.resultSat >= LNParams.minFundingSatoshis)
+    lazy val worker = new ThrottledWork[Satoshi, MakeFundingTxResponse] {
+      def work(amount: Satoshi): Observable[MakeFundingTxResponse] = Rx fromFutureOnIo NCFunderOpenHandler.makeFunding(LNParams.chainWallet, amount, feeView.rate)
+      def process(amount: Satoshi, res: MakeFundingTxResponse): Unit = feeView.update(feeOpt = Some(res.fee.toMilliSatoshi), showIssue = false).run
+      def error(exc: Throwable): Unit = feeView.update(feeOpt = None, showIssue = manager.resultSat >= LNParams.minFundingSatoshis).run
     }
 
     manager.inputAmount addTextChangedListener onTextChange { _ =>
-      worker.addWork(manager.resultSat)
+      worker addWork manager.resultSat
     }
 
     manager.hintDenom.setText(getString(dialog_can_send).format(canSend).html)
     manager.hintFiatDenom.setText(getString(dialog_can_send).format(canSendFiat).html)
-    feeView.update(NCFunderOpenHandler.defFeerate, feeOpt = None, showIssue = false).run
+    feeView.update(feeOpt = None, showIssue = false).run
   }
 
   def sharePeerSpecificNodeId(view: View): Unit =
@@ -200,8 +208,8 @@ class RemotePeerActivity extends BaseActivity with ExternalDataChecker { me =>
   }
 
   def switchView(showProgress: Boolean): Unit = UITask {
-    progressBar setVisibility BaseActivity.viewMap(showProgress)
-    peerDetails setVisibility BaseActivity.viewMap(!showProgress)
+    progressBar setVisibility BaseActivity.goneMap(showProgress)
+    peerDetails setVisibility BaseActivity.goneMap(!showProgress)
   }.run
 
   def revertAndInform(reason: Throwable): Unit = {

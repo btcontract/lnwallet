@@ -14,6 +14,7 @@ import com.google.zxing.{BarcodeFormat, EncodeHintType}
 import android.text.{Editable, Html, Spanned, TextWatcher}
 import androidx.core.content.{ContextCompat, FileProvider}
 import immortan.utils.{BitcoinUri, Denomination, InputParser}
+import fr.acinq.eclair.blockchain.fee.{FeeratePerKw, FeeratePerVByte}
 import com.google.android.material.snackbar.{BaseTransientBottomBar, Snackbar}
 import android.widget.{ArrayAdapter, Button, EditText, ImageView, LinearLayout, ListView, TextView}
 import com.cottacush.android.currencyedittext.CurrencyEditText
@@ -21,7 +22,6 @@ import com.google.android.material.textfield.TextInputLayout
 import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
 import com.lightning.walletapp.BaseActivity.StringOps
 import concurrent.ExecutionContext.Implicits.global
-import fr.acinq.eclair.blockchain.fee.FeeratePerKw
 import androidx.appcompat.widget.AppCompatButton
 import androidx.recyclerview.widget.RecyclerView
 import android.graphics.Bitmap.Config.ARGB_8888
@@ -42,7 +42,8 @@ import immortan.LNParams
 
 
 object BaseActivity {
-  val viewMap: Map[Boolean, Int] = Map(true -> View.VISIBLE, false -> View.GONE)
+  val goneMap: Map[Boolean, Int] = Map(true -> View.VISIBLE, false -> View.GONE)
+  val invisMap: Map[Boolean, Int] = Map(true -> View.VISIBLE, false -> View.INVISIBLE)
 
   implicit class StringOps(source: String) {
     def s2hex: String = ByteVector.view(source getBytes "UTF-8").toHex
@@ -244,7 +245,7 @@ trait BaseActivity extends AppCompatActivity { me =>
 
   // Fiat / BTC converter
 
-  class RateManager(val content: ViewGroup, extraText: Option[String], visibilityHint: String, rates: Fiat2Btc, fiatCode: String) {
+  class RateManager(val content: ViewGroup, extraText: Option[String], visHintRes: Int, rates: Fiat2Btc, fiatCode: String) {
     val fiatInputAmount: CurrencyEditText = content.findViewById(R.id.fiatInputAmount).asInstanceOf[CurrencyEditText]
     val fiatInputAmountHint: TextView = content.findViewById(R.id.fiatInputAmountHint).asInstanceOf[TextView]
     val inputAmount: CurrencyEditText = content.findViewById(R.id.inputAmount).asInstanceOf[CurrencyEditText]
@@ -255,16 +256,17 @@ trait BaseActivity extends AppCompatActivity { me =>
     val extraInputOption: TextView = content.findViewById(R.id.extraInputOption).asInstanceOf[TextView]
     val extraInputVisibility: TextView = content.findViewById(R.id.extraInputVisibility).asInstanceOf[TextView]
     val extraInputLayout: TextInputLayout = content.findViewById(R.id.extraInputLayout).asInstanceOf[TextInputLayout]
-    val extraInput: EditText = content.findViewById(R.id.fiatInputAmount).asInstanceOf[EditText]
+    val extraInput: EditText = content.findViewById(R.id.extraInput).asInstanceOf[EditText]
 
-    def updateOkButton(button: Button, isEnabled: Boolean): Unit = UITask {
+    def updateOkButton(button: Button, isEnabled: Boolean): TimerTask = UITask {
       val alpha = if (isEnabled) 1F else 0.3F
       button.setEnabled(isEnabled)
       button.setAlpha(alpha)
-    }.run
+    }
 
     def updateText(value: MilliSatoshi): Unit = runAnd(inputAmount.requestFocus)(inputAmount setText value.truncateToSatoshi.toLong.toString)
     def bigDecimalFrom(input: CurrencyEditText, times: Long = 1L): BigDecimal = (input.getNumericValueBigDecimal: BigDecimal) * times
+    def resultExtraInput: Option[String] = Option(extraInput.getText.toString).filterNot(_.trim.isEmpty)
     def resultMsat: MilliSatoshi = MilliSatoshi(bigDecimalFrom(inputAmount, times = 1000L).toLong)
     def resultSat: Satoshi = resultMsat.truncateToSatoshi
 
@@ -280,18 +282,18 @@ trait BaseActivity extends AppCompatActivity { me =>
         .map(LNParams.denomination.asString)
         .getOrElse(null)
 
-    def revealExtraInput: Unit = {
-      extraInputLayout setVisibility View.VISIBLE
-      extraInputOption setVisibility View.GONE
-    }
-
     extraText match {
       case Some(hintText) =>
+        val revealExtraInputListener = onButtonTap {
+          extraInputLayout setVisibility View.VISIBLE
+          extraInputOption setVisibility View.GONE
+        }
+
         extraInputLayout setHint hintText
         extraInputOption setText hintText
-        extraInputVisibility setText visibilityHint
-        extraInputOption setOnClickListener onButtonTap(revealExtraInput)
-        extraInputVisibility setOnClickListener onButtonTap(revealExtraInput)
+        extraInputVisibility setText visHintRes
+        extraInputOption setOnClickListener revealExtraInputListener
+        extraInputVisibility setOnClickListener revealExtraInputListener
 
       case None =>
         extraInputLayout setVisibility View.GONE
@@ -299,14 +301,8 @@ trait BaseActivity extends AppCompatActivity { me =>
         extraInputVisibility setVisibility View.GONE
     }
 
-    fiatInputAmount addTextChangedListener onTextChange { _ =>
-      if (fiatInputAmount.hasFocus) inputAmount setText updatedSat
-    }
-
-    inputAmount addTextChangedListener onTextChange { _ =>
-      if (inputAmount.hasFocus) fiatInputAmount setText updatedFiat
-    }
-
+    fiatInputAmount addTextChangedListener onTextChange { _ => if (fiatInputAmount.hasFocus) inputAmount setText updatedSat }
+    inputAmount addTextChangedListener onTextChange { _ => if (inputAmount.hasFocus) fiatInputAmount setText updatedFiat }
     inputAmountHint setText LNParams.denomination.sign.toUpperCase
     fiatInputAmountHint setText fiatCode.toUpperCase
     inputAmount.requestFocus
@@ -318,14 +314,27 @@ trait BaseActivity extends AppCompatActivity { me =>
     val bitcoinFee: TextView = content.findViewById(R.id.bitcoinFee).asInstanceOf[TextView]
     val fiatFee: TextView = content.findViewById(R.id.fiatFee).asInstanceOf[TextView]
 
-    def update(rate: FeeratePerKw, feeOpt: Option[MilliSatoshi], showIssue: Boolean): Unit = UITask {
+    val customFeerate: EditText = content.findViewById(R.id.customFeerate).asInstanceOf[EditText]
+    val customFeerateOption: TextView = content.findViewById(R.id.customFeerateOption).asInstanceOf[TextView]
+    val customFeerateHint: TextView = content.findViewById(R.id.customFeerateHint).asInstanceOf[TextView]
+    var rate: FeeratePerKw = _
+
+    def update(feeOpt: Option[MilliSatoshi], showIssue: Boolean): TimerTask = UITask {
       feeOpt.map(fee => LNParams.denomination.parsedWithSign(fee, Colors.cardZero).html).foreach(bitcoinFee.setText)
       feeOpt.map(fee => WalletApp.currentMsatInFiatHuman(fee).html).foreach(fiatFee.setText)
       feeRate setText getString(dialog_fee_sat_vbyte).format(rate.toLong / 1000).html
-      bitcoinFee setVisibility BaseActivity.viewMap(feeOpt.isDefined)
-      fiatFee setVisibility BaseActivity.viewMap(feeOpt.isDefined)
-      txIssues setVisibility BaseActivity.viewMap(showIssue)
-    }.run
+      bitcoinFee setVisibility BaseActivity.goneMap(feeOpt.isDefined)
+      fiatFee setVisibility BaseActivity.goneMap(feeOpt.isDefined)
+      txIssues setVisibility BaseActivity.goneMap(showIssue)
+    }
+
+    customFeerateOption setOnClickListener onButtonTap {
+      customFeerate.setText(FeeratePerVByte(rate).feerate.toLong.toString)
+      customFeerateHint setVisibility View.VISIBLE
+      customFeerateOption setVisibility View.GONE
+      customFeerate setVisibility View.VISIBLE
+      customFeerate.requestFocus
+    }
   }
 
   class SpinnerPopup(lg: Option[CharSequence], sm: Option[CharSequence] = None) {

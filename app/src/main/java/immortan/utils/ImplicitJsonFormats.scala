@@ -40,7 +40,8 @@ object ImplicitJsonFormats extends DefaultJsonProtocol {
 
   implicit val byteVector32Fmt: JsonFormat[ByteVector32] = sCodecJsonFmt(bytes32)
 
-  implicit val satoshiFmt: JsonFormat[Satoshi] = sCodecJsonFmt(satoshi)
+  implicit val satoshiFmt: JsonFormat[Satoshi] =
+    jsonFormat[Long, Satoshi](Satoshi.apply, "underlying")
 
   implicit val lastChainBalanceFmt: RootJsonFormat[LastChainBalance] = jsonFormat[Satoshi, Satoshi, Long,
     LastChainBalance](LastChainBalance.apply, "confirmed", "unconfirmed", "timestamp")
