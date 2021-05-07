@@ -28,6 +28,7 @@ import scala.util.Try
 object Tools {
   type Bytes = Array[Byte]
   type Fiat2Btc = Map[String, Double]
+  final val SEPARATOR = " "
 
   def none: PartialFunction[Any, Unit] = { case _ => }
   def runAnd[T](result: T)(action: Any): T = result

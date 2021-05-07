@@ -3,6 +3,7 @@ package com.lightning.walletapp
 import fr.acinq.eclair._
 import scala.util.{Failure, Success}
 import scodec.bits.{BitVector, ByteVector}
+import immortan.crypto.Tools.{none, SEPARATOR}
 import android.widget.{ArrayAdapter, LinearLayout}
 import immortan.{LNParams, LightningNodeKeys, WalletSecret}
 import com.lightning.walletapp.BaseActivity.StringOps
@@ -12,7 +13,6 @@ import androidx.appcompat.app.AlertDialog
 import com.google.common.io.ByteStreams
 import com.ornach.nobobutton.NoboButton
 import fr.acinq.bitcoin.MnemonicCode
-import immortan.crypto.Tools.none
 import immortan.wire.ExtCodecs
 import android.content.Intent
 import android.app.Activity
@@ -25,7 +25,6 @@ class SetupActivity extends BaseActivity { me =>
   private[this] lazy val restoreOptionsButton = findViewById(R.id.restoreOptionsButton).asInstanceOf[NoboButton]
   private[this] lazy val restoreOptions = findViewById(R.id.restoreOptions).asInstanceOf[LinearLayout]
   private[this] final val FILE_REQUEST_CODE = 112
-  private[this] final val SEPARATOR = " "
 
   private[this] lazy val englishWordList = {
     val rawData = getAssets.open("bip39_english_wordlist.txt")

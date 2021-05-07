@@ -23,10 +23,7 @@ import fr.acinq.eclair.blockchain.CurrentFeerates
 
 
 trait FeeEstimator {
-  // @formatter:off
-  def getFeeratePerKb(target: Int): FeeratePerKB
   def getFeeratePerKw(target: Int): FeeratePerKw
-  // @formatter:on
 }
 
 object FeeEstimator {

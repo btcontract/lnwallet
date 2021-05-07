@@ -184,14 +184,15 @@ object WalletApp {
       }
 
       override def onTransactionReceived(event: TransactionReceived): Unit = {
-        def putTx(received: Satoshi, sent: Satoshi, description: TxDescription, isIncoming: Long): Unit =
-          txDataBag.putTx(event.tx, event.depth, received, sent, event.feeOpt, description, isIncoming,
-            lastChainBalance.totalBalance, LNParams.fiatRatesInfo.rates)
+        def replaceTx(received: Satoshi, sent: Satoshi, description: TxDescription, isIncoming: Long): Unit = txDataBag.db txWrap {
+          txDataBag.replaceTx(event.tx, event.depth, received, sent, event.feeOpt, description, isIncoming, lastChainBalance.totalBalance, LNParams.fiatRatesInfo.rates)
+          txDataBag.addSearchableTransaction(description.queryText(event.tx.txid), event.tx.txid)
+        }
 
         Tuple2(txDataBag.descriptions.get(event.tx.txid), event.sent > event.received) match {
-          case (Some(knownOutgoingDescription), true) => putTx(0L.sat, event.sent - event.received - event.feeOpt.getOrElse(0L.sat), knownOutgoingDescription, isIncoming = 0L)
-          case (None, true) => putTx(0L.sat, event.sent - event.received - event.feeOpt.getOrElse(0L.sat), TxDescription.define(LNParams.cm.all.values, Nil, event.tx), isIncoming = 0L)
-          case _ => putTx(event.received - event.sent, sent = 0L.sat, TxDescription.define(LNParams.cm.all.values, event.walletAddreses, event.tx), isIncoming = 1L)
+          case (Some(knownOutgoingDescription), true) => replaceTx(0L.sat, event.sent - event.received - event.feeOpt.getOrElse(0L.sat), knownOutgoingDescription, isIncoming = 0L)
+          case (None, true) => replaceTx(0L.sat, event.sent - event.received - event.feeOpt.getOrElse(0L.sat), TxDescription.define(LNParams.cm.all.values, Nil, event.tx), isIncoming = 0L)
+          case _ => replaceTx(event.received - event.sent, sent = 0L.sat, TxDescription.define(LNParams.cm.all.values, event.walletAddreses, event.tx), isIncoming = 1L)
         }
       }
 

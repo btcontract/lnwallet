@@ -4,8 +4,8 @@ import immortan.utils.ImplicitJsonFormats._
 import fr.acinq.eclair.channel.{DATA_CLOSING, DATA_NEGOTIATING, HasNormalCommitments}
 import fr.acinq.bitcoin.{ByteVector32, Satoshi, Transaction}
 import fr.acinq.eclair.wire.{FullPaymentTag, PaymentTagTlv}
+import immortan.crypto.Tools.{Bytes, Fiat2Btc, SEPARATOR}
 import immortan.utils.{LNUrl, PaymentRequestExt}
-import immortan.crypto.Tools.{Bytes, Fiat2Btc}
 import fr.acinq.bitcoin.Crypto.PublicKey
 import fr.acinq.eclair.MilliSatoshi
 import scodec.bits.ByteVector
@@ -117,23 +117,37 @@ case class TxInfo(txString: String, txidString: String, depth: Long, receivedSat
   lazy val tx: Transaction = Transaction.read(txString)
 }
 
-sealed trait TxDescription
+sealed trait TxDescription {
+  def queryText(txid: ByteVector32): String
+}
 
-case class PlainTxDescription(addresses: List[String], label: Option[String] = None) extends TxDescription
+case class PlainTxDescription(addresses: List[String], label: Option[String] = None) extends TxDescription {
+  def queryText(txid: ByteVector32): String = txid.toHex + SEPARATOR + addresses.mkString(SEPARATOR) + SEPARATOR + label.getOrElse(new String)
+}
 
 sealed trait ChanTxDescription extends TxDescription {
   def nodeId: PublicKey
 }
 
-case class OpReturnTxDescription(nodeId: PublicKey, preimage: ByteVector32) extends ChanTxDescription
+case class OpReturnTxDescription(nodeId: PublicKey, preimage: ByteVector32) extends ChanTxDescription {
+  def queryText(txid: ByteVector32): String = txid.toHex + SEPARATOR + nodeId.toString + SEPARATOR + preimage.toHex
+}
 
-case class ChanFundingTxDescription(nodeId: PublicKey) extends ChanTxDescription
+case class ChanFundingTxDescription(nodeId: PublicKey) extends ChanTxDescription {
+  def queryText(txid: ByteVector32): String = txid.toHex + SEPARATOR + nodeId.toString
+}
 
-case class ChanRefundingTxDescription(nodeId: PublicKey) extends ChanTxDescription
+case class ChanRefundingTxDescription(nodeId: PublicKey) extends ChanTxDescription {
+  def queryText(txid: ByteVector32): String = txid.toHex + SEPARATOR + nodeId.toString
+}
 
-case class HtlcClaimTxDescription(nodeId: PublicKey) extends ChanTxDescription
+case class HtlcClaimTxDescription(nodeId: PublicKey) extends ChanTxDescription {
+  def queryText(txid: ByteVector32): String = txid.toHex + SEPARATOR + nodeId.toString
+}
 
-case class PenaltyTxDescription(nodeId: PublicKey) extends ChanTxDescription
+case class PenaltyTxDescription(nodeId: PublicKey) extends ChanTxDescription {
+  def queryText(txid: ByteVector32): String = txid.toHex + SEPARATOR + nodeId.toString
+}
 
 object TxDescription {
   def define(chans: Iterable[Channel], walletAddresses: List[String], tx: Transaction): TxDescription =

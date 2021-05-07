@@ -33,7 +33,6 @@ import fr.acinq.eclair.wire.PaymentTagTlv
 import android.database.ContentObserver
 import org.ndeftools.Message
 import java.util.TimerTask
-import scala.util.Try
 
 
 class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataChecker with ChoiceReceiver { me =>
@@ -357,12 +356,11 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
       }
 
       feeView.customFeerate addOnChangeListener new Slider.OnChangeListener {
-        override def onValueChange(slider: Slider, value: Float, fromUser: Boolean): Unit =
-          Try(value.toLong.sat).foreach { perVByteSat: Satoshi =>
-            val newFeerate = FeeratePerVByte(perVByteSat)
-            feeView.rate = FeeratePerKw(newFeerate)
-            worker addWork manager.resultSat
-          }
+        override def onValueChange(slider: Slider, value: Float, fromUser: Boolean): Unit = {
+          val newFeerate = FeeratePerVByte(value.toLong.sat)
+          feeView.rate = FeeratePerKw(newFeerate)
+          worker addWork manager.resultSat
+        }
       }
 
       manager.inputAmount addTextChangedListener onTextChange { _ =>

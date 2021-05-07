@@ -155,7 +155,7 @@ object PaymentTable extends Table {
   private val ESCAPED_SUCCEEDED = s"'$SUCCEEDED'"
   private val ESCAPED_ABORTED = s"'$ABORTED'"
 
-  private val paymentTableFields = ("search", "payment", "pr", "preimage", "status", "seenAt", "desc", "action", "hash", "secret", "received", "sent", "fee", "balance", "fiatrates", "chainfee", "incoming")
+  private val paymentTableFields = ("psearch", "payment", "pr", "preimage", "status", "seenAt", "desc", "action", "hash", "secret", "received", "sent", "fee", "balance", "fiatrates", "chainfee", "incoming")
   val (search, table, pr, preimage, status, seenAt, description, action, hash, secret, receivedMsat, sentMsat, feeMsat, balanceMsat, fiatRates, chainFee, incoming) = paymentTableFields
   val inserts = s"$pr, $preimage, $status, $seenAt, $description, $action, $hash, $secret, $receivedMsat, $sentMsat, $feeMsat, $balanceMsat, $fiatRates, $chainFee, $incoming"
   val newSql = s"INSERT OR IGNORE INTO $table ($inserts) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
@@ -182,31 +182,36 @@ object PaymentTable extends Table {
     )"""
 
     // Once incoming or outgoing payment is settled we can search it by various metadata
-    val addIndex1 = s"CREATE VIRTUAL TABLE IF NOT EXISTS $fts$table USING $fts($search, $hash)"
-    val addIndex2 = s"CREATE INDEX IF NOT EXISTS idx2$table ON $table ($seenAt, $status)"
-    createTable :: addIndex1 :: addIndex2 :: Nil
+    val addSearchTable = s"CREATE VIRTUAL TABLE IF NOT EXISTS $fts$table USING $fts($search, $hash)"
+    val addIndex1 = s"CREATE INDEX IF NOT EXISTS idx2$table ON $table ($seenAt, $status)"
+    createTable :: addSearchTable :: addIndex1 :: Nil
   }
 }
 
 object TxTable extends Table {
-  private val paymentTableFields = ("txs", "raw", "txid", "depth", "received", "sent", "fee", "seen", "desc", "balance", "fiatrates", "incoming", "doublespent")
-  val (table, rawTx, txid, depth, receivedSat, sentSat, feeSat, firstSeen, description, balanceMsat, fiatRates, incoming, doubleSpent) = paymentTableFields
+  private val paymentTableFields = ("tsearch", "txs", "raw", "txid", "depth", "received", "sent", "fee", "seen", "desc", "balance", "fiatrates", "incoming", "doublespent")
+  val (search, table, rawTx, txid, depth, receivedSat, sentSat, feeSat, firstSeen, description, balanceMsat, fiatRates, incoming, doubleSpent) = paymentTableFields
   val inserts = s"$rawTx, $txid, $depth, $receivedSat, $sentSat, $feeSat, $firstSeen, $description, $balanceMsat, $fiatRates, $incoming, $doubleSpent"
   val newSql = s"INSERT OR IGNORE INTO $table ($inserts) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+  val newVirtualSql = s"INSERT INTO $fts$table ($search, $txid) VALUES (?, ?)"
+  val deleteSql = s"DELETE FROM $table WHERE $txid = ?"
 
-  // Selecting
-  val selectSummarySql = s"SELECT SUM($feeSat), SUM($receivedSat), SUM($sentSat), COUNT($id) FROM $table WHERE $doubleSpent = 0"
+  // Selecting, updating
   val selectRecentSql = s"SELECT * FROM $table ORDER BY $id DESC LIMIT ?"
-
-  // Updating
+  val selectSummarySql = s"SELECT SUM($feeSat), SUM($receivedSat), SUM($sentSat), COUNT($id) FROM $table WHERE $doubleSpent = 0"
+  val searchSql = s"SELECT * FROM $table WHERE $txid IN (SELECT $txid FROM $fts$table WHERE $search MATCH ? LIMIT 50)"
   val updStatusSql = s"UPDATE $table SET $depth = ?, $doubleSpent = ? WHERE $txid = ?"
 
-  def createStatements: Seq[String] =
-    s"""CREATE TABLE IF NOT EXISTS $table(
+  def createStatements: Seq[String] = {
+    val createTable = s"""CREATE TABLE IF NOT EXISTS $table(
       $IDAUTOINC, $rawTx TEXT NOT NULL, $txid TEXT NOT NULL $UNIQUE, $depth INTEGER NOT NULL, $receivedSat INTEGER NOT NULL, $sentSat INTEGER NOT NULL,
       $feeSat INTEGER NOT NULL, $firstSeen INTEGER NOT NULL, $description TEXT NOT NULL, $balanceMsat INTEGER NOT NULL, $fiatRates TEXT NOT NULL,
       $incoming INTEGER NOT NULL, $doubleSpent INTEGER NOT NULL
-    )""" :: Nil
+    )"""
+
+    val addSearchTable = s"CREATE VIRTUAL TABLE IF NOT EXISTS $fts$table USING $fts($search, $txid)"
+    createTable :: addSearchTable :: Nil
+  }
 }
 
 object DataTable extends Table {
