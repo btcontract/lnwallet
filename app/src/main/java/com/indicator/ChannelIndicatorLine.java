@@ -60,9 +60,8 @@ public class ChannelIndicatorLine extends LinearLayout {
         }
 
         // Bind Style
-        View indicator;
         for (int i = 0; i < count; i++) {
-            indicator = getChildAt(i);
+            View indicator = getChildAt(i);
             String state = states[i];
 
             if (Channel$.MODULE$.SLEEPING().equals(state)) {
