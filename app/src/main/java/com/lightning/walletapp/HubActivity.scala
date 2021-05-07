@@ -144,12 +144,12 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
 
   class WalletCardsViewHolder {
     val view: LinearLayout = getLayoutInflater.inflate(R.layout.frag_wallet_cards, null).asInstanceOf[LinearLayout]
+    val defaultHeader: LinearLayout = view.findViewById(R.id.defaultHeader).asInstanceOf[LinearLayout]
 
     val totalBalance: TextView = view.findViewById(R.id.totalBalance).asInstanceOf[TextView]
     val totalFiatBalance: TextView = view.findViewById(R.id.totalFiatBalance).asInstanceOf[TextView]
     val fiatUnitPriceAndChange: TextView = view.findViewById(R.id.fiatUnitPriceAndChange).asInstanceOf[TextView]
 
-    val listCaption: RelativeLayout = view.findViewById(R.id.listCaption).asInstanceOf[RelativeLayout]
     val totalBitcoinBalance: TextView = view.findViewById(R.id.totalBitcoinBalance).asInstanceOf[TextView]
     val receiveBitcoinTip: ImageView = view.findViewById(R.id.receiveBitcoinTip).asInstanceOf[ImageView]
     val offlineIndicator: TextView = view.findViewById(R.id.offlineIndicator).asInstanceOf[TextView]
@@ -166,6 +166,9 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
 
     val pendingRefunds: View = view.findViewById(R.id.pendingRefunds).asInstanceOf[View]
     val pendingRefundsSum: TextView = view.findViewById(R.id.pendingRefundsSum).asInstanceOf[TextView]
+    val listCaption: RelativeLayout = view.findViewById(R.id.listCaption).asInstanceOf[RelativeLayout]
+    val searchWrap: RelativeLayout = view.findViewById(R.id.searchWrap).asInstanceOf[RelativeLayout]
+    val searchField: EditText = view.findViewById(R.id.searchField).asInstanceOf[EditText]
 
     def updateFiatRates: Unit = {
       val change = LNParams.fiatRatesInfo.pctDifference(WalletApp.fiatCode).map(_ + "<br>").getOrElse(new String)
@@ -303,6 +306,11 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
     FiatRates.listeners -= fiatRatesListener
     Tovuti.from(me).stop
     super.onDestroy
+  }
+
+  override def onBackPressed: Unit = {
+    val isSearching = walletCards.searchWrap.getVisibility == View.VISIBLE
+    if (isSearching) cancelSearch(null) else super.onBackPressed
   }
 
   override def checkExternalData(whenNone: Runnable): Unit = InputParser.checkAndMaybeErase {
@@ -493,17 +501,27 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
   }
 
   def bringSearch(view: View): Unit = {
-
+    TransitionManager.beginDelayedTransition(walletCards.view)
+    walletCards.defaultHeader setVisibility View.GONE
+    walletCards.searchWrap setVisibility View.VISIBLE
+    walletCards.searchField.requestFocus
   }
 
-  private def explainClipboardFailure = UITask {
-    val message = getString(error_nothing_in_clipboard).html
-    snack(contentWindow, message, dialog_ok, _.dismiss)
+  def cancelSearch(view: View): Unit = {
+    TransitionManager.beginDelayedTransition(walletCards.view)
+    walletCards.defaultHeader setVisibility View.VISIBLE
+    walletCards.searchWrap setVisibility View.GONE
   }
 
-  def bringSendFromClipboard(view: View): Unit =
+  def bringSendFromClipboard(view: View): Unit = {
+    def explainClipboardFailure: TimerTask = UITask {
+      val message = getString(error_nothing_in_clipboard).html
+      snack(contentWindow, message, dialog_ok, _.dismiss)
+    }
+
     runInFutureProcessOnUI(InputParser.recordValue(WalletApp.app.getBufferUnsafe),
       _ => explainClipboardFailure.run)(_ => me checkExternalData explainClipboardFailure)
+  }
 
   def bringScanner(view: View): Unit = {
     updatePaymentList

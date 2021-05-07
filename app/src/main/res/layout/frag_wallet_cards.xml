@@ -255,6 +255,7 @@
             android:layout_marginStart="-3dp"
             android:layout_centerVertical="true"
             android:hint="@string/search_recent"
+            android:id="@+id/searchField"
             android:inputType="text"
             android:maxLines="1"/>
 
