@@ -119,7 +119,7 @@ object WalletApp {
     LNParams.secret = secret
     LNParams.syncParams = new TestNetSyncParams
     LNParams.chainHash = Block.TestnetGenesisBlock.hash
-    LNParams.routerConf = RouterConf(maxCltvDelta = CltvExpiryDelta(2016), mppMinPartAmount = MilliSatoshi(10000000L), routeHopDistance = 6)
+    LNParams.routerConf = RouterConf(maxCltvDelta = CltvExpiryDelta(2016), mppMinPartAmount = 10000000L.msat, routeHopDistance = 6)
     LNParams.denomination = if (useSatDenom) SatDenomination else BtcDenomination
     LNParams.ourInit = LNParams.createInit
 

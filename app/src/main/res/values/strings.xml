@@ -82,7 +82,7 @@
     <string name="error_ln_receive_waiting"><![CDATA[Can\'t request Lightning payments because none of your channels is open yet, please wait for more funding confirmations.]]></string>
     <string name="error_ln_receive_no_update"><![CDATA[Can\'t request Lightning payments because receiving data is not yet available, please wait for more funding confirmations.]]></string>
     <string name="error_ln_receive_reserve"><![CDATA[Can\'t request Lightning payments because first you need to spend at least <b>%1$s</b> to make some space for receiving.]]></string>
-    <string name="error_ln_receive_no_chans"><![CDATA[Can\'t request Lightning payments because no operational payment channels are present.]]></string>
+    <string name="error_ln_receive_no_chans"><![CDATA[Can\'t request Lightning payments because no open payment channels are present.]]></string>
 
     <string name="error_btc_broadcast_fail">Could not broadcast a transaction, please make sure that wallet has network connection and then try again.</string>
     <string name="error_ln_payment_low_balance">Can not proceed because Lightning wallet does not have enough funds.</string>
