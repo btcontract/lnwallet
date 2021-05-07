@@ -1,5 +1,5 @@
 <resources>
-    <style name="AppTheme" parent="Theme.AppCompat">
+    <style name="AppTheme" parent="Theme.MaterialComponents.Bridge">
         <item name="colorPrimaryDark">@color/bg</item>
         <item name="colorAccent">@color/colorAccent</item>
         <item name="android:fontFamily">@font/lato_regular</item>
@@ -88,17 +88,14 @@
         <item name="android:layout_width">match_parent</item>
     </style>
 
-    <style name="YMarginFillingView" parent="FillingView">
-        <item name="android:layout_marginBottom">25dp</item>
-        <item name="android:layout_marginTop">25dp</item>
-    </style>
-
     <style name="XMarginFillingView" parent="FillingView">
         <item name="android:layout_marginRight">15dp</item>
         <item name="android:layout_marginLeft">15dp</item>
     </style>
 
-    <style name="XYMarginFillingView" parent="YMarginFillingView">
+    <style name="XYMarginFillingView" parent="FillingView">
+        <item name="android:layout_marginTop">25dp</item>
+        <item name="android:layout_marginBottom">25dp</item>
         <item name="android:layout_marginRight">15dp</item>
         <item name="android:layout_marginLeft">15dp</item>
     </style>
@@ -108,7 +105,9 @@
         <item name="android:layout_marginLeft">12dp</item>
     </style>
 
-    <style name="XYSmallMarginFillingView" parent="YMarginFillingView">
+    <style name="XYSmallMarginFillingView" parent="FillingView">
+        <item name="android:layout_marginTop">25dp</item>
+        <item name="android:layout_marginBottom">25dp</item>
         <item name="android:layout_marginRight">12dp</item>
         <item name="android:layout_marginLeft">12dp</item>
     </style>

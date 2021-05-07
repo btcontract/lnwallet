@@ -23,6 +23,7 @@ import concurrent.ExecutionContext.Implicits.global
 import com.github.mmin18.widget.RealtimeBlurView
 import androidx.recyclerview.widget.RecyclerView
 import fr.acinq.eclair.transactions.Transactions
+import com.google.android.material.slider.Slider
 import fr.acinq.eclair.payment.PaymentRequest
 import androidx.transition.TransitionManager
 import fr.acinq.eclair.blockchain.TxAndFee
@@ -355,12 +356,13 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
         def error(exc: Throwable): Unit = feeView.update(feeOpt = None, showIssue = manager.resultSat >= LNParams.minDustLimit).run
       }
 
-      feeView.customFeerate addTextChangedListener onTextChange { newFeerate =>
-        Try(newFeerate.toString.toLong.sat).foreach { perVByteSat =>
-          val newFeeratePerVByte = FeeratePerVByte(perVByteSat)
-          feeView.rate = FeeratePerKw(newFeeratePerVByte)
-          worker addWork manager.resultSat
-        }
+      feeView.customFeerate addOnChangeListener new Slider.OnChangeListener {
+        override def onValueChange(slider: Slider, value: Float, fromUser: Boolean): Unit =
+          Try(value.toLong.sat).foreach { perVByteSat: Satoshi =>
+            val newFeerate = FeeratePerVByte(perVByteSat)
+            feeView.rate = FeeratePerKw(newFeerate)
+            worker addWork manager.resultSat
+          }
       }
 
       manager.inputAmount addTextChangedListener onTextChange { _ =>

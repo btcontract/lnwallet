@@ -1,10 +1,12 @@
 <LinearLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:f="http://schemas.android.com/tools"
     style="@style/StandardLinearLayout">
 
     <org.apmem.tools.layouts.FlowLayout
-        style="@style/XYMarginFillingView"
+        style="@style/XMarginFillingView"
+        android:layout_marginTop="25dp"
         f:layout_newLine="true">
 
         <TextView
@@ -33,31 +35,31 @@
 
     </org.apmem.tools.layouts.FlowLayout>
 
-    <FrameLayout
-        style="@style/XYMarginFillingView"
-        android:layout_marginTop="-25dp">
+    <FrameLayout style="@style/XMarginFillingView">
 
         <TextView
             style="@style/BoundedView"
             android:id="@+id/customFeerateOption"
             android:text="@string/dialog_change_feerate"
+            android:layout_marginBottom="25dp"
             android:layout_marginStart="2dp"
             android:layout_marginTop="10dp"
             android:textStyle="bold"/>
 
-        <EditText
-            style="@style/FillingView"
+        <com.google.android.material.slider.Slider
+            app:trackColor="@color/buttonGrayRipple"
+            app:thumbColor="@color/colorAccent"
+            app:haloColor="@color/colorAccent"
+            android:layout_marginBottom="7dp"
             android:id="@+id/customFeerate"
-            android:inputType="number"
+            android:layout_marginTop="5dp"
+            style="@style/FillingView"
             android:visibility="gone"
-            android:maxLines="1"/>
-
-        <TextView
-            style="@style/InputHintView"
-            android:id="@+id/customFeerateHint"
-            android:text="@string/dialog_sat_vbyte"
-            android:layout_marginEnd="2dp"
-            android:visibility="gone"/>
+            app:labelBehavior="gone"
+            app:tickVisible="false"
+            app:trackHeight="2dp"
+            app:haloRadius="20dp"
+            android:stepSize="1"/>
 
     </FrameLayout>
 </LinearLayout>

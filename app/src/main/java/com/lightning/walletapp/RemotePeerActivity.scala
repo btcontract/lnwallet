@@ -167,7 +167,6 @@ class RemotePeerActivity extends BaseActivity with ExternalDataChecker { me =>
 
       // Rate for funding tx can not be adjusted
       customFeerateOption setVisibility View.GONE
-      customFeerateHint setVisibility View.GONE
     }
 
     lazy val worker = new ThrottledWork[Satoshi, MakeFundingTxResponse] {

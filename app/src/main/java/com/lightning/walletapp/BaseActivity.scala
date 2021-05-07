@@ -24,6 +24,7 @@ import com.lightning.walletapp.BaseActivity.StringOps
 import concurrent.ExecutionContext.Implicits.global
 import androidx.appcompat.widget.AppCompatButton
 import androidx.recyclerview.widget.RecyclerView
+import com.google.android.material.slider.Slider
 import android.graphics.Bitmap.Config.ARGB_8888
 import androidx.appcompat.app.AppCompatActivity
 import android.text.method.LinkMovementMethod
@@ -313,9 +314,8 @@ trait BaseActivity extends AppCompatActivity { me =>
     val bitcoinFee: TextView = content.findViewById(R.id.bitcoinFee).asInstanceOf[TextView]
     val fiatFee: TextView = content.findViewById(R.id.fiatFee).asInstanceOf[TextView]
 
-    val customFeerate: EditText = content.findViewById(R.id.customFeerate).asInstanceOf[EditText]
+    val customFeerate: Slider = content.findViewById(R.id.customFeerate).asInstanceOf[Slider]
     val customFeerateOption: TextView = content.findViewById(R.id.customFeerateOption).asInstanceOf[TextView]
-    val customFeerateHint: TextView = content.findViewById(R.id.customFeerateHint).asInstanceOf[TextView]
     var rate: FeeratePerKw = _
 
     def update(feeOpt: Option[MilliSatoshi], showIssue: Boolean): TimerTask = UITask {
@@ -328,11 +328,13 @@ trait BaseActivity extends AppCompatActivity { me =>
     }
 
     customFeerateOption setOnClickListener onButtonTap {
-      customFeerate.setText(FeeratePerVByte(rate).feerate.toLong.toString)
-      customFeerateHint setVisibility View.VISIBLE
+      val currentFeerate = FeeratePerVByte(rate).feerate.toLong
+      customFeerate.setValueTo(currentFeerate * 10)
+      customFeerate.setValue(currentFeerate)
+      customFeerate.setValueFrom(1L)
+
       customFeerateOption setVisibility View.GONE
       customFeerate setVisibility View.VISIBLE
-      customFeerate.requestFocus
     }
   }
 
