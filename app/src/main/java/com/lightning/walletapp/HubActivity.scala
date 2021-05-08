@@ -56,6 +56,26 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
   def reloadRelayedPreimageInfos: Unit = relayedPreimageInfos = LNParams.cm.payBag.listRecentRelays(Table.DEFAULT_LIMIT.get).map(LNParams.cm.payBag.toRelayedPreimageInfo)
   def updAllInfos: Unit = allInfos = (paymentInfos ++ relayedPreimageInfos ++ txInfos).toList.sortBy(_.seenAt)(Ordering[Long].reverse)
 
+  def loadRecentInfos: Unit = WalletApp.txDataBag.db.txWrap {
+    reloadRelayedPreimageInfos
+    reloadPaymentInfos
+    reloadTxInfos
+    updAllInfos
+  }
+
+  def loadSearchInfos(query: String): Unit = WalletApp.txDataBag.db.txWrap {
+    txInfos = WalletApp.txDataBag.searchTransactions(query).map(WalletApp.txDataBag.toTxInfo)
+    paymentInfos = LNParams.cm.payBag.searchPayments(query).map(LNParams.cm.payBag.toPaymentInfo)
+    relayedPreimageInfos = Nil
+    updAllInfos
+  }
+
+  val searchWorker: ThrottledWork[String, Unit] = new ThrottledWork[String, Unit] {
+    def work(query: String): Observable[Unit] = Rx.ioQueue.map(_ => if (query.nonEmpty) loadSearchInfos(query) else loadRecentInfos)
+    def process(query: String, searchLoadResult: Unit): Unit = UITask(updatePaymentList).run
+    def error(exc: Throwable): Unit = none
+  }
+
   val paymentsAdapter: BaseAdapter = new BaseAdapter {
     override def getItem(pos: Int): TransactionDetails = allInfos(pos)
     override def getItemId(position: Int): Long = position
@@ -458,6 +478,27 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
       FiatRates.listeners += fiatRatesListener
       Tovuti.from(me).monitor(netListener)
 
+      walletCards.searchField addTextChangedListener onTextChange { query =>
+        searchWorker addWork query.toString
+      }
+
+      bottomActionBar post UITask {
+        bottomBlurringArea.setHeightTo(bottomActionBar)
+        itemsList.setPadding(0, 0, 0, bottomActionBar.getHeight)
+      }
+
+      runInFutureProcessOnUI(loadRecentInfos, none) { _ =>
+        itemsList.setAdapter(paymentsAdapter)
+        walletCards.setCaptionVisibility
+      }
+
+      itemsList.addHeaderView(walletCards.view)
+      itemsList.setDividerHeight(0)
+      itemsList.setDivider(null)
+
+      walletCards.updateFiatRates
+      walletCards.updateView
+
       // Throttle all types of burst updates, but make sure the last one is always called
       val statusEvents = Rx.uniqueFirstAndLastWithinWindow(ChannelMaster.statusUpdateStream, 1.second)
       val stateEvents = Rx.uniqueFirstAndLastWithinWindow(ChannelMaster.stateUpdateStream, 1.second)
@@ -468,27 +509,6 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
       val paymentRelatedEvents = txEvents.merge(paymentEvents).merge(relayEvents).doOnNext(_ => updAllInfos).merge(stateEvents)
       statusSubscription = statusEvents.merge(stateEvents).subscribe(_ => UITask(walletCards.updateView).run).toSome
       streamSubscription = paymentRelatedEvents.subscribe(_ => UITask(updatePaymentList).run).toSome
-
-      WalletApp.txDataBag.db txWrap {
-        reloadRelayedPreimageInfos
-        reloadPaymentInfos
-        reloadTxInfos
-        updAllInfos
-      }
-
-      bottomActionBar post UITask {
-        bottomBlurringArea.setHeightTo(bottomActionBar)
-        itemsList.setPadding(0, 0, 0, bottomActionBar.getHeight)
-      }
-
-      itemsList.addHeaderView(walletCards.view)
-      itemsList.setAdapter(paymentsAdapter)
-      itemsList.setDividerHeight(0)
-      itemsList.setDivider(null)
-
-      walletCards.setCaptionVisibility
-      walletCards.updateFiatRates
-      walletCards.updateView
     } else {
       WalletApp.freePossiblyUsedResouces
       me exitTo ClassNames.mainActivityClass
@@ -511,6 +531,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
     TransitionManager.beginDelayedTransition(walletCards.view)
     walletCards.defaultHeader setVisibility View.VISIBLE
     walletCards.searchWrap setVisibility View.GONE
+    walletCards.searchField.setText(new String)
   }
 
   def bringSendFromClipboard(view: View): Unit = {
@@ -523,10 +544,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
       _ => explainClipboardFailure.run)(_ => me checkExternalData explainClipboardFailure)
   }
 
-  def bringScanner(view: View): Unit = {
-    updatePaymentList
-    callScanner(me)
-  }
+  def bringScanner(view: View): Unit = callScanner(me)
 
   def bringReceiveOptions(view: View): Unit = {
     val options = Array(dialog_receive_btc, dialog_receive_ln).map(res => getString(res).html)

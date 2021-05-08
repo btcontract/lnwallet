@@ -212,8 +212,10 @@ trait NetworkBag {
 
 trait PaymentBag {
   def setPreimage(paymentHash: ByteVector32, preimage: ByteVector32)
-  def addSearchablePayment(search: String, paymentHash: ByteVector32): Unit
   def addRelayedPreimageInfo(fullTag: FullPaymentTag, preimage: ByteVector32, relayed: MilliSatoshi, earned: MilliSatoshi)
+
+  def addSearchablePayment(search: String, paymentHash: ByteVector32): Unit
+  def searchPayments(rawSearchQuery: String): RichCursor
 
   def replaceOutgoingPayment(prex: PaymentRequestExt, desc: PaymentDescription, action: Option[PaymentAction],
                              finalAmount: MilliSatoshi, balanceSnap: MilliSatoshi, fiatRateSnap: Fiat2Btc,
