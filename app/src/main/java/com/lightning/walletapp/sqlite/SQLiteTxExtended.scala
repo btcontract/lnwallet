@@ -20,7 +20,6 @@ class SQLiteTxExtended(app: WalletApp, val db: DBInterfaceSQLiteAndroidMisc) ext
 
   override def replaceTx(tx: Transaction, depth: Long, received: Satoshi, sent: Satoshi, feeOpt: Option[Satoshi], description: TxDescription, isIncoming: Long, balanceSnap: MilliSatoshi, fiatRateSnap: Fiat2Btc): Unit = {
     super.replaceTx(tx, depth, received, sent, feeOpt, description, isIncoming, balanceSnap, fiatRateSnap)
-    if (depth < 1) app.notify(Vibrator.uri)
     app.sqlNotify(TxTable.table)
   }
 }

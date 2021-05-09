@@ -22,7 +22,6 @@ import android.icu.text.SimpleDateFormat
 import fr.acinq.eclair.wire.TrampolineOn
 import android.text.format.DateFormat
 import androidx.multidex.MultiDex
-import android.provider.Settings
 import rx.lang.scala.Observable
 import android.widget.Toast
 import android.os.Build
@@ -233,7 +232,6 @@ object WalletApp {
 }
 
 object Vibrator {
-  val uri: Uri = Settings.System.getUriFor(Settings.System.VIBRATE_ON)
   private val vibrator = WalletApp.app.getSystemService(Context.VIBRATOR_SERVICE).asInstanceOf[android.os.Vibrator]
   def vibrate: Unit = if (null != vibrator && vibrator.hasVibrator) vibrator.vibrate(Array(0L, 85, 200), -1)
 }
@@ -311,5 +309,4 @@ class WalletApp extends Application { me =>
   def clipboardManager: ClipboardManager = getSystemService(Context.CLIPBOARD_SERVICE).asInstanceOf[ClipboardManager]
   def sqlPath(targetTable: String): Uri = Uri.parse(s"sqlite://com.lightning.walletapp/table/$targetTable")
   def sqlNotify(targetTable: String): Unit = getContentResolver.notifyChange(sqlPath(targetTable), null)
-  def notify(uri: Uri): Unit = getContentResolver.notifyChange(uri, null)
 }

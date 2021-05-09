@@ -52,12 +52,12 @@ case class PaymentRequest(prefix: String, amount: Option[MilliSatoshi], timestam
   /**
    * @return the payment hash
    */
-  lazy val paymentHash = tags.collectFirst { case p: PaymentRequest.PaymentHash => p.hash }.get
+  lazy val paymentHash: ByteVector32 = tags.collectFirst { case p: PaymentRequest.PaymentHash => p.hash }.get
 
   /**
    * @return the payment secret
    */
-  lazy val paymentSecret = tags.collectFirst { case p: PaymentRequest.PaymentSecret => p.secret }
+  lazy val paymentSecret: Option[ByteVector32] = tags.collectFirst { case p: PaymentRequest.PaymentSecret => p.secret }
 
   /**
    * @return the description of the payment, or its hash
@@ -117,39 +117,31 @@ case class PaymentRequest(prefix: String, amount: Option[MilliSatoshi], timestam
 }
 
 object PaymentRequest {
-
   type ExtraHops = List[ExtraHop]
 
-  val DEFAULT_EXPIRY_SECONDS = 3600
+  val DEFAULT_EXPIRY_SECONDS = 3600 // If provided invoice does not have an expiry set then we assume it's this much seconds from timestamp
 
-  val prefixes = Map(Block.RegtestGenesisBlock.hash -> "lnbcrt", Block.TestnetGenesisBlock.hash -> "lntb", Block.LivenetGenesisBlock.hash -> "lnbc")
+  val OUR_EXPIRY_SECONDS: Int = DEFAULT_EXPIRY_SECONDS * 24 * 2 // Invoices issued by us ALWAYS expire in two days
+
+  val prefixes: Map[ByteVector32, String] = Map(Block.RegtestGenesisBlock.hash -> "lnbcrt", Block.TestnetGenesisBlock.hash -> "lntb", Block.LivenetGenesisBlock.hash -> "lnbc")
 
   val basicFeatures: PaymentRequestFeatures = PaymentRequestFeatures(Features.VariableLengthOnion.optional, Features.PaymentSecret.optional, Features.BasicMultiPartPayment.optional)
 
-  def apply(chainHash: ByteVector32,
-            amount: Option[MilliSatoshi],
-            paymentHash: ByteVector32,
-            privateKey: PrivateKey,
-            description: String,
-            minFinalCltvExpiryDelta: CltvExpiryDelta,
-            extraHops: List[ExtraHops],
-            features: Option[PaymentRequestFeatures] = Some(basicFeatures),
-            fallbackAddress: Option[String] = None,
-            expirySeconds: Option[Long] = Some(3600 * 24 * 7),
-            timestamp: Long = System.currentTimeMillis() / 1000L): PaymentRequest = {
+  def apply(chainHash: ByteVector32, amount: Option[MilliSatoshi], paymentHash: ByteVector32, privateKey: PrivateKey, description: String,
+            minFinalCltvExpiryDelta: CltvExpiryDelta, extraHops: List[ExtraHops], features: Option[PaymentRequestFeatures] = Some(basicFeatures),
+            fallbackAddress: Option[String] = None, timestamp: Long = System.currentTimeMillis / 1000L): PaymentRequest = {
 
     val prefix = prefixes(chainHash)
     val tags = {
       val defaultTags = List(
         Some(PaymentHash(paymentHash)),
         Some(Description(description)),
-        fallbackAddress.map(FallbackAddress(_)),
-        expirySeconds.map(Expiry(_)),
+        fallbackAddress.map(FallbackAddress.apply),
+        Some(Expiry(OUR_EXPIRY_SECONDS)),
         Some(MinFinalCltvExpiry(minFinalCltvExpiryDelta.toInt)),
         features).flatten
       val paymentSecretTag = if (features.exists(_.allowPaymentSecret)) PaymentSecret(randomBytes32) :: Nil else Nil
-      val routingInfoTags = extraHops.map(RoutingInfo)
-      defaultTags ++ paymentSecretTag ++ routingInfoTags
+      defaultTags ++ paymentSecretTag ++ extraHops.map(RoutingInfo)
     }
 
     PaymentRequest(

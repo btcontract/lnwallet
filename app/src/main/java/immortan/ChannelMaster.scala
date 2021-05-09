@@ -53,6 +53,10 @@ object ChannelMaster {
 
   def notifyStatusUpdated: Unit = statusUpdateStream.onNext(updateCounter.incrementAndGet)
 
+  final val preimageRevealedStream: Subject[ByteVector32] = Subject[ByteVector32]
+
+  final val preimageObtainedStream: Subject[ByteVector32] = Subject[ByteVector32]
+
   def initResolve(ext: UpdateAddHtlcExt): IncomingResolution = IncomingPacket.decrypt(ext.theirAdd, ext.remoteInfo.nodeSpecificPrivKey) match {
     case _ if LNParams.isChainDisconnectedTooLong => CMD_FAIL_HTLC(Right(TemporaryNodeFailure), ext.remoteInfo.nodeSpecificPrivKey, ext.theirAdd)
     case Left(_: BadOnion) => fallbackResolve(secret = LNParams.secret.keys.fakeInvoiceKey(ext.theirAdd.paymentHash), ext.theirAdd)
@@ -122,7 +126,7 @@ class ChannelMaster(val payBag: PaymentBag, val chanBag: ChannelBag, val dataBag
     }
 
     override def gotFirstPreimage(data: OutgoingPaymentSenderData, fulfill: RemoteFulfill): Unit = chanBag.db txWrap {
-      // also note that this method MAY get called multiple times for multipart payments if fulfills happen between restarts
+      // Note that this method MAY get called multiple times for multipart payments if fulfills happen between restarts
       payBag.setPreimage(fulfill.ourAdd.paymentHash, fulfill.preimage)
 
       getPaymentInfoMemo.get(fulfill.ourAdd.paymentHash).filter(_.status != PaymentStatus.SUCCEEDED).foreach { paymentInfo =>

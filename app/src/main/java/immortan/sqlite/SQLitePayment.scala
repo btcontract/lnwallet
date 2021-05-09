@@ -7,6 +7,7 @@ import immortan.utils.ImplicitJsonFormats._
 import java.lang.{Long => JLong}
 
 import fr.acinq.eclair.transactions.RemoteFulfill
+import fr.acinq.eclair.payment.PaymentRequest
 import fr.acinq.eclair.wire.FullPaymentTag
 import immortan.utils.PaymentRequestExt
 import immortan.crypto.Tools.Fiat2Btc
@@ -27,7 +28,11 @@ class SQLitePayment(db: DBInterface, preimageDb: DBInterface) extends PaymentBag
 
   def searchPayments(rawSearchQuery: String): RichCursor = db.search(PaymentTable.searchSql, rawSearchQuery)
 
-  def listRecentPayments(limit: Int): RichCursor = db.select(PaymentTable.selectRecentSql, (System.currentTimeMillis - 60 * 60 * 24 * 1000L).toString, limit.toString)
+  def listRecentPayments(limit: Int): RichCursor = {
+    val failedHidingThreshold = System.currentTimeMillis - 60 * 60 * 24 * 1000L
+    val expiryHidingThreshold = System.currentTimeMillis - PaymentRequest.OUR_EXPIRY_SECONDS * 1000L
+    db.select(PaymentTable.selectRecentSql, expiryHidingThreshold.toString, failedHidingThreshold.toString, limit.toString)
+  }
 
   def listRecentRelays(limit: Int): RichCursor = db.select(RelayTable.selectRecentSql, limit.toString)
 
@@ -35,9 +40,15 @@ class SQLitePayment(db: DBInterface, preimageDb: DBInterface) extends PaymentBag
 
   def updAbortedOutgoing(paymentHash: ByteVector32): Unit = db.change(PaymentTable.updStatusSql, PaymentStatus.ABORTED, paymentHash.toHex)
 
-  def updOkOutgoing(fulfill: RemoteFulfill, fee: MilliSatoshi): Unit = db.change(PaymentTable.updOkOutgoingSql, fulfill.preimage.toHex, fee.toLong: JLong, fulfill.ourAdd.paymentHash.toHex)
+  def updOkOutgoing(fulfill: RemoteFulfill, fee: MilliSatoshi): Unit = {
+    db.change(PaymentTable.updOkOutgoingSql, fulfill.preimage.toHex, fee.toLong: JLong, fulfill.ourAdd.paymentHash.toHex)
+    ChannelMaster.preimageObtainedStream.onNext(fulfill.ourAdd.paymentHash)
+  }
 
-  def updOkIncoming(receivedAmount: MilliSatoshi, paymentHash: ByteVector32): Unit = db.change(PaymentTable.updOkIncomingSql, receivedAmount.toLong: JLong, System.currentTimeMillis: JLong, paymentHash.toHex)
+  def updOkIncoming(receivedAmount: MilliSatoshi, paymentHash: ByteVector32): Unit = {
+    db.change(PaymentTable.updOkIncomingSql, receivedAmount.toLong: JLong, System.currentTimeMillis: JLong, paymentHash.toHex)
+    ChannelMaster.preimageRevealedStream.onNext(paymentHash)
+  }
 
   def addRelayedPreimageInfo(fullTag: FullPaymentTag, preimage: ByteVector32, relayed: MilliSatoshi, earned: MilliSatoshi): Unit =
     db.change(RelayTable.newSql, fullTag.paymentHash.toHex, fullTag.paymentSecret.toHex, preimage.toHex, System.currentTimeMillis: JLong, relayed.toLong: JLong, earned.toLong: JLong)

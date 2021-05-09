@@ -243,6 +243,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
 
   private var streamSubscription = Option.empty[Subscription]
   private var statusSubscription = Option.empty[Subscription]
+  private var successSubscription = Option.empty[Subscription]
 
   private val paymentEventStream = Subject[Long]
   private val relayEventStream = Subject[Long]
@@ -260,10 +261,6 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
     override def onChange(self: Boolean): Unit = txEventStream.onNext(ChannelMaster.updateCounter.incrementAndGet)
   }
 
-  private val vibratorObserver: ContentObserver = new ContentObserver(new Handler) {
-    override def onChange(self: Boolean): Unit = Vibrator.vibrate
-  }
-
   private val netListener: Monitor.ConnectivityListener = new Monitor.ConnectivityListener {
     override def onConnectivityChanged(ct: Int, isConnected: Boolean, isFast: Boolean): Unit = UITask {
       walletCards.offlineIndicator setVisibility BaseActivity.goneMap(!isConnected)
@@ -274,7 +271,6 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
 
   private val chainListener: WalletEventsListener = new WalletEventsListener {
     override def onChainSynchronized(event: WalletReady): Unit = UITask {
-      walletCards.syncIndicator setVisibility View.GONE
       updatePendingChainTxStatus
       walletCards.updateView
     }.run
@@ -288,10 +284,12 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
   }
 
   def updatePendingChainTxStatus: Unit = for {
-    txInfo <- txInfos if !txInfo.isDeeplyBuried && !txInfo.isDoubleSpent
-    (newDepth, newDoubleSpent) <- LNParams.chainWallet.wallet.doubleSpent(txInfo.tx)
-    if newDepth != txInfo.depth || newDoubleSpent != txInfo.isDoubleSpent
-  } WalletApp.txDataBag.updStatus(txInfo.txid, newDepth, newDoubleSpent)
+    transactionInfo <- txInfos if !transactionInfo.isDeeplyBuried && !transactionInfo.isDoubleSpent
+    (newDepth, newDoubleSpent) <- LNParams.chainWallet.wallet.doubleSpent(transactionInfo.tx)
+    if newDepth != transactionInfo.depth || newDoubleSpent != transactionInfo.isDoubleSpent
+    _ = WalletApp.txDataBag.updStatus(transactionInfo.txid, newDepth, newDoubleSpent)
+    // Trigger preimage revealed using a txid to throttle multiple vibrations
+  } ChannelMaster.preimageRevealedStream.onNext(transactionInfo.txid)
 
   // NFC
 
@@ -316,8 +314,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
   override def onDestroy: Unit = {
     statusSubscription.foreach(_.unsubscribe)
     streamSubscription.foreach(_.unsubscribe)
-
-    getContentResolver.unregisterContentObserver(vibratorObserver)
+    successSubscription.foreach(_.unsubscribe)
     getContentResolver.unregisterContentObserver(paymentObserver)
     getContentResolver.unregisterContentObserver(relayObserver)
     getContentResolver.unregisterContentObserver(txObserver)
@@ -468,12 +465,9 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
   def INIT(state: Bundle): Unit =
     if (WalletApp.isAlive && LNParams.isOperational) {
       setContentView(com.lightning.walletapp.R.layout.activity_hub)
-
-      getContentResolver.registerContentObserver(Vibrator.uri, true, vibratorObserver)
       getContentResolver.registerContentObserver(WalletApp.app.sqlPath(PaymentTable.table), true, paymentObserver)
       getContentResolver.registerContentObserver(WalletApp.app.sqlPath(RelayTable.table), true, relayObserver)
       getContentResolver.registerContentObserver(WalletApp.app.sqlPath(TxTable.table), true, txObserver)
-
       LNParams.chainWallet.eventsCatcher ! chainListener
       FiatRates.listeners += fiatRatesListener
       Tovuti.from(me).monitor(netListener)
@@ -500,15 +494,14 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
       walletCards.updateView
 
       // Throttle all types of burst updates, but make sure the last one is always called
-      val statusEvents = Rx.uniqueFirstAndLastWithinWindow(ChannelMaster.statusUpdateStream, 1.second)
       val stateEvents = Rx.uniqueFirstAndLastWithinWindow(ChannelMaster.stateUpdateStream, 1.second)
-
       val txEvents = Rx.uniqueFirstAndLastWithinWindow(txEventStream, 1.second).doOnNext(_ => reloadTxInfos)
       val paymentEvents = Rx.uniqueFirstAndLastWithinWindow(paymentEventStream, 1.second).doOnNext(_ => reloadPaymentInfos)
       val relayEvents = Rx.uniqueFirstAndLastWithinWindow(relayEventStream, 1.second).doOnNext(_ => reloadRelayedPreimageInfos)
-      val paymentRelatedEvents = txEvents.merge(paymentEvents).merge(relayEvents).doOnNext(_ => updAllInfos).merge(stateEvents)
-      statusSubscription = statusEvents.merge(stateEvents).subscribe(_ => UITask(walletCards.updateView).run).toSome
-      streamSubscription = paymentRelatedEvents.subscribe(_ => UITask(updatePaymentList).run).toSome
+
+      streamSubscription = txEvents.merge(paymentEvents).merge(relayEvents).doOnNext(_ => updAllInfos).merge(stateEvents).subscribe(_ => UITask(updatePaymentList).run).toSome
+      statusSubscription = Rx.uniqueFirstAndLastWithinWindow(ChannelMaster.statusUpdateStream, 1.second).merge(stateEvents).subscribe(_ => UITask(walletCards.updateView).run).toSome
+      successSubscription = ChannelMaster.preimageRevealedStream.merge(ChannelMaster.preimageObtainedStream).throttleFirst(1.second).subscribe(_ => Vibrator.vibrate).toSome
     } else {
       WalletApp.freePossiblyUsedResouces
       me exitTo ClassNames.mainActivityClass
