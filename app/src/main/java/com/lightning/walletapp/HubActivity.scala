@@ -177,10 +177,12 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
       case _ => R.drawable.panel_payment_passive_bg
     }
 
-    private def paymentMeta(info: PaymentInfo): String = info.isIncoming match {
-      case true if PaymentStatus.SUCCEEDED == info.status => WalletApp.app.when(info.date)
-      case true => LNParams.cm.inProcessors.get(info.fullTag).map(info.msatRatio).map(WalletApp.app plurOrZero pctCollected) getOrElse pctCollected.head
-      case _ => LNParams.cm.opm.data.payments.get(info.fullTag).map(_.data.inFlightParts.size.toLong).map(WalletApp.app plurOrZero partsInFlight) getOrElse partsInFlight.head
+    private def paymentMeta(info: PaymentInfo): String = if (info.isIncoming) {
+      val partsHuman = LNParams.cm.inProcessors.get(info.fullTag).map(info.msatRatio).map(WalletApp.app plurOrZero pctCollected)
+      if (PaymentStatus.SUCCEEDED == info.status) partsHuman getOrElse WalletApp.app.when(info.date) else partsHuman getOrElse pctCollected.head
+    } else {
+      val partsHuman = LNParams.cm.opm.data.payments.get(info.fullTag).map(_.data.inFlightParts.size.toLong).map(WalletApp.app plurOrZero partsInFlight)
+      if (PaymentStatus.PENDING == info.status) partsHuman getOrElse partsInFlight.head else partsHuman getOrElse WalletApp.app.when(info.date)
     }
   }
 

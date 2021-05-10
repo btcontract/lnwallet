@@ -12,7 +12,6 @@ import fr.acinq.eclair.MilliSatoshi
 import scodec.bits.ByteVector
 import immortan.utils.uri.Uri
 import java.util.Date
-
 import scala.util.Try
 
 
@@ -49,8 +48,8 @@ case class PaymentInfo(prString: String, preimage: ByteVector32, status: String,
   lazy val fiatRateSnapshot: Fiat2Btc = to[Fiat2Btc](fiatRatesString)
   lazy val action: PaymentAction = to[PaymentAction](actionString)
 
-  def msatRatio(fsm: IncomingPaymentProcessor): Long = Try(fsm.lastAmountIn.toLong)
-    .map(collectedAmount => received.toLong * 100D / collectedAmount)
+  def msatRatio(fsm: IncomingPaymentProcessor): Long = Try(fsm.lastAmountIn)
+    .map(collected => received.toLong * 100D / collected.toLong)
     .map(receivedRatio => receivedRatio.toLong)
     .getOrElse(0L)
 }
