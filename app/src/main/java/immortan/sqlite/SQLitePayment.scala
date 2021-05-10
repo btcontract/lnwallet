@@ -88,7 +88,6 @@ class SQLitePayment(db: DBInterface, preimageDb: DBInterface) extends PaymentBag
       rc string PaymentTable.fiatRates, MilliSatoshi(rc long PaymentTable.chainFee), rc long PaymentTable.incoming)
 
   def toRelayedPreimageInfo(rc: RichCursor): RelayedPreimageInfo =
-    RelayedPreimageInfo(rc string RelayTable.hash, rc string RelayTable.preimage,
-      MilliSatoshi(rc long RelayTable.relayed), MilliSatoshi(rc long RelayTable.earned),
-      rc long RelayTable.seenAt)
+    RelayedPreimageInfo(rc string RelayTable.hash, rc string RelayTable.secret, rc string RelayTable.preimage,
+      MilliSatoshi(rc long RelayTable.relayed), MilliSatoshi(rc long RelayTable.earned), rc long RelayTable.seenAt)
 }

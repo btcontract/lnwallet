@@ -6,11 +6,14 @@ import fr.acinq.bitcoin.{ByteVector32, Satoshi, Transaction}
 import fr.acinq.eclair.wire.{FullPaymentTag, PaymentTagTlv}
 import immortan.crypto.Tools.{Bytes, Fiat2Btc, SEPARATOR}
 import immortan.utils.{LNUrl, PaymentRequestExt}
+import immortan.fsm.IncomingPaymentProcessor
 import fr.acinq.bitcoin.Crypto.PublicKey
 import fr.acinq.eclair.MilliSatoshi
 import scodec.bits.ByteVector
 import immortan.utils.uri.Uri
 import java.util.Date
+
+import scala.util.Try
 
 
 object PaymentInfo {
@@ -45,6 +48,11 @@ case class PaymentInfo(prString: String, preimage: ByteVector32, status: String,
   lazy val description: PaymentDescription = to[PaymentDescription](descriptionString)
   lazy val fiatRateSnapshot: Fiat2Btc = to[Fiat2Btc](fiatRatesString)
   lazy val action: PaymentAction = to[PaymentAction](actionString)
+
+  def msatRatio(fsm: IncomingPaymentProcessor): Long = Try(fsm.lastAmountIn.toLong)
+    .map(collectedAmount => received.toLong * 100D / collectedAmount)
+    .map(receivedRatio => receivedRatio.toLong)
+    .getOrElse(0L)
 }
 
 // Payment actions
@@ -73,33 +81,30 @@ case class AESAction(domain: Option[String], description: String, ciphertext: St
 // Payment descriptions
 
 sealed trait PaymentDescription {
+  val desc: Option[String]
   val invoiceText: String
   val queryText: String
 }
 
 case class PlainDescription(invoiceText: String) extends PaymentDescription {
+  val desc: Option[String] = Some(invoiceText).filterNot(_.isEmpty)
   val queryText: String = invoiceText
 }
 
 case class PlainMetaDescription(invoiceText: String, meta: String) extends PaymentDescription {
+  val desc: Option[String] = Some(meta).filterNot(_.isEmpty) orElse Some(invoiceText).filterNot(_.isEmpty)
   val queryText: String = s"$invoiceText $meta"
-}
-
-case class SwapInDescription(invoiceText: String, txid: String, nodeId: PublicKey) extends PaymentDescription {
-  val queryText: String = s"$invoiceText $txid ${nodeId.toString}"
-}
-
-case class SwapOutDescription(invoiceText: String, btcAddress: String, chainFee: Satoshi, nodeId: PublicKey) extends PaymentDescription {
-  val queryText: String = s"$invoiceText $btcAddress ${nodeId.toString}"
 }
 
 // Relayed preimages
 
-case class RelayedPreimageInfo(paymentHashString: String, preimageString: String, relayed: MilliSatoshi,
-                               earned: MilliSatoshi, seenAt: Long) extends TransactionDetails {
+case class RelayedPreimageInfo(paymentHashString: String, paymentSecretString: String, preimageString: String,
+                               relayed: MilliSatoshi, earned: MilliSatoshi, seenAt: Long) extends TransactionDetails {
 
-  lazy val paymentHash: ByteVector32 = ByteVector32.fromValidHex(paymentHashString)
   lazy val preimage: ByteVector32 = ByteVector32.fromValidHex(preimageString)
+  lazy val paymentHash: ByteVector32 = ByteVector32.fromValidHex(paymentHashString)
+  lazy val paymentSecret: ByteVector32 = ByteVector32.fromValidHex(paymentSecretString)
+  lazy val fullTag: FullPaymentTag = FullPaymentTag(paymentHash, paymentSecret, PaymentTagTlv.TRAMPLOINE_ROUTED)
 }
 
 // Tx descriptions

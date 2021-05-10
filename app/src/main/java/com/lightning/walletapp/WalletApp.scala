@@ -157,15 +157,15 @@ object WalletApp {
     pf.listeners += LNParams.cm.opm
 
     FeeRates.listeners += new FeeRatesListener {
-      def onFeeRates(newFeeRates: FeeRatesInfo): Unit = {
+      def onFeeRates(newRates: FeeRatesInfo): Unit = {
         LNParams.cm.all.values.foreach(_ process CMD_CHECK_FEERATE)
-        extDataBag.putFeeRatesInfo(newFeeRates)
+        extDataBag.putFeeRatesInfo(newRates)
       }
     }
 
     FiatRates.listeners += new FiatRatesListener {
-      def onFiatRates(newFiatRates: FiatRatesInfo): Unit = {
-        extDataBag.putFiatRatesInfo(newFiatRates)
+      def onFiatRates(newRates: FiatRatesInfo): Unit = {
+        extDataBag.putFiatRatesInfo(newRates)
       }
     }
 
@@ -297,7 +297,7 @@ class WalletApp extends Application { me =>
 
   def quickToast(code: Int): Unit = quickToast(me getString code)
   def quickToast(msg: CharSequence): Unit = Toast.makeText(me, msg, Toast.LENGTH_LONG).show
-  def plur1OrZero(opts: Array[String], num: Long): String = if (num > 0) plur(opts, num).format(num) else opts(0)
+  def plurOrZero(opts: Array[String] = Array.empty)(num: Long): String = if (num > 0) plur(opts, num).format(num) else opts(0)
 
   def copy(text: String): Unit = {
     val bufferContent = ClipData.newPlainText("wallet", text)

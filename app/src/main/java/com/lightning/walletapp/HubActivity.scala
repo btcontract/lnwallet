@@ -37,12 +37,18 @@ import java.util.TimerTask
 
 class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataChecker with ChoiceReceiver { me =>
   def lnBalance: MilliSatoshi = LNParams.cm.all.values.filter(Channel.isOperationalOrWaiting).map(Channel.estimateBalance).sum
+
   private[this] lazy val bottomBlurringArea = findViewById(R.id.bottomBlurringArea).asInstanceOf[RealtimeBlurView]
   private[this] lazy val bottomActionBar = findViewById(R.id.bottomActionBar).asInstanceOf[LinearLayout]
   private[this] lazy val contentWindow = findViewById(R.id.contentWindow).asInstanceOf[RelativeLayout]
   private[this] lazy val itemsList = findViewById(R.id.itemsList).asInstanceOf[ListView]
   private[this] lazy val walletCards = new WalletCardsViewHolder
   private val CHOICE_RECEIVE_TAG = "choiceReceiveTag"
+
+  private[this] lazy val paymentTypeIconIds = List(R.id.btcIncoming, R.id.btcOutgoing, R.id.lnIncoming, R.id.lnOutgoing, R.id.lnRouted, R.id.btcLn, R.id.lnBtc)
+  private[this] lazy val partsInFlight = getResources.getStringArray(R.array.parts_in_flight)
+  private[this] lazy val pctCollected = getResources.getStringArray(R.array.pct_collected)
+  private[this] lazy val lnDefTitle = getString(tx_ln)
 
   // PAYMENT LIST
 
@@ -86,46 +92,56 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
       val holder = if (null == view.getTag) new PaymentLineViewHolder(view) else view.getTag.asInstanceOf[PaymentLineViewHolder]
 
       getItem(position) match {
-        case relayedInfo: RelayedPreimageInfo =>
+        case info: RelayedPreimageInfo =>
           holder.detailsAndStatus setVisibility View.GONE
-          holder.amount setText LNParams.denomination.directedWithSign(relayedInfo.earned, 0L.msat, cardZero, isPlus = true).html
-          holder.cardContainer setBackgroundResource R.drawable.panel_payment_passive_bg
-          holder.meta setText WalletApp.app.when(relayedInfo.date).html
-          holder setPaymentTypeVisibility R.id.lnRouted
+          holder.amount setText LNParams.denomination.directedWithSign(info.earned, 0L.msat, cardZero, isPlus = true).html
+          if (LNParams.cm.inProcessors contains info.fullTag) holder.cardContainer setBackgroundResource R.drawable.panel_payment_active_bg
+          else holder.cardContainer setBackgroundResource R.drawable.panel_payment_passive_bg
+          holder.meta setText WalletApp.app.when(info.date).html
+          holder.setVisibleIcon(id = R.id.lnRouted)
 
-        case txInfo: TxInfo =>
+        case info: TxInfo =>
           holder.detailsAndStatus setVisibility View.VISIBLE
-          holder.description setText txDescription(txInfo).html
-          holder.statusIcon setImageResource txStatusIcon(txInfo)
-          if (!txInfo.isIncoming && Satoshi(0L) == txInfo.sentSat) holder.amount setText getString(tx_notice_sent_to_self).html
-          else holder.amount setText LNParams.denomination.directedWithSign(txInfo.receivedSat.toMilliSatoshi, txInfo.sentSat.toMilliSatoshi, cardZero, txInfo.isIncoming).html
+          holder.description setText txDescription(info).html
+          if (!info.isIncoming && Satoshi(0L) == info.sentSat) holder.amount setText getString(tx_notice_sent_to_self).html
+          else holder.amount setText LNParams.denomination.directedWithSign(info.receivedSat.toMilliSatoshi, info.sentSat.toMilliSatoshi, cardZero, info.isIncoming).html
           holder.cardContainer setBackgroundResource R.drawable.panel_payment_passive_bg
-          holder.meta setText txMeta(txInfo).html
-          setTypeIcon(holder, txInfo)
+          holder.statusIcon setImageResource txStatusIcon(info)
+          holder.meta setText txMeta(info).html
+          setTxTypeIcon(holder, info)
 
-        case _: PaymentInfo =>
+        case info: PaymentInfo =>
+          holder.detailsAndStatus setVisibility View.VISIBLE
+          holder.description setText info.description.desc.getOrElse(lnDefTitle)
+          holder.amount setText LNParams.denomination.directedWithSign(info.received, info.sent, cardZero, info.isIncoming).html
+          holder.cardContainer setBackgroundResource paymentBackground(info)
+          holder.statusIcon setImageResource paymentStatusIcon(info)
+          holder.meta setText paymentMeta(info).html
+          setPaymentTypeIcon(holder, info)
       }
 
       view
     }
 
-    private def setTypeIcon(holder: PaymentLineViewHolder, info: TxInfo): Unit = info.description match {
-      case _: PlainTxDescription if info.isIncoming => holder.setPaymentTypeVisibility(visible = R.id.btcIncoming)
-      case _: OpReturnTxDescription => holder.setPaymentTypeVisibility(visible = R.id.btcOutgoing)
-      case _: ChanRefundingTxDescription => holder.setPaymentTypeVisibility(visible = R.id.lnBtc)
-      case _: ChanFundingTxDescription => holder.setPaymentTypeVisibility(visible = R.id.btcLn)
-      case _: PlainTxDescription => holder.setPaymentTypeVisibility(visible = R.id.btcOutgoing)
-      case _: HtlcClaimTxDescription => holder.setPaymentTypeVisibility(visible = R.id.lnBtc)
-      case _: PenaltyTxDescription => holder.setPaymentTypeVisibility(visible = R.id.lnBtc)
-    }
+    // Chain helpers
 
     private def txDescription(info: TxInfo): String = info.description match {
-      case plainTxDescription: PlainTxDescription => labelOrFallback(plainTxDescription)
       case _: ChanRefundingTxDescription => getString(tx_description_refunding)
       case _: HtlcClaimTxDescription => getString(tx_description_htlc_claim)
       case _: ChanFundingTxDescription => getString(tx_description_funding)
       case _: OpReturnTxDescription => getString(tx_description_op_return)
       case _: PenaltyTxDescription => getString(tx_description_penalty)
+      case plain: PlainTxDescription => labelOrFallback(plain)
+    }
+
+    private def setTxTypeIcon(holder: PaymentLineViewHolder, info: TxInfo): Unit = info.description match {
+      case _: PlainTxDescription if info.isIncoming => holder.setVisibleIcon(id = R.id.btcIncoming)
+      case _: OpReturnTxDescription => holder.setVisibleIcon(id = R.id.btcOutgoing)
+      case _: ChanRefundingTxDescription => holder.setVisibleIcon(id = R.id.lnBtc)
+      case _: ChanFundingTxDescription => holder.setVisibleIcon(id = R.id.btcLn)
+      case _: PlainTxDescription => holder.setVisibleIcon(id = R.id.btcOutgoing)
+      case _: HtlcClaimTxDescription => holder.setVisibleIcon(id = R.id.lnBtc)
+      case _: PenaltyTxDescription => holder.setVisibleIcon(id = R.id.lnBtc)
     }
 
     private def labelOrFallback(plainTxDescription: PlainTxDescription): String = plainTxDescription.label.getOrElse {
@@ -143,13 +159,41 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
       if (info.isDeeplyBuried) R.drawable.baseline_done_24
       else if (info.isDoubleSpent) R.drawable.baseline_block_24
       else R.drawable.baseline_hourglass_empty_24
+
+    // LN helpers
+
+    private def setPaymentTypeIcon(holder: PaymentLineViewHolder, info: PaymentInfo): Unit =
+      if (info.isIncoming) holder.setVisibleIcon(id = R.id.lnIncoming)
+      else holder.setVisibleIcon(id = R.id.lnOutgoing)
+
+    private def paymentStatusIcon(info: PaymentInfo): Int =
+      if (PaymentStatus.SUCCEEDED == info.status) R.drawable.baseline_done_24
+      else if (PaymentStatus.ABORTED == info.status) R.drawable.baseline_block_24
+      else R.drawable.baseline_hourglass_empty_24
+
+    private def paymentBackground(info: PaymentInfo): Int = info.isIncoming match {
+      case true if LNParams.cm.inProcessors.contains(info.fullTag) => R.drawable.panel_payment_active_bg
+      case false if LNParams.cm.opm.data.payments.contains(info.fullTag) => R.drawable.panel_payment_active_bg
+      case _ => R.drawable.panel_payment_passive_bg
+    }
+
+    private def paymentMeta(info: PaymentInfo): String = info.isIncoming match {
+      case true if PaymentStatus.SUCCEEDED == info.status => WalletApp.app.when(info.date)
+      case true => LNParams.cm.inProcessors.get(info.fullTag).map(info.msatRatio).map(WalletApp.app plurOrZero pctCollected) getOrElse pctCollected.head
+      case _ => LNParams.cm.opm.data.payments.get(info.fullTag).map(_.data.inFlightParts.size.toLong).map(WalletApp.app plurOrZero partsInFlight) getOrElse partsInFlight.head
+    }
   }
 
   class PaymentLineViewHolder(itemView: View) extends RecyclerView.ViewHolder(itemView) { self =>
-    def setPaymentTypeVisibility(visible: Int): Unit = for (id <- paymentTypeIconIds) typeMap(id) setVisibility BaseActivity.goneMap(id == visible)
-    private val paymentTypeIconIds = List(R.id.btcIncoming, R.id.btcOutgoing, R.id.lnIncoming, R.id.lnOutgoing, R.id.lnRouted, R.id.btcLn, R.id.lnBtc)
-    private val paymentTypeViews: List[View] = paymentTypeIconIds.map(itemView.findViewById)
-    private val typeMap: Map[Int, View] = paymentTypeIconIds.zip(paymentTypeViews).toMap
+    private val paymentTypeIconViews: List[View] = paymentTypeIconIds.map(itemView.findViewById)
+    private val iconMap: Map[Int, View] = paymentTypeIconIds.zip(paymentTypeIconViews).toMap
+    private var lastVisibleIconId: Int = -1
+
+    def setVisibleIcon(id: Int): Unit = if (lastVisibleIconId != id) {
+      iconMap.get(lastVisibleIconId).foreach(_ setVisibility View.GONE)
+      iconMap.get(id).foreach(_ setVisibility View.VISIBLE)
+      lastVisibleIconId = id
+    }
 
     val cardContainer: LinearLayout = itemView.findViewById(R.id.cardContainer).asInstanceOf[LinearLayout]
     val detailsAndStatus: RelativeLayout = itemView.findViewById(R.id.detailsAndStatus).asInstanceOf[RelativeLayout]

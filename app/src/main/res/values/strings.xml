@@ -178,4 +178,17 @@
     <string name="rpa_open_nc">Fund new channel</string>
 
     <!-- /Remote peer activity -->
+
+    <array name="parts_in_flight">
+        <item>preparing</item>
+        <item>%1$d part</item>
+        <item>%1$d parts</item>
+    </array>
+
+    <array name="pct_collected">
+        <item>waiting</item>
+        <item>%1$d\%% collected</item>
+        <item>%1$d\%% collected</item>
+    </array>
+
 </resources>

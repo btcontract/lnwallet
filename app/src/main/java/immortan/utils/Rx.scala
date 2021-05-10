@@ -14,7 +14,8 @@ object Rx {
     obs.throttleFirst(window).merge(obs debounce window).distinctUntilChanged.observeOn(IOScheduler.apply)
 
   def initDelay[T](next: Observable[T], startMillis: Long, timeoutMillis: Long): Observable[T] = {
-    val adjustedTimeout = startMillis + timeoutMillis - System.currentTimeMillis
+    val futureProtectedStartMillis = if (startMillis > System.currentTimeMillis) 0L else startMillis
+    val adjustedTimeout = futureProtectedStartMillis + timeoutMillis - System.currentTimeMillis
     val delayLeft = if (adjustedTimeout < 10L) 10L else adjustedTimeout
     Observable.just(null).delay(delayLeft.millis).flatMap(_ => next)
   }
