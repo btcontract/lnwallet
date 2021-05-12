@@ -165,11 +165,11 @@ case class NormalCommits(channelVersion: ChannelVersion, remoteInfo: RemoteNodeI
 
   def hasPendingOrProposedHtlcs: Boolean = !hasNoPendingHtlcs || localChanges.adds.nonEmpty || remoteChanges.adds.nonEmpty
 
-  def localHasUnsignedOutgoingHtlcs: Boolean = localChanges.proposed.collectFirst { case _: UpdateAddHtlc => true }.isDefined
+  def localHasUnsignedOutgoingHtlcs: Boolean = localChanges.proposed.exists { case _: UpdateAddHtlc => true case _ => false }
 
-  def remoteHasUnsignedOutgoingHtlcs: Boolean = remoteChanges.proposed.collectFirst { case _: UpdateAddHtlc => true }.isDefined
+  def remoteHasUnsignedOutgoingHtlcs: Boolean = remoteChanges.proposed.exists { case _: UpdateAddHtlc => true case _ => false }
 
-  def remoteHasUnsignedOutgoingUpdateFee: Boolean = remoteChanges.proposed.collectFirst { case _: UpdateFee => true }.isDefined
+  def remoteHasUnsignedOutgoingUpdateFee: Boolean = remoteChanges.proposed.exists { case _: UpdateFee => true case _ => false }
 
   def localHasChanges: Boolean = remoteChanges.acked.nonEmpty || localChanges.proposed.nonEmpty
 
@@ -196,7 +196,7 @@ case class NormalCommits(channelVersion: ChannelVersion, remoteInfo: RemoteNodeI
     if (remoteFeeratePerKw exists isFeeDiffTooHigh) throw CMDException(new RuntimeException, cmd)
 
     // let's compute the current commitment *as seen by them* with this change taken into account
-    val encryptedTag: TlvStream[Tlv] = TlvStream(PaymentTagTlv.EncryptedPaymentSecret(cmd.encryptedTag) :: Nil)
+    val encryptedTag: PaymentTagTlv.EncryptedSecretStream = TlvStream(EncryptedPaymentSecret(cmd.encryptedTag) :: Nil)
     val add = UpdateAddHtlc(channelId, localNextHtlcId, cmd.firstAmount, cmd.fullTag.paymentHash, cmd.cltvExpiry, cmd.packetAndSecrets.packet, encryptedTag)
     val commitments1 = addLocalProposal(add).copy(localNextHtlcId = localNextHtlcId + 1)
     // we need to base the next current commitment on the last sig we sent, even if we didn't yet receive their revocation

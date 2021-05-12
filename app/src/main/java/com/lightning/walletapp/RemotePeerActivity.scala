@@ -184,8 +184,10 @@ class RemotePeerActivity extends BaseActivity with ExternalDataChecker { me =>
     feeView.update(feeOpt = None, showIssue = false).run
   }
 
-  def sharePeerSpecificNodeId(view: View): Unit =
+  def sharePeerSpecificNodeId(view: View): Unit = {
     share(remoteNodeInfo.nodeSpecificPubKey.toString)
+    println(remoteNodeInfo.nodeSpecificPubKey.toString)
+  }
 
   def requestHostedChannel(view: View): Unit = {
     val builder = new AlertDialog.Builder(me).setTitle(rpa_request_hc).setMessage(getString(rpa_hc_warn).html)

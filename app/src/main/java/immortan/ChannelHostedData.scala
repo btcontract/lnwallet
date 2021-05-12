@@ -50,7 +50,7 @@ case class HostedCommits(remoteInfo: RemoteNodeInfo, lastCrossSignedState: LastC
   def alreadyReplied(id: Long): Boolean = nextLocalSpec.findIncomingHtlcById(id).isEmpty
 
   def sendAdd(cmd: CMD_ADD_HTLC, blockHeight: Long): (HostedCommits, UpdateAddHtlc) = {
-    val encryptedTag: TlvStream[Tlv] = TlvStream(PaymentTagTlv.EncryptedPaymentSecret(cmd.encryptedTag) :: Nil)
+    val encryptedTag: PaymentTagTlv.EncryptedSecretStream = TlvStream(EncryptedPaymentSecret(cmd.encryptedTag) :: Nil)
     val add = UpdateAddHtlc(channelId, nextTotalLocal + 1, cmd.firstAmount, cmd.fullTag.paymentHash, cmd.cltvExpiry, cmd.packetAndSecrets.packet, encryptedTag)
     val commits1: HostedCommits = addLocalProposal(add)
 

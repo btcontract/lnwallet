@@ -335,7 +335,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
     if newDepth != transactionInfo.depth || newDoubleSpent != transactionInfo.isDoubleSpent
     _ = WalletApp.txDataBag.updStatus(transactionInfo.txid, newDepth, newDoubleSpent)
     // Trigger preimage revealed using a txid to throttle multiple vibrations
-  } ChannelMaster.preimageRevealedStream.onNext(transactionInfo.txid)
+  } ChannelMaster.preimageRevealStream.onNext(transactionInfo.txid)
 
   // NFC
 
@@ -547,7 +547,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
 
       streamSubscription = txEvents.merge(paymentEvents).merge(relayEvents).doOnNext(_ => updAllInfos).merge(stateEvents).subscribe(_ => UITask(updatePaymentList).run).toSome
       statusSubscription = Rx.uniqueFirstAndLastWithinWindow(ChannelMaster.statusUpdateStream, 1.second).merge(stateEvents).subscribe(_ => UITask(walletCards.updateView).run).toSome
-      successSubscription = ChannelMaster.preimageRevealedStream.merge(ChannelMaster.preimageObtainedStream).throttleFirst(1.second).subscribe(_ => Vibrator.vibrate).toSome
+      successSubscription = ChannelMaster.preimageRevealStream.merge(ChannelMaster.preimageObtainStream).throttleFirst(1.second).subscribe(_ => Vibrator.vibrate).toSome
     } else {
       WalletApp.freePossiblyUsedResouces
       me exitTo ClassNames.mainActivityClass

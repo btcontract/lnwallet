@@ -93,19 +93,19 @@ case class ClosingSigned(channelId: ByteVector32, feeSatoshis: Satoshi, signatur
 
 case class UpdateAddHtlc(channelId: ByteVector32, id: Long,
                          amountMsat: MilliSatoshi, paymentHash: ByteVector32, cltvExpiry: CltvExpiry, onionRoutingPacket: OnionRoutingPacket,
-                         tlvStream: TlvStream.GenericTlvStream = TlvStream.empty) extends HtlcMessage with HasChannelId with UpdateMessage {
+                         tlvStream: PaymentTagTlv.EncryptedSecretStream = TlvStream.empty) extends HtlcMessage with HasChannelId with UpdateMessage {
 
   // Important: LNParams.format must be defined
   private[this] lazy val fullTagOpt: Option[FullPaymentTag] = for {
-    cipherBytes <- tlvStream.get[PaymentTagTlv.EncryptedPaymentSecret]
-    plainBytes <- Tools.chaChaDecrypt(LNParams.secret.keys.ourNodePrivateKey.value, cipherBytes.data).toOption
-    DecodeResult(ShortPaymentTag(secret, tag), _) <- PaymentTagTlv.shortPaymentTagCodec.decode(plainBytes.toBitVector).toOption
-  } yield FullPaymentTag(paymentHash, secret, tag)
+    EncryptedPaymentSecret(cipherBytes) <- tlvStream.get[EncryptedPaymentSecret]
+    plainBytes <- Tools.chaChaDecrypt(LNParams.secret.keys.ourNodePrivateKey.value, cipherBytes).toOption
+    DecodeResult(shortTag, _) <- PaymentTagTlv.shortPaymentTagCodec.decode(plainBytes.toBitVector).toOption
+  } yield FullPaymentTag(paymentHash, shortTag.paymentSecret, shortTag.tag)
 
   // This is relevant for outgoing payments, NO_SECRET means this is a locally initiated outgoing payment
   lazy val fullTag: FullPaymentTag = fullTagOpt getOrElse FullPaymentTag(ChannelMaster.NO_SECRET, paymentHash, PaymentTagTlv.LOCALLY_SENT)
 
-  // This is relevant for outgoing payments where we can ensure onion key uniqueness
+  // This is relevant for outgoing payments (with these we can ensure onion key uniqueness)
   final val partId: ByteVector = onionRoutingPacket.publicKey
 }
 

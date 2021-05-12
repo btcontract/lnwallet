@@ -53,9 +53,9 @@ object ChannelMaster {
 
   def notifyStatusUpdated: Unit = statusUpdateStream.onNext(updateCounter.incrementAndGet)
 
-  final val preimageRevealedStream: Subject[ByteVector32] = Subject[ByteVector32]
+  final val preimageRevealStream: Subject[ByteVector32] = Subject[ByteVector32]
 
-  final val preimageObtainedStream: Subject[ByteVector32] = Subject[ByteVector32]
+  final val preimageObtainStream: Subject[ByteVector32] = Subject[ByteVector32]
 
   def initResolve(ext: UpdateAddHtlcExt): IncomingResolution = IncomingPacket.decrypt(ext.theirAdd, ext.remoteInfo.nodeSpecificPrivKey) match {
     case _ if LNParams.isChainDisconnectedTooLong => CMD_FAIL_HTLC(Right(TemporaryNodeFailure), ext.remoteInfo.nodeSpecificPrivKey, ext.theirAdd)
@@ -168,13 +168,11 @@ class ChannelMaster(val payBag: PaymentBag, val chanBag: ChannelBag, val dataBag
     initConnect
   }
 
-  def initConnect: Unit = {
-    val eligibleForConnect = all.values.filter(Channel.isOperationalOrWaiting).flatMap(Channel.chanAndCommitsOpt)
-    for (cnc <- eligibleForConnect) CommsTower.listenNative(Set(socketChannelListener), cnc.commits.remoteInfo)
-  }
-
-  def allIncomingResolutions: Iterable[IncomingResolution] = all.values.flatMap(Channel.chanAndCommitsOpt).flatMap(_.commits.crossSignedIncoming).map(initResolveMemo.get)
-  def allInChannelOutgoing: Map[FullPaymentTag, OutgoingAdds] = all.values.flatMap(Channel.chanAndCommitsOpt).flatMap(_.commits.allOutgoing).groupBy(_.fullTag)
+  def initConnect: Unit =
+    all.values.flatMap(Channel.chanAndCommitsOpt).foreach { cnc =>
+      // Connect to all peers with channels, including CLOSED and SUSPENDED ones
+      CommsTower.listenNative(Set(socketChannelListener), cnc.commits.remoteInfo)
+    }
 
   def closingsPublished: Iterable[ForceCloseCommitPublished] = all.values.map(_.data).collect { case closing: DATA_CLOSING => closing.forceCloseCommitPublished }.flatten
   def pendingRefundsAmount(publishes: Iterable[ForceCloseCommitPublished] = Nil): Satoshi = publishes.flatMap(_.delayedRefundsLeft).map(_.txOut.head.amount).sum
@@ -216,27 +214,6 @@ class ChannelMaster(val payBag: PaymentBag, val chanBag: ChannelBag, val dataBag
     case _ => None // Has never been sent or ABORTED by now
   }
 
-  def notifyFSMs(out: Map[FullPaymentTag, OutgoingAdds], in: Iterable[IncomingResolution], rejects: Seq[RemoteReject] = Nil): Unit = {
-    in.foreach { case finalResolve: FinalResolution => sendTo(finalResolve, finalResolve.theirAdd.channelId) case _ => } // First, immediately resolve invalid adds
-    val partialIncoming = in.collect { case resolve: ReasonableResolution => resolve }.groupBy(_.fullTag) // Then, collect reasonable adds which need further analysis
-    val bag = InFlightPayments(out, partialIncoming)
-
-    bag.allTags.foreach {
-      case fullTag if PaymentTagTlv.TRAMPLOINE_ROUTED == fullTag.tag && !inProcessors.contains(fullTag) => inProcessors += new TrampolinePaymentRelayer(fullTag, me).tuple
-      case fullTag if PaymentTagTlv.FINAL_INCOMING == fullTag.tag && !inProcessors.contains(fullTag) => inProcessors += new IncomingPaymentReceiver(fullTag, me).tuple
-      case fullTag if PaymentTagTlv.LOCALLY_SENT == fullTag.tag => opm process CreateSenderFSM(fullTag, localPaymentListener)
-      case _ => // Do nothing
-    }
-
-    // An FSM was created, but now no related payments are left
-    // this change is used by FSMs to properly finalize themselves
-    for (incomingFSM <- inProcessors.values) incomingFSM doProcess bag
-    // Send another part only after current failure has been cross-signed
-    for (ourRejectOfTheirAdd <- rejects) opm process ourRejectOfTheirAdd
-    // Maybe remove successful outgoing FSMs
-    opm process bag
-  }
-
   // These are executed in Channel context
 
   override def fulfillReceived(fulfill: RemoteFulfill): Unit = opm process fulfill
@@ -258,15 +235,35 @@ class ChannelMaster(val payBag: PaymentBag, val chanBag: ChannelBag, val dataBag
   }
 
   override def stateUpdated(rejects: Seq[RemoteReject] = Nil): Unit = {
-    notifyFSMs(allInChannelOutgoing, allIncomingResolutions, rejects)
+    val allChansAndCommits = all.values.flatMap(Channel.chanAndCommitsOpt)
+    val allOuts = allChansAndCommits.flatMap(_.commits.allOutgoing).groupBy(_.fullTag)
+    val allIns = allChansAndCommits.flatMap(_.commits.crossSignedIncoming).map(initResolveMemo.get)
+
+    allIns.foreach { case finalResolve: FinalResolution => sendTo(finalResolve, finalResolve.theirAdd.channelId) case _ => }
+    val reasonableIncoming = allIns.collect { case resolution: ReasonableResolution => resolution }.groupBy(_.fullTag)
+    val inFlightBag = InFlightPayments(allOuts, reasonableIncoming)
+
+    inFlightBag.allTags.collect {
+      case fullTag if PaymentTagTlv.TRAMPLOINE_ROUTED == fullTag.tag && !inProcessors.contains(fullTag) => inProcessors += new TrampolinePaymentRelayer(fullTag, me).tuple
+      case fullTag if PaymentTagTlv.FINAL_INCOMING == fullTag.tag && !inProcessors.contains(fullTag) => inProcessors += new IncomingPaymentReceiver(fullTag, me).tuple
+      case fullTag if PaymentTagTlv.LOCALLY_SENT == fullTag.tag => opm process CreateSenderFSM(fullTag, localPaymentListener)
+    }
+
+    // An FSM was created, but now no related payments are left
+    // this change is used by existing FSMs to properly finalize themselves
+    for (incomingFSM <- inProcessors.values) incomingFSM doProcess inFlightBag
+    // Send another part only after current failure has been cross-signed
+    for (ourRejectOfTheirAdd <- rejects) opm process ourRejectOfTheirAdd
     // Sign all fails and fulfills that could have been sent above
-    all.values.foreach(_ process CMD_SIGN)
+    for (chan <- all.values) chan process CMD_SIGN
+    // Maybe remove successful outgoing FSMs
+    opm process inFlightBag
     notifyStateUpdated
   }
 
   // Mainly to prolong timeouts
   override def addReceived(add: UpdateAddHtlcExt): Unit = for {
-    resolve <- Option(initResolveMemo get add) collect { case resolve: ReasonableResolution => resolve }
-    incomingFSM <- inProcessors.values.find(incomingFSM => resolve.fullTag == incomingFSM.fullTag)
-  } incomingFSM doProcess resolve
+    reasonableResolution <- Option(initResolveMemo get add) collect { case resolution: ReasonableResolution => resolution }
+    incomingFSM <- inProcessors.values.find(incomingFSM => reasonableResolution.fullTag == incomingFSM.fullTag)
+  } incomingFSM doProcess reasonableResolution
 }

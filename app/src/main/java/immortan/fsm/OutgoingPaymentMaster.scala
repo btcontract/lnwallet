@@ -161,8 +161,7 @@ class OutgoingPaymentMaster(val cm: ChannelMaster) extends StateMachine[Outgoing
       ChannelMaster.notifyStateUpdated
 
     case (CreateSenderFSM(fullTag, listener), EXPECTING_PAYMENTS | WAITING_FOR_ROUTE) if !data.payments.contains(fullTag) =>
-      val newSenderFSM = new OutgoingPaymentSender(fullTag, listener, me)
-      val data1 = data.payments.updated(fullTag, newSenderFSM)
+      val data1 = data.payments.updated(value = new OutgoingPaymentSender(fullTag, listener, me), key = fullTag)
       become(data.copy(payments = data1), state)
 
     // Following messages expect that target FSM is always present
@@ -518,8 +517,8 @@ class OutgoingPaymentSender(val fullTag: FullPaymentTag, val listener: OutgoingP
   }
 
   def abortMaybeNotify(data1: OutgoingPaymentSenderData): Unit = {
-    val noLeftoversPresent = !opm.cm.allInChannelOutgoing.contains(fullTag)
-    if (data1.inFlightParts.isEmpty && noLeftoversPresent) listener.wholePaymentFailed(data1)
+    val hasLeftoversInChannels = opm.cm.all.values.flatMap(Channel.chanAndCommitsOpt).flatMap(_.commits.allOutgoing).exists(_.fullTag == fullTag)
+    if (data1.inFlightParts.isEmpty && !hasLeftoversInChannels) listener.wholePaymentFailed(data1)
     become(data1, ABORTED)
   }
 }
