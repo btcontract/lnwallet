@@ -164,9 +164,10 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
     // LN helpers
 
     private def paymentDescription(info: PaymentInfo): String = info.description match {
-      case desc: PlainDescription => List(desc.invoiceText).find(_.nonEmpty).getOrElse(lnDefTitle)
-      case desc: SplitDescription => lnSplitNotice.format(desc.sentRatio) + List(desc.invoiceText).find(_.nonEmpty).getOrElse(lnDefTitle)
-      case desc: PlainMetaDescription => List(desc.meta, desc.invoiceText).find(_.nonEmpty).getOrElse(lnDefTitle)
+      case PlainDescription(None, invoiceText) => Some(invoiceText).find(_.nonEmpty).getOrElse(lnDefTitle)
+      case PlainDescription(Some(split), invoiceText) => lnSplitNotice.format(split.sentRatio) + Some(invoiceText).find(_.nonEmpty).getOrElse(lnDefTitle)
+      case PlainMetaDescription(Some(split), invoiceText, meta) => lnSplitNotice.format(split.sentRatio) + List(meta, invoiceText).find(_.nonEmpty).getOrElse(lnDefTitle)
+      case PlainMetaDescription(None, invoiceText, meta) => List(meta, invoiceText).find(_.nonEmpty).getOrElse(lnDefTitle)
     }
 
     private def setPaymentTypeIcon(holder: PaymentLineViewHolder, info: PaymentInfo): Unit =
@@ -489,8 +490,8 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
         val preimage: ByteVector32 = randomBytes32
         val hash: ByteVector32 = Crypto.sha256(preimage)
         val invoiceKey = LNParams.secret.keys.fakeInvoiceKey(hash)
-        val description = PlainDescription(manager.resultExtraInput getOrElse new String)
         val hop = List(commits.updateOpt.map(_ extraHop commits.remoteInfo.nodeId).toList)
+        val description = PlainDescription(split = None, manager.resultExtraInput getOrElse new String)
         val prExt = PaymentRequestExt from PaymentRequest(LNParams.chainHash, Some(manager.resultMsat), hash, invoiceKey, description.invoiceText, LNParams.incomingFinalCltvExpiry, hop)
         val chainFee = Transactions.weight2fee(LNParams.feeRatesInfo.onChainFeeConf.feeEstimator.getFeeratePerKw(LNParams.feeRatesInfo.onChainFeeConf.feeTargets.fundingBlockTarget), 700)
         LNParams.cm.payBag.replaceIncomingPayment(prExt, preimage, description, lnBalance, LNParams.fiatRatesInfo.rates, chainFee.toMilliSatoshi)

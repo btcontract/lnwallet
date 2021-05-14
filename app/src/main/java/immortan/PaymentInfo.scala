@@ -77,20 +77,20 @@ case class AESAction(domain: Option[String], description: String, ciphertext: St
 // Payment descriptions
 
 sealed trait PaymentDescription {
+  val split: Option[SplitInfo]
   val invoiceText: String
   val queryText: String
 }
 
-case class PlainDescription(invoiceText: String) extends PaymentDescription {
-  val queryText: String = invoiceText
-}
-
-case class SplitDescription(invoiceText: String, totalSum: MilliSatoshi, ourPart: MilliSatoshi) extends PaymentDescription {
+case class SplitInfo(totalSum: MilliSatoshi, ourPart: MilliSatoshi) {
   val sentRatio: Long = ratio(totalSum, ourPart)
+}
+
+case class PlainDescription(split: Option[SplitInfo], invoiceText: String) extends PaymentDescription {
   val queryText: String = invoiceText
 }
 
-case class PlainMetaDescription(invoiceText: String, meta: String) extends PaymentDescription {
+case class PlainMetaDescription(split: Option[SplitInfo], invoiceText: String, meta: String) extends PaymentDescription {
   val queryText: String = s"$invoiceText $meta"
 }
 

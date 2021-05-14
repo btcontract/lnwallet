@@ -92,27 +92,25 @@ object ImplicitJsonFormats extends DefaultJsonProtocol {
   implicit object PaymentDescriptionFmt extends JsonFormat[PaymentDescription] {
     def read(raw: JsValue): PaymentDescription = raw.asJsObject.fields(TAG) match {
       case JsString("PlainMetaDescription") => raw.convertTo[PlainMetaDescription]
-      case JsString("SplitDescription") => raw.convertTo[SplitDescription]
       case JsString("PlainDescription") => raw.convertTo[PlainDescription]
       case _ => throw new Exception
     }
 
     def write(internal: PaymentDescription): JsValue = internal match {
       case paymentDescription: PlainMetaDescription => paymentDescription.toJson
-      case paymentDescription: SplitDescription => paymentDescription.toJson
       case paymentDescription: PlainDescription => paymentDescription.toJson
       case _ => throw new Exception
     }
   }
 
-  implicit val plainDescriptionFmt: JsonFormat[PlainDescription] = taggedJsonFmt(jsonFormat[String,
-    PlainDescription](PlainDescription.apply, "invoiceText"), tag = "PlainDescription")
+  implicit val splitInfoFmt: JsonFormat[SplitInfo] =
+    jsonFormat[MilliSatoshi, MilliSatoshi, SplitInfo](SplitInfo.apply, "totalSum", "ourPart")
 
-  implicit val splitDescriptionFmt: JsonFormat[SplitDescription] = taggedJsonFmt(jsonFormat[String, MilliSatoshi, MilliSatoshi,
-    SplitDescription](SplitDescription.apply, "invoiceText", "totalSum", "ourPart"), tag = "SplitDescription")
+  implicit val plainDescriptionFmt: JsonFormat[PlainDescription] = taggedJsonFmt(jsonFormat[Option[SplitInfo], String,
+    PlainDescription](PlainDescription.apply, "split", "invoiceText"), tag = "PlainDescription")
 
-  implicit val plainMetaDescriptionFmt: JsonFormat[PlainMetaDescription] = taggedJsonFmt(jsonFormat[String, String,
-    PlainMetaDescription](PlainMetaDescription.apply, "invoiceText", "meta"), tag = "PlainMetaDescription")
+  implicit val plainMetaDescriptionFmt: JsonFormat[PlainMetaDescription] = taggedJsonFmt(jsonFormat[Option[SplitInfo], String, String,
+    PlainMetaDescription](PlainMetaDescription.apply, "split", "invoiceText", "meta"), tag = "PlainMetaDescription")
 
   // Payment action
 
