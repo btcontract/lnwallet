@@ -75,7 +75,7 @@ public class NoboButton extends LinearLayout {
 	private int fpadding = 10, padding = 20, paddingLeft = 20, paddingTop = 20, paddingRight = 20, paddingBottom = 20;
 
 
-	private String text = "";
+	private CharSequence text = "";
 	private int gravity = Gravity.CENTER;
 
 
@@ -595,13 +595,13 @@ public class NoboButton extends LinearLayout {
 		return textAllCaps;
 	}
 
-	public void setText(String text) {
+	public void setText(CharSequence text) {
 		this.text = text;
 		if (textView != null) textView.setText(text);
 		else setupTextView();
 	}
 
-	public String getText() {
+	public CharSequence getText() {
 		return text;
 	}
 

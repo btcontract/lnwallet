@@ -165,9 +165,9 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
 
     private def paymentDescription(info: PaymentInfo): String = info.description match {
       case PlainDescription(None, invoiceText) => Some(invoiceText).find(_.nonEmpty).getOrElse(lnDefTitle)
+      case PlainMetaDescription(None, invoiceText, meta) => List(meta, invoiceText).find(_.nonEmpty).getOrElse(lnDefTitle)
       case PlainDescription(Some(split), invoiceText) => lnSplitNotice.format(split.sentRatio) + Some(invoiceText).find(_.nonEmpty).getOrElse(lnDefTitle)
       case PlainMetaDescription(Some(split), invoiceText, meta) => lnSplitNotice.format(split.sentRatio) + List(meta, invoiceText).find(_.nonEmpty).getOrElse(lnDefTitle)
-      case PlainMetaDescription(None, invoiceText, meta) => List(meta, invoiceText).find(_.nonEmpty).getOrElse(lnDefTitle)
     }
 
     private def setPaymentTypeIcon(holder: PaymentLineViewHolder, info: PaymentInfo): Unit =

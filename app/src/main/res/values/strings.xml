@@ -73,6 +73,10 @@
     <string name="dialog_send_ln"><![CDATA[Send <strong>Lightning</strong> payment<br><br>%1$s]]></string>
     <string name="dialog_send_btc"><![CDATA[Send <strong>Bitcoin</strong> transaction<br><b>to address</b> %1$s%2$s]]></string>
 
+    <string name="dialog_split_ln_remain"><![CDATA[<b>Left to pay</b><br>%1$s]]></string>
+    <string name="dialog_split_ln"><![CDATA[Split <strong>Lightning</strong> payment<br><br>%1$s]]></string>
+    <string name="dialog_split_ln_tip">First let someone scan split invoice.\nThen tap pay at about the same time.</string>
+
     <!-- errors -->
 
     <string name="error_rejected_incoming_public">Rejected public channel offer, only private channels are allowed.</string>

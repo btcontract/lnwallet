@@ -113,5 +113,11 @@
             android:screenOrientation="portrait"
             android:theme="@style/AppThemeNoActionBar"/>
 
+        <activity
+            android:name="QRSplitActivity"
+            android:launchMode="singleTask"
+            android:screenOrientation="portrait"
+            android:theme="@style/AppThemeNoActionBar"/>
+
     </application>
 </manifest>
