@@ -48,6 +48,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
   private[this] lazy val paymentTypeIconIds = List(R.id.btcIncoming, R.id.btcOutgoing, R.id.lnIncoming, R.id.lnOutgoing, R.id.lnRouted, R.id.btcLn, R.id.lnBtc)
   private[this] lazy val partsInFlight = getResources.getStringArray(R.array.parts_in_flight)
   private[this] lazy val pctCollected = getResources.getStringArray(R.array.pct_collected)
+  private[this] lazy val lnSplitNotice = getString(tx_ln_notice_split)
   private[this] lazy val lnDefTitle = getString(tx_ln)
 
   // PAYMENT LIST
@@ -112,7 +113,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
 
         case info: PaymentInfo =>
           holder.detailsAndStatus setVisibility View.VISIBLE
-          holder.description setText info.description.desc.getOrElse(lnDefTitle)
+          holder.description setText paymentDescription(info).html
           holder.amount setText LNParams.denomination.directedWithSign(info.received, info.sent, cardZero, info.isIncoming).html
           holder.cardContainer setBackgroundResource paymentBackground(info)
           holder.statusIcon setImageResource paymentStatusIcon(info)
@@ -162,6 +163,12 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
 
     // LN helpers
 
+    private def paymentDescription(info: PaymentInfo): String = info.description match {
+      case desc: PlainDescription => List(desc.invoiceText).find(_.nonEmpty).getOrElse(lnDefTitle)
+      case desc: SplitDescription => lnSplitNotice.format(desc.sentRatio) + List(desc.invoiceText).find(_.nonEmpty).getOrElse(lnDefTitle)
+      case desc: PlainMetaDescription => List(desc.meta, desc.invoiceText).find(_.nonEmpty).getOrElse(lnDefTitle)
+    }
+
     private def setPaymentTypeIcon(holder: PaymentLineViewHolder, info: PaymentInfo): Unit =
       if (info.isIncoming) holder.setVisibleIcon(id = R.id.lnIncoming)
       else holder.setVisibleIcon(id = R.id.lnOutgoing)
@@ -178,11 +185,14 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
     }
 
     private def paymentMeta(info: PaymentInfo): String = if (info.isIncoming) {
-      val partsHuman = LNParams.cm.inProcessors.get(info.fullTag).map(info.msatRatio).map(WalletApp.app plurOrZero pctCollected)
-      if (PaymentStatus.SUCCEEDED == info.status) partsHuman getOrElse WalletApp.app.when(info.date) else partsHuman getOrElse pctCollected.head
+      val valueHuman = LNParams.cm.inProcessors.get(info.fullTag).map(info.receivedRatio).map(WalletApp.app plurOrZero pctCollected)
+      if (PaymentStatus.SUCCEEDED == info.status && valueHuman.isDefined) pctCollected.last // Notify user that we are not exactly done yet
+      else if (PaymentStatus.SUCCEEDED == info.status) WalletApp.app.when(info.date) // Payment has been cleared in channels, show timestamp
+      else valueHuman getOrElse pctCollected.head // Show either value collected so far or that we are still waiting
     } else {
       val partsHuman = LNParams.cm.opm.data.payments.get(info.fullTag).map(_.data.inFlightParts.size.toLong).map(WalletApp.app plurOrZero partsInFlight)
-      if (PaymentStatus.PENDING == info.status) partsHuman getOrElse partsInFlight.head else partsHuman getOrElse WalletApp.app.when(info.date)
+      if (PaymentStatus.PENDING == info.status) partsHuman getOrElse partsInFlight.head // Show either in-flight parts or that we are still preparing
+      else partsHuman getOrElse WalletApp.app.when(info.date) // Payment has succeeded or failed, show either in-flight part leftovers or timestamp
     }
   }
 

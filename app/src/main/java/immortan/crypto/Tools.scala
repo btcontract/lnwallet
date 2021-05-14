@@ -37,6 +37,9 @@ object Tools {
     def toSome: Option[T] = Some(underlying)
   }
 
+  def ratio(bigger: MilliSatoshi, lesser: MilliSatoshi): Long =
+    Try(lesser.toLong).map(bigger.toLong * 100D / _).map(_.toLong).getOrElse(0L)
+
   def mapKeys[K, V, K1](items: mutable.Map[K, V], mapper: K => K1, defVal: V): mutable.Map[K1, V] =
     items.map { case (key, value) => mapper(key) -> value } withDefaultValue defVal
 

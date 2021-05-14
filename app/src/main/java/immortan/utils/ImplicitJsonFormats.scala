@@ -36,12 +36,11 @@ object ImplicitJsonFormats extends DefaultJsonProtocol {
 
   implicit val publicKeyFmt: JsonFormat[PublicKey] = sCodecJsonFmt(publicKey)
 
-  implicit val milliSatoshiFmt: JsonFormat[MilliSatoshi] = sCodecJsonFmt(millisatoshi)
-
   implicit val byteVector32Fmt: JsonFormat[ByteVector32] = sCodecJsonFmt(bytes32)
 
-  implicit val satoshiFmt: JsonFormat[Satoshi] =
-    jsonFormat[Long, Satoshi](Satoshi.apply, "underlying")
+  implicit val milliSatoshiFmt: JsonFormat[MilliSatoshi] = jsonFormat[Long, MilliSatoshi](MilliSatoshi.apply, "underlying")
+
+  implicit val satoshiFmt: JsonFormat[Satoshi] = jsonFormat[Long, Satoshi](Satoshi.apply, "underlying")
 
   implicit val lastChainBalanceFmt: RootJsonFormat[LastChainBalance] = jsonFormat[Satoshi, Satoshi, Long,
     LastChainBalance](LastChainBalance.apply, "confirmed", "unconfirmed", "timestamp")
@@ -93,12 +92,14 @@ object ImplicitJsonFormats extends DefaultJsonProtocol {
   implicit object PaymentDescriptionFmt extends JsonFormat[PaymentDescription] {
     def read(raw: JsValue): PaymentDescription = raw.asJsObject.fields(TAG) match {
       case JsString("PlainMetaDescription") => raw.convertTo[PlainMetaDescription]
+      case JsString("SplitDescription") => raw.convertTo[SplitDescription]
       case JsString("PlainDescription") => raw.convertTo[PlainDescription]
       case _ => throw new Exception
     }
 
     def write(internal: PaymentDescription): JsValue = internal match {
       case paymentDescription: PlainMetaDescription => paymentDescription.toJson
+      case paymentDescription: SplitDescription => paymentDescription.toJson
       case paymentDescription: PlainDescription => paymentDescription.toJson
       case _ => throw new Exception
     }
@@ -106,6 +107,9 @@ object ImplicitJsonFormats extends DefaultJsonProtocol {
 
   implicit val plainDescriptionFmt: JsonFormat[PlainDescription] = taggedJsonFmt(jsonFormat[String,
     PlainDescription](PlainDescription.apply, "invoiceText"), tag = "PlainDescription")
+
+  implicit val splitDescriptionFmt: JsonFormat[SplitDescription] = taggedJsonFmt(jsonFormat[String, MilliSatoshi, MilliSatoshi,
+    SplitDescription](SplitDescription.apply, "invoiceText", "totalSum", "ourPart"), tag = "SplitDescription")
 
   implicit val plainMetaDescriptionFmt: JsonFormat[PlainMetaDescription] = taggedJsonFmt(jsonFormat[String, String,
     PlainMetaDescription](PlainMetaDescription.apply, "invoiceText", "meta"), tag = "PlainMetaDescription")

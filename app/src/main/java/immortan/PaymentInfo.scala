@@ -2,9 +2,9 @@ package immortan
 
 import immortan.utils.ImplicitJsonFormats._
 import fr.acinq.eclair.channel.{DATA_CLOSING, DATA_NEGOTIATING, HasNormalCommitments}
+import immortan.crypto.Tools.{Bytes, Fiat2Btc, SEPARATOR, ratio}
 import fr.acinq.bitcoin.{ByteVector32, Satoshi, Transaction}
 import fr.acinq.eclair.wire.{FullPaymentTag, PaymentTagTlv}
-import immortan.crypto.Tools.{Bytes, Fiat2Btc, SEPARATOR}
 import immortan.utils.{LNUrl, PaymentRequestExt}
 import immortan.fsm.IncomingPaymentProcessor
 import fr.acinq.bitcoin.Crypto.PublicKey
@@ -12,7 +12,6 @@ import fr.acinq.eclair.MilliSatoshi
 import scodec.bits.ByteVector
 import immortan.utils.uri.Uri
 import java.util.Date
-import scala.util.Try
 
 
 object PaymentInfo {
@@ -48,10 +47,8 @@ case class PaymentInfo(prString: String, preimage: ByteVector32, status: String,
   lazy val fiatRateSnapshot: Fiat2Btc = to[Fiat2Btc](fiatRatesString)
   lazy val action: PaymentAction = to[PaymentAction](actionString)
 
-  def msatRatio(fsm: IncomingPaymentProcessor): Long = Try(fsm.lastAmountIn)
-    .map(collected => received.toLong * 100D / collected.toLong)
-    .map(receivedRatio => receivedRatio.toLong)
-    .getOrElse(0L)
+  def receivedRatio(fsm: IncomingPaymentProcessor): Long =
+    ratio(received, fsm.lastAmountIn)
 }
 
 // Payment actions
@@ -80,18 +77,20 @@ case class AESAction(domain: Option[String], description: String, ciphertext: St
 // Payment descriptions
 
 sealed trait PaymentDescription {
-  val desc: Option[String]
   val invoiceText: String
   val queryText: String
 }
 
 case class PlainDescription(invoiceText: String) extends PaymentDescription {
-  val desc: Option[String] = List(invoiceText).find(_.nonEmpty)
+  val queryText: String = invoiceText
+}
+
+case class SplitDescription(invoiceText: String, totalSum: MilliSatoshi, ourPart: MilliSatoshi) extends PaymentDescription {
+  val sentRatio: Long = ratio(totalSum, ourPart)
   val queryText: String = invoiceText
 }
 
 case class PlainMetaDescription(invoiceText: String, meta: String) extends PaymentDescription {
-  val desc: Option[String] = List(meta, invoiceText).find(_.nonEmpty)
   val queryText: String = s"$invoiceText $meta"
 }
 
