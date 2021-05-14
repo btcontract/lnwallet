@@ -39,7 +39,7 @@ object WalletApp {
 
   final val dbFileNameMisc = "misc.db"
   final val dbFileNameGraph = "graph.db"
-  final val dbFileNameEssential = "essential2.db" // TODO: put back
+  final val dbFileNameEssential = "essential3.db" // TODO: put back
 
   val backupSaveWorker: ThrottledWork[String, Any] = new ThrottledWork[String, Any] {
     def process(cmd: String, result: Any): Unit = if (LocalBackup.isExternalStorageWritable) try {

@@ -482,8 +482,8 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
         val description = PlainDescription(manager.resultExtraInput getOrElse new String)
         val hop = List(commits.updateOpt.map(_ extraHop commits.remoteInfo.nodeId).toList)
         val prExt = PaymentRequestExt from PaymentRequest(LNParams.chainHash, Some(manager.resultMsat), hash, invoiceKey, description.invoiceText, LNParams.incomingFinalCltvExpiry, hop)
-        val typicalChainFee = Transactions.weight2fee(LNParams.feeRatesInfo.onChainFeeConf.feeEstimator.getFeeratePerKw(LNParams.feeRatesInfo.onChainFeeConf.feeTargets.fundingBlockTarget), 700)
-        LNParams.cm.payBag.replaceIncomingPayment(prExt, preimage, description, lnBalance, LNParams.fiatRatesInfo.rates, typicalChainFee.toMilliSatoshi)
+        val chainFee = Transactions.weight2fee(LNParams.feeRatesInfo.onChainFeeConf.feeEstimator.getFeeratePerKw(LNParams.feeRatesInfo.onChainFeeConf.feeTargets.fundingBlockTarget), 700)
+        LNParams.cm.payBag.replaceIncomingPayment(prExt, preimage, description, lnBalance, LNParams.fiatRatesInfo.rates, chainFee.toMilliSatoshi)
         me goTo ClassNames.qrInvoiceActivityClass
         InputParser.value = prExt
         alert.dismiss
@@ -494,12 +494,12 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
 
       manager.hintFiatDenom.setText(getString(dialog_can_receive).format(canReceiveFiat).html)
       manager.hintDenom.setText(getString(dialog_can_receive).format(canReceive).html)
-      manager.updateOkButton(getPositiveButton(alert), isEnabled = false)
+      manager.updateOkButton(getPositiveButton(alert), isEnabled = false).run
 
       manager.inputAmount addTextChangedListener onTextChange { _ =>
         val notTooLow: Boolean = LNParams.minPayment <= manager.resultMsat
         val notTooHigh: Boolean = commits.availableForReceive >= manager.resultMsat
-        manager.updateOkButton(getPositiveButton(alert), notTooLow && notTooHigh)
+        manager.updateOkButton(getPositiveButton(alert), notTooLow && notTooHigh).run
       }
 
     case (CHOICE_RECEIVE_TAG, 0) =>
@@ -592,10 +592,8 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
     sheet.show(getSupportFragmentManager, CHOICE_RECEIVE_TAG)
   }
 
-  def goToReceiveBitcoinPage(view: View): Unit =
-    me goTo ClassNames.qrChainActivityClass
-
-  // VIEW UPDATERS
+  def goToReceiveBitcoinPage(view: View): Unit = onChoiceMade(CHOICE_RECEIVE_TAG, 0)
+  def bringLnReceivePopup(view: View): Unit = onChoiceMade(CHOICE_RECEIVE_TAG, 1)
 
   def updatePaymentList: Unit = {
     paymentsAdapter.notifyDataSetChanged

@@ -57,11 +57,11 @@ class IncomingPaymentReceiver(val fullTag: FullPaymentTag, cm: ChannelMaster) ex
       lastAmountIn = adds.map(_.add.amountMsat).sum
 
       cm.getPaymentInfoMemo.get(fullTag.paymentHash).toOption match {
-        case None if preimageTry.isSuccess => becomeRevealed(preimageTry.get, adds) // Did not ask for this but have a preimage: fulfill anyway
-        case Some(isRevealed) if isRevealed.isIncoming && PaymentStatus.SUCCEEDED == isRevealed.status => becomeRevealed(isRevealed.preimage, adds)
-        case _ if adds.exists(_.add.cltvExpiry.toLong < LNParams.blockCount.get + LNParams.cltvRejectThreshold) => becomeAborted(IncomingAborted(None), adds)
-        case Some(info) if info.isIncoming && info.prExt.pr.amount.exists(askedByUs => lastAmountIn >= askedByUs) => becomeRevealed(info.preimage, adds)
-        case None => becomeAborted(IncomingAborted(None), adds) // We did not ask for this and there is no preimage: nothing to do but fail
+        case None if preimageTry.isSuccess => becomeRevealed(preimageTry.get, fullTag.paymentHash.toHex, adds) // Did not ask but fulfill anyway
+        case Some(info) if info.isIncoming && PaymentStatus.SUCCEEDED == info.status => becomeRevealed(info.preimage, info.description.queryText, adds) // Already revealed, but not finalized
+        case _ if adds.exists(_.add.cltvExpiry.toLong < LNParams.blockCount.get + LNParams.cltvRejectThreshold) => becomeAborted(IncomingAborted(None), adds) // Not enough time to react if stalls
+        case Some(info) if info.isIncoming && info.prExt.pr.amount.exists(lastAmountIn >= _) => becomeRevealed(info.preimage, info.description.queryText, adds) // Got enough parts to cover an amount
+        case None => becomeAborted(IncomingAborted(None), adds) // Did not ask for this and there is no preimage: nothing to do but fail
         case _ => // Do nothing, wait for more parts or a timeout
       }
 
@@ -101,9 +101,10 @@ class IncomingPaymentReceiver(val fullTag: FullPaymentTag, cm: ChannelMaster) ex
     abort(data1, adds)
   }
 
-  def becomeRevealed(preimage: ByteVector32, adds: ReasonableLocals): Unit = {
-    // With final payment we ALREADY know a preimage, but also put it into storage
-    // doing so makes it transferrable as storage db gets included in backup file
+  def becomeRevealed(preimage: ByteVector32, queryText: String, adds: ReasonableLocals): Unit = cm.chanBag.db txWrap {
+    // With final payment we ALREADY know a preimage, but also put it into storage once preimage gets revealed
+    // doing so makes it transferrable as storage db gets included in backup file, unlike payments db
+    cm.payBag.addSearchablePayment(queryText, fullTag.paymentHash)
     cm.payBag.updOkIncoming(lastAmountIn, fullTag.paymentHash)
     cm.payBag.setPreimage(fullTag.paymentHash, preimage)
 

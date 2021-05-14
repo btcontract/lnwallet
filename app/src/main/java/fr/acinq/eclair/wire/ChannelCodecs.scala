@@ -104,8 +104,6 @@ object ChannelCodecs {
       ("remoteSig" | lengthDelimited(bytes64))
   }.as[HtlcTxAndSigs]
 
-  // PublishableTxs(commitTx: CommitTx, htlcTxsAndSigs: List[HtlcTxAndSigs] = Nil)
-
   val publishableTxsCodec = {
     ("commitTx" | commitTxCodec) ::
       ("htlcTxsAndSigs" | listOfN(uint16, htlcTxAndSigsCodec))
@@ -124,7 +122,9 @@ object ChannelCodecs {
       ("remotePerCommitmentPoint" | publicKey)
   }.as[RemoteCommit]
 
-  val updateMessageCodec = lengthDelimited(lightningMessageCodec.narrow[UpdateMessage](Attempt successful _.asInstanceOf[UpdateMessage], identity))
+  val updateMessageCodec = lengthDelimited {
+    lightningMessageCodec.narrow[UpdateMessage](Attempt successful _.asInstanceOf[UpdateMessage], identity)
+  }
 
   val localChangesCodec = {
     ("proposed" | listOfN(uint16, updateMessageCodec)) ::

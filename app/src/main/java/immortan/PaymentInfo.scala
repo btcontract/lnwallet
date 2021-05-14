@@ -86,12 +86,12 @@ sealed trait PaymentDescription {
 }
 
 case class PlainDescription(invoiceText: String) extends PaymentDescription {
-  val desc: Option[String] = Some(invoiceText).filterNot(_.isEmpty)
+  val desc: Option[String] = List(invoiceText).find(_.nonEmpty)
   val queryText: String = invoiceText
 }
 
 case class PlainMetaDescription(invoiceText: String, meta: String) extends PaymentDescription {
-  val desc: Option[String] = Some(meta).filterNot(_.isEmpty) orElse Some(invoiceText).filterNot(_.isEmpty)
+  val desc: Option[String] = List(meta, invoiceText).find(_.nonEmpty)
   val queryText: String = s"$invoiceText $meta"
 }
 

@@ -119,6 +119,7 @@
 
         <androidx.cardview.widget.CardView
             card_view:cardCornerRadius="@dimen/corner_radius"
+            android:onClick="bringLnReceivePopup"
             android:layout_marginTop="5dp"
             style="@style/Card">
 

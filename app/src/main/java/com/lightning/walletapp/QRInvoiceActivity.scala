@@ -16,7 +16,7 @@ class QRInvoiceActivity extends QRActivity with ExternalDataChecker { me =>
   lazy private[this] val qrViewHolder = new QRViewHolder(me findViewById R.id.invoiceQr)
 
   private var hashOfInterest: ByteVector32 = ByteVector32.Zeroes
-  private val subscription = ChannelMaster.preimageObtainStream.subscribe(paymentHash => UITask {
+  private val subscription = ChannelMaster.preimageRevealStream.subscribe(paymentHash => UITask {
     TransitionManager beginDelayedTransition findViewById(R.id.activityQRInvoiceMain).asInstanceOf[RelativeLayout]
     if (paymentHash == hashOfInterest) findViewById(R.id.invoiceSuccess).asInstanceOf[ImageView] setVisibility View.VISIBLE
   }.run)
