@@ -426,6 +426,11 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
         case _ => // Can send it
       }
 
+    case uri: BitcoinUri if uri.prExt.flatMap(_.pr.amount).exists(_ >= LNParams.cm.maxSendable) =>
+      // LN invoices are preferred if they are present AND if LN wallet has enough balance
+      InputParser.value = uri.prExt.get
+      checkExternalData(whenNone)
+
     case uri: BitcoinUri if uri.isValid =>
       val body = getLayoutInflater.inflate(R.layout.frag_input_on_chain, null).asInstanceOf[ScrollView]
       val manager = new RateManager(body, getString(dialog_add_memo).toSome, dialog_visibility_private, LNParams.fiatRatesInfo.rates, WalletApp.fiatCode)
