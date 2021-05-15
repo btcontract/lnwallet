@@ -391,14 +391,14 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
     case prExt: PaymentRequestExt if !LNParams.ourInit.features.areSupported(prExt.pr.features.features) =>
       snack(contentWindow, getString(error_ln_send_features).html, dialog_ok, _.dismiss)
 
-    case _: PaymentRequestExt if LNParams.isChainDisconnectedTooLong =>
-      snack(contentWindow, getString(error_ln_send_chain_disconnect).html, dialog_ok, _.dismiss)
-
     case _: PaymentRequestExt if !LNParams.cm.all.values.exists(Channel.isOperationalOrWaiting) =>
       snack(contentWindow, getString(error_ln_no_chans).html, dialog_ok, _.dismiss)
 
     case _: PaymentRequestExt if LNParams.cm.all.values.forall(Channel.isWaiting) =>
       snack(contentWindow, getString(error_ln_waiting).html, dialog_ok, _.dismiss)
+
+    case _: PaymentRequestExt if LNParams.isChainDisconnectedTooLong =>
+      snack(contentWindow, getString(error_ln_send_chain_disconnect).html, dialog_ok, _.dismiss)
 
     case _: PaymentRequestExt if LNParams.cm.allSortedSendable.last.commits.availableForSend < LNParams.minPayment =>
       val reserveHuman = LNParams.denomination.parsedWithSign(-LNParams.cm.allSortedSendable.head.commits.availableForSend, cardZero)
