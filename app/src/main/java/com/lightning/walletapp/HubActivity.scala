@@ -426,16 +426,17 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
         case _ => // Can send it
       }
 
-    case uri: BitcoinUri if uri.prExt.flatMap(_.pr.amount).exists(_ >= LNParams.cm.maxSendable) =>
-      // LN invoices are preferred if they are present AND if LN wallet has enough balance
-      InputParser.value = uri.prExt.get
-      checkExternalData(whenNone)
-
     case uri: BitcoinUri if uri.isValid =>
       val body = getLayoutInflater.inflate(R.layout.frag_input_on_chain, null).asInstanceOf[ScrollView]
       val manager = new RateManager(body, getString(dialog_add_memo).toSome, dialog_visibility_private, LNParams.fiatRatesInfo.rates, WalletApp.fiatCode)
       val canSend = LNParams.denomination.parsedWithSign(WalletApp.lastChainBalance.totalBalance, Colors.cardZero)
       val canSendFiat = WalletApp.currentMsatInFiatHuman(WalletApp.lastChainBalance.totalBalance)
+
+      def switch(alert: AlertDialog): Unit = {
+        InputParser.value = uri.prExt.get
+        checkExternalData(noneRunnable)
+        alert.dismiss
+      }
 
       def attempt(alert: AlertDialog): Unit = {
         def warnTxSendingFailed: TimerTask = UITask {
@@ -454,9 +455,12 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
         alert.dismiss
       }
 
-      lazy val neutralRes = if (uri.amount.isDefined) -1 else dialog_max
-      lazy val builder = titleBodyAsViewBuilder(getString(dialog_send_btc).format(uri.address.shortAddress, BaseActivity formattedBitcoinUri uri).html, manager.content)
-      lazy val alert = mkCheckFormNeutral(attempt, none, _ => manager.updateText(WalletApp.lastChainBalance.totalBalance), builder, dialog_pay, dialog_cancel, neutralRes)
+      lazy val alert = {
+        val neutralRes = if (uri.amount.isDefined) -1 else dialog_max
+        val builder = titleBodyAsViewBuilder(getString(dialog_send_btc).format(uri.address.shortAddress, BaseActivity formattedBitcoinUri uri).html, manager.content)
+        if (uri.prExt.isEmpty) mkCheckFormNeutral(attempt, none, _ => manager.updateText(WalletApp.lastChainBalance.totalBalance), builder, dialog_pay, dialog_cancel, neutralRes)
+        else mkCheckFormNeutral(attempt, none, switch, builder, dialog_pay, dialog_cancel, lightning_wallet)
+      }
 
       lazy val feeView = new FeeView(body) {
         override def update(feeOpt: Option[MilliSatoshi], showIssue: Boolean): TimerTask = {
