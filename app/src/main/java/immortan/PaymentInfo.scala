@@ -15,10 +15,8 @@ import java.util.Date
 
 
 object PaymentInfo {
-  final val NOT_SENDABLE_CHAIN_DISCONNECT = 0
-  final val NOT_SENDABLE_LOW_FUNDS = 1
-  final val NOT_SENDABLE_IN_FLIGHT = 2
-  final val NOT_SENDABLE_SUCCESS = 3
+  final val NOT_SENDABLE_IN_FLIGHT = 0
+  final val NOT_SENDABLE_SUCCESS = 1
 }
 
 object PaymentStatus {

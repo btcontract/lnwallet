@@ -205,14 +205,12 @@ class ChannelMaster(val payBag: PaymentBag, val chanBag: ChannelBag, val dataBag
     opm.getSendable(chans, maxFee = sendableNoFee * LNParams.offChainFeeRatio).values.sum
   }
 
-  def checkIfSendable(tag: FullPaymentTag, amount: MilliSatoshi): Option[Int] = opm.data.payments.get(tag) match {
-    case Some(outgoingFSM) if PENDING == outgoingFSM.state || INIT == outgoingFSM.state => Some(PaymentInfo.NOT_SENDABLE_IN_FLIGHT) // This payment is pending in FSM
-    case Some(outgoingFSM) if SUCCEEDED == outgoingFSM.state => Some(PaymentInfo.NOT_SENDABLE_SUCCESS) // This payment has just been fulfilled at runtime
-    case _ if getPreimageMemo.get(tag.paymentHash).isSuccess => Some(PaymentInfo.NOT_SENDABLE_SUCCESS) // Preimage has already been revealed
-    case _ if LNParams.isChainDisconnectedTooLong => Some(PaymentInfo.NOT_SENDABLE_CHAIN_DISCONNECT) // Chain wallet is lagging
-    case _ if amount > maxSendable => Some(PaymentInfo.NOT_SENDABLE_LOW_FUNDS) // Not enough funds in a wallet
-    case _ => None // Has never been sent or ABORTED by now
-  }
+  def checkIfSendable(paymentHash: ByteVector32): Option[Int] =
+    opm.data.payments.values.find(fsm => fsm.fullTag.tag == PaymentTagTlv.LOCALLY_SENT && fsm.fullTag.paymentHash == paymentHash) match {
+      case Some(outgoingFSM) if PENDING == outgoingFSM.state || INIT == outgoingFSM.state => Some(PaymentInfo.NOT_SENDABLE_IN_FLIGHT) // This payment is pending in FSM
+      case _ if getPreimageMemo.get(paymentHash).isSuccess => Some(PaymentInfo.NOT_SENDABLE_SUCCESS) // Preimage has already been revealed for in/out payment
+      case _ => None // Has never been either sent or requested, or ABORTED by now
+    }
 
   // These are executed in Channel context
 
