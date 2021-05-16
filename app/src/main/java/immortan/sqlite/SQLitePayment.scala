@@ -58,7 +58,7 @@ class SQLitePayment(db: DBInterface, preimageDb: DBInterface) extends PaymentBag
     db txWrap {
       db.change(PaymentTable.deleteSql, prex.pr.paymentHash.toHex)
       db.change(PaymentTable.newSql, prex.raw, ChannelMaster.NO_PREIMAGE.toHex, PaymentStatus.PENDING, System.currentTimeMillis: JLong, description.toJson.compactPrint,
-        action.map(_.toJson.compactPrint).getOrElse(new String), prex.pr.paymentHash.toHex, prex.pr.paymentSecret.get.toHex, 0L: JLong /* RECEIVED = 0 MSAT */,
+        action.map(_.toJson.compactPrint).getOrElse(PaymentInfo.NO_ACTION), prex.pr.paymentHash.toHex, prex.pr.paymentSecret.get.toHex, 0L: JLong /* RECEIVED = 0 MSAT */,
         finalAmount.toLong: JLong /* SENT IS KNOWN */, 0L: JLong /* FEE IS UNCERTAIN YET */, balanceSnap.toLong: JLong, fiatRateSnap.toJson.compactPrint,
         chainFee.toLong: JLong, 0: java.lang.Integer /* INCOMING = 0 */)
     }
@@ -67,7 +67,7 @@ class SQLitePayment(db: DBInterface, preimageDb: DBInterface) extends PaymentBag
                              balanceSnap: MilliSatoshi, fiatRateSnap: Fiat2Btc, chainFee: MilliSatoshi): Unit =
     db txWrap {
       db.change(PaymentTable.deleteSql, prex.pr.paymentHash.toHex)
-      db.change(PaymentTable.newSql, prex.raw, preimage.toHex, PaymentStatus.PENDING, System.currentTimeMillis: JLong, description.toJson.compactPrint, new String /* NO ACTION */,
+      db.change(PaymentTable.newSql, prex.raw, preimage.toHex, PaymentStatus.PENDING, System.currentTimeMillis: JLong, description.toJson.compactPrint, PaymentInfo.NO_ACTION,
         prex.pr.paymentHash.toHex, prex.pr.paymentSecret.get.toHex, prex.pr.amount.getOrElse(0L.msat).toLong: JLong /* MUST COME FROM PR! NO EXACT AMOUNT IF RECEIVED = 0 */,
         0L: JLong /* SENT = 0 MSAT, NOTHING TO SEND */, 0L: JLong /* NO FEE FOR INCOMING PAYMENT */, balanceSnap.toLong: JLong, fiatRateSnap.toJson.compactPrint,
         chainFee.toLong: JLong, 1: java.lang.Integer /* INCOMING = 1 */)

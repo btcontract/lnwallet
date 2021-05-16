@@ -143,7 +143,13 @@
 
                 <ImageView
                     style="@style/BoundedView"
+                    android:id="@+id/lnOutgoingBasic"
                     android:background="@drawable/ic_logo_lightning_24dp"/>
+
+                <ImageView
+                    style="@style/BoundedView"
+                    android:id="@+id/lnOutgoingAction"
+                    android:background="@drawable/baseline_arrow_circle_up_20"/>
 
                 <ImageView
                     style="@style/BoundedView"

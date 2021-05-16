@@ -15,6 +15,7 @@ import java.util.Date
 
 
 object PaymentInfo {
+  final val NO_ACTION = "no-action"
   final val NOT_SENDABLE_IN_FLIGHT = 0
   final val NOT_SENDABLE_SUCCESS = 1
 }

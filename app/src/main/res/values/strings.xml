@@ -98,8 +98,8 @@
     <string name="error_ln_send_split"><![CDATA[Can\'t proceed with this split invoice because its split parameters are wrong.]]></string>
     <string name="error_ln_send_features"><![CDATA[Can\'t send this Lightning payment because it has some unknown features.]]></string>
     <string name="error_ln_send_done_already"><![CDATA[Can\'t send this Lightning payment because it has already been sent.]]></string>
+    <string name="error_ln_send_expired"><![CDATA[Can\'t send this Lightning payment because invoice has expired by now.]]></string>
     <string name="error_ln_send_in_flight"><![CDATA[Can\'t send this Lightning payment because it is already in-flight.]]></string>
-    <string name="error_ln_send_expired"><![CDATA[Can\'t send this Lightning payment because it has expired by now.]]></string>
 
     <string name="error_nothing_in_clipboard"><![CDATA[
         <strong>Nothing useful is found in clipboard</strong>, please copy something first.

@@ -45,7 +45,10 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
   private[this] lazy val walletCards = new WalletCardsViewHolder
   private val CHOICE_RECEIVE_TAG = "choiceReceiveTag"
 
-  private[this] lazy val paymentTypeIconIds = List(R.id.btcIncoming, R.id.btcOutgoing, R.id.lnIncoming, R.id.lnOutgoing, R.id.lnRouted, R.id.btcLn, R.id.lnBtc)
+  private[this] lazy val paymentTypeIconIds =
+    List(R.id.btcIncoming, R.id.btcOutgoing, R.id.lnIncoming, R.id.lnOutgoing,
+      R.id.lnRouted, R.id.btcLn, R.id.lnBtc, R.id.lnOutgoingBasic, R.id.lnOutgoingAction)
+
   private[this] lazy val partsInFlight = getResources.getStringArray(R.array.parts_in_flight)
   private[this] lazy val pctCollected = getResources.getStringArray(R.array.pct_collected)
   private[this] lazy val lnSplitNotice = getString(tx_ln_notice_split)
@@ -172,7 +175,13 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
 
     private def setPaymentTypeIcon(holder: PaymentLineViewHolder, info: PaymentInfo): Unit =
       if (info.isIncoming) holder.setVisibleIcon(id = R.id.lnIncoming)
-      else holder.setVisibleIcon(id = R.id.lnOutgoing)
+      else setOutgoingPaymentIcons(holder, info)
+
+    private def setOutgoingPaymentIcons(holder: PaymentLineViewHolder, info: PaymentInfo): Unit = {
+      holder.iconMap(R.id.lnOutgoingAction) setVisibility BaseActivity.goneMap(info.actionString != PaymentInfo.NO_ACTION)
+      holder.iconMap(R.id.lnOutgoingBasic) setVisibility BaseActivity.goneMap(info.actionString == PaymentInfo.NO_ACTION)
+      holder.setVisibleIcon(id = R.id.lnOutgoing)
+    }
 
     private def paymentStatusIcon(info: PaymentInfo): Int =
       if (PaymentStatus.SUCCEEDED == info.status) R.drawable.baseline_done_24
@@ -199,7 +208,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
 
   class PaymentLineViewHolder(itemView: View) extends RecyclerView.ViewHolder(itemView) { self =>
     private val paymentTypeIconViews: List[View] = paymentTypeIconIds.map(itemView.findViewById)
-    private val iconMap: Map[Int, View] = paymentTypeIconIds.zip(paymentTypeIconViews).toMap
+    val iconMap: Map[Int, View] = paymentTypeIconIds.zip(paymentTypeIconViews).toMap
     private var lastVisibleIconId: Int = -1
 
     def setVisibleIcon(id: Int): Unit = if (lastVisibleIconId != id) {
@@ -433,26 +442,29 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
       val canSendFiat = WalletApp.currentMsatInFiatHuman(WalletApp.lastChainBalance.totalBalance)
 
       def switch(alert: AlertDialog): Unit = {
-        InputParser.value = uri.prExt.get
+        uri.prExt.foreach(ext => InputParser.value = ext)
         checkExternalData(noneRunnable)
         alert.dismiss
       }
 
+      def warnSendingFailed: TimerTask = UITask {
+        val builder = new AlertDialog.Builder(me).setMessage(error_btc_broadcast_fail)
+        showForm(builder.setNegativeButton(dialog_ok, null).create)
+      }
+
       def attempt(alert: AlertDialog): Unit = {
-        def warnTxSendingFailed: TimerTask = UITask {
-          val builder = new AlertDialog.Builder(me).setMessage(error_btc_broadcast_fail)
-          showForm(builder.setNegativeButton(dialog_ok, null).create)
-        }
+        // On success tx will be recorded in a listener
+        // on failure user will be notified right away
+        alert.dismiss
 
         for {
           txAndFee <- LNParams.chainWallet.wallet.sendPayment(manager.resultSat, uri.address, feeView.rate)
           // Record this description before attempting to send, we won't be able to know a memo otherwise
           knownDescription = PlainTxDescription(uri.address :: Nil, manager.resultExtraInput)
-          _ = WalletApp.txDataBag.descriptions += Tuple2(txAndFee.tx.txid, knownDescription)
+          _ = WalletApp.txDataBag.descriptions += (txAndFee.tx.txid -> knownDescription)
           isDefinitelyCommitted <- LNParams.chainWallet.wallet.commit(txAndFee.tx)
           if !isDefinitelyCommitted
-        } warnTxSendingFailed.run
-        alert.dismiss
+        } warnSendingFailed.run
       }
 
       lazy val alert = {
