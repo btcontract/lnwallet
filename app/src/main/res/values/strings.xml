@@ -45,6 +45,9 @@
     <string name="action_recovery_phrase_title"><![CDATA[Wallet recovery phrase]]></string>
     <string name="action_recovery_phrase_hint">Type recovery words</string>
 
+    <string name="menu_settings">Adjust wallet settings</string>
+    <string name="menu_view_chans">View channel details</string>
+
     <string name="dialog_ok">OK</string>
     <string name="dialog_cancel">Cancel</string>
     <string name="dialog_receive">Receive</string>

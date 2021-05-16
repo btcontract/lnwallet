@@ -24,9 +24,9 @@
 
             <ImageButton
                 android:padding="6dp"
-                android:onClick="bringSettings"
+                android:onClick="bringMenu"
                 android:layout_alignParentEnd="true"
-                android:src="@drawable/baseline_settings_24"
+                android:src="@drawable/baseline_more_horiz_24"
                 android:background="?android:selectableItemBackground"
                 style="@style/BoundedView"/>
 
@@ -221,6 +221,7 @@
         <!-- Caption and search bar -->
 
         <RelativeLayout
+            android:visibility="gone"
             android:layout_marginTop="15dp"
             android:id="@+id/listCaption"
             style="@style/FillingView">

@@ -10,7 +10,7 @@ import com.lightning.walletapp.Colors._
 import com.lightning.walletapp.R.string._
 
 import android.os.{Bundle, Handler}
-import android.view.{View, ViewGroup}
+import android.view.{MenuItem, View, ViewGroup}
 import rx.lang.scala.{Observable, Subject, Subscription}
 import com.androidstudy.networkmanager.{Monitor, Tovuti}
 import immortan.sqlite.{PaymentTable, RelayTable, Table, TxTable}
@@ -599,11 +599,11 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
       }
 
       runInFutureProcessOnUI(loadRecentInfos, none) { _ =>
-        itemsList.setAdapter(paymentsAdapter)
-        walletCards.setCaptionVisibility
+        updatePaymentList
       }
 
       itemsList.addHeaderView(walletCards.view)
+      itemsList.setAdapter(paymentsAdapter)
       itemsList.setDividerHeight(0)
       itemsList.setDivider(null)
 
@@ -626,8 +626,15 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
 
   // VIEW HANDLERS
 
-  def bringSettings(view: View): Unit = {
-    ChannelMaster.notifyStateUpdated
+  def bringMenu(view: View): Unit = {
+    val popupMenu = new PopupMenu(me, view)
+    popupMenu setOnMenuItemClickListener new PopupMenu.OnMenuItemClickListener {
+      override def onMenuItemClick(selectedMenuItem: MenuItem): Boolean = false
+    }
+
+    popupMenu.getMenu.add(0, 0, 0, menu_settings)
+    popupMenu.getMenu.add(0, 1, 1, menu_view_chans)
+    popupMenu.show
   }
 
   def bringSearch(view: View): Unit = {
