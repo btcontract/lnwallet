@@ -110,7 +110,13 @@
 
                 <ImageView
                     style="@style/BoundedView"
+                    android:id="@+id/btcOutgoingNormal"
                     android:background="@drawable/baseline_arrow_upward_18"/>
+
+                <ImageView
+                    style="@style/BoundedView"
+                    android:id="@+id/btcOutgoingToSelf"
+                    android:background="@drawable/baseline_change_circle_20"/>
 
             </LinearLayout>
 

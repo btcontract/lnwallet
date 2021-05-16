@@ -46,8 +46,8 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
   private val CHOICE_RECEIVE_TAG = "choiceReceiveTag"
 
   private[this] lazy val paymentTypeIconIds =
-    List(R.id.btcIncoming, R.id.btcOutgoing, R.id.lnIncoming, R.id.lnOutgoing,
-      R.id.lnRouted, R.id.btcLn, R.id.lnBtc, R.id.lnOutgoingBasic, R.id.lnOutgoingAction)
+    List(R.id.btcIncoming, R.id.btcOutgoing, R.id.lnIncoming, R.id.lnOutgoing, R.id.lnRouted, R.id.btcLn, R.id.lnBtc,
+      R.id.lnOutgoingBasic, R.id.lnOutgoingAction, R.id.btcOutgoingNormal, R.id.btcOutgoingToSelf)
 
   private[this] lazy val partsInFlight = getResources.getStringArray(R.array.parts_in_flight)
   private[this] lazy val pctCollected = getResources.getStringArray(R.array.pct_collected)
@@ -107,8 +107,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
         case info: TxInfo =>
           holder.detailsAndStatus setVisibility View.VISIBLE
           holder.description setText txDescription(info).html
-          if (!info.isIncoming && Satoshi(0L) == info.sentSat) holder.amount setText getString(tx_notice_sent_to_self).html
-          else holder.amount setText LNParams.denomination.directedWithSign(info.receivedSat.toMilliSatoshi, info.sentSat.toMilliSatoshi, cardZero, info.isIncoming).html
+          holder.amount setText LNParams.denomination.directedWithSign(info.receivedSat.toMilliSatoshi, info.sentSat.toMilliSatoshi, cardZero, info.isIncoming).html
           holder.cardContainer setBackgroundResource R.drawable.panel_payment_passive_bg
           holder.statusIcon setImageResource txStatusIcon(info)
           holder.meta setText txMeta(info).html
@@ -143,9 +142,13 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
       case _: OpReturnTxDescription => holder.setVisibleIcon(id = R.id.btcOutgoing)
       case _: ChanRefundingTxDescription => holder.setVisibleIcon(id = R.id.lnBtc)
       case _: ChanFundingTxDescription => holder.setVisibleIcon(id = R.id.btcLn)
-      case _: PlainTxDescription => holder.setVisibleIcon(id = R.id.btcOutgoing)
       case _: HtlcClaimTxDescription => holder.setVisibleIcon(id = R.id.lnBtc)
       case _: PenaltyTxDescription => holder.setVisibleIcon(id = R.id.lnBtc)
+      case _: PlainTxDescription =>
+        // See WalletApp.WalletEventsListener.onTransactionReceived for explanation
+        holder.iconMap(R.id.btcOutgoingToSelf) setVisibility BaseActivity.goneMap(info.sentSat == info.receivedSat)
+        holder.iconMap(R.id.btcOutgoingNormal) setVisibility BaseActivity.goneMap(info.sentSat != info.receivedSat)
+        holder.setVisibleIcon(id = R.id.btcOutgoing)
     }
 
     private def labelOrFallback(plainTxDescription: PlainTxDescription): String = plainTxDescription.label.getOrElse {

@@ -183,16 +183,18 @@ object WalletApp {
       }
 
       override def onTransactionReceived(event: TransactionReceived): Unit = {
-        def replaceTx(received: Satoshi, sent: Satoshi, description: TxDescription, isIncoming: Long): Unit = txDataBag.db txWrap {
+        def replaceChainTx(received: Satoshi, sent: Satoshi, description: TxDescription, isIncoming: Long): Unit = txDataBag.db txWrap {
           txDataBag.replaceTx(event.tx, event.depth, received, sent, event.feeOpt, description, isIncoming, lastChainBalance.totalBalance, LNParams.fiatRatesInfo.rates)
           txDataBag.addSearchableTransaction(description.queryText(event.tx.txid), event.tx.txid)
         }
 
-        Tuple2(txDataBag.descriptions.get(event.tx.txid), event.sent > event.received) match {
-          case (Some(knownOutgoingDescription), true) => replaceTx(0L.sat, event.sent - event.received - event.feeOpt.getOrElse(0L.sat), knownOutgoingDescription, isIncoming = 0L)
-          case (None, true) => replaceTx(0L.sat, event.sent - event.received - event.feeOpt.getOrElse(0L.sat), TxDescription.define(LNParams.cm.all.values, Nil, event.tx), isIncoming = 0L)
-          case _ => replaceTx(event.received - event.sent, sent = 0L.sat, TxDescription.define(LNParams.cm.all.values, event.walletAddreses, event.tx), isIncoming = 1L)
-        }
+        val fee = event.feeOpt.getOrElse(0L.sat)
+        val defSentTxDescription = TxDescription.define(LNParams.cm.all.values, Nil, event.tx)
+        val sentTxDescription = txDataBag.descriptions.getOrElse(event.tx.txid, defSentTxDescription)
+
+        if (event.sent == event.received + fee) replaceChainTx(event.received, event.sent - fee, sentTxDescription, isIncoming = 0L)
+        else if (event.sent > event.received) replaceChainTx(received = 0L.sat, event.sent - event.received - fee, sentTxDescription, isIncoming = 0L)
+        else replaceChainTx(event.received - event.sent, sent = 0L.sat, TxDescription.define(LNParams.cm.all.values, event.walletAddreses, event.tx), isIncoming = 1L)
       }
 
       override def onChainDisconnected: Unit = {

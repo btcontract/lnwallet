@@ -123,7 +123,6 @@
     <!-- special tx/payment descriptions -->
 
     <string name="tx_ln_notice_split"><![CDATA[<b>[%1$d\%% split]</b>&#160;]]></string>
-    <string name="tx_notice_sent_to_self"><![CDATA[<i>Sent to self</i>]]></string>
 
     <string name="tx_description_op_return">Preimage broadcast</string>
     <string name="tx_description_funding">Lightning channel funding</string>
