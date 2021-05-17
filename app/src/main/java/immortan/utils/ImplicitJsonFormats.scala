@@ -10,6 +10,7 @@ import immortan.sqlite.{PaymentSummary, RelaySummary, TxSummary}
 import immortan.utils.FiatRates.{BitpayItemList, CoinGeckoItemMap}
 import fr.acinq.eclair.blockchain.fee.{FeeratePerKB, FeeratesPerKB}
 import immortan.utils.PayRequest.AdditionalRoute
+import fr.acinq.eclair.wire.ChannelUpdate
 import fr.acinq.bitcoin.Crypto.PublicKey
 import immortan.crypto.Tools.Fiat2Btc
 import fr.acinq.eclair.MilliSatoshi
@@ -41,7 +42,7 @@ object ImplicitJsonFormats extends DefaultJsonProtocol {
 
   implicit val byteVector32Fmt: JsonFormat[ByteVector32] = sCodecJsonFmt(bytes32)
 
-  implicit val channelUpdateFmt = sCodecJsonFmt(channelUpdateCodec)
+  implicit val channelUpdateFmt: JsonFormat[ChannelUpdate] = sCodecJsonFmt(channelUpdateCodec)
 
   implicit val milliSatoshiFmt: JsonFormat[MilliSatoshi] = jsonFormat[Long, MilliSatoshi](MilliSatoshi.apply, "underlying")
 
@@ -111,11 +112,11 @@ object ImplicitJsonFormats extends DefaultJsonProtocol {
   implicit val splitInfoFmt: JsonFormat[SplitInfo] =
     jsonFormat[MilliSatoshi, MilliSatoshi, SplitInfo](SplitInfo.apply, "totalSum", "ourPart")
 
-  implicit val plainDescriptionFmt: JsonFormat[PlainDescription] = taggedJsonFmt(jsonFormat[Option[SplitInfo], String,
-    PlainDescription](PlainDescription.apply, "split", "invoiceText"), tag = "PlainDescription")
+  implicit val plainDescriptionFmt: JsonFormat[PlainDescription] = taggedJsonFmt(jsonFormat[Option[SplitInfo], Option[String], String,
+    PlainDescription](PlainDescription.apply, "split", "label", "invoiceText"), tag = "PlainDescription")
 
-  implicit val plainMetaDescriptionFmt: JsonFormat[PlainMetaDescription] = taggedJsonFmt(jsonFormat[Option[SplitInfo], String, String,
-    PlainMetaDescription](PlainMetaDescription.apply, "split", "invoiceText", "meta"), tag = "PlainMetaDescription")
+  implicit val plainMetaDescriptionFmt: JsonFormat[PlainMetaDescription] = taggedJsonFmt(jsonFormat[Option[SplitInfo], Option[String], String, String,
+    PlainMetaDescription](PlainMetaDescription.apply, "split", "label", "invoiceText", "meta"), tag = "PlainMetaDescription")
 
   // Payment action
 

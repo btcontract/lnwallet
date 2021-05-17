@@ -76,7 +76,9 @@ case class AESAction(domain: Option[String], description: String, ciphertext: St
 // Payment descriptions
 
 sealed trait PaymentDescription {
+  val finalDescription: Option[String]
   val split: Option[SplitInfo]
+  val label: Option[String]
   val invoiceText: String
   val queryText: String
 }
@@ -85,12 +87,14 @@ case class SplitInfo(totalSum: MilliSatoshi, ourPart: MilliSatoshi) {
   val sentRatio: Long = ratio(totalSum, ourPart)
 }
 
-case class PlainDescription(split: Option[SplitInfo], invoiceText: String) extends PaymentDescription {
-  val queryText: String = invoiceText
+case class PlainDescription(split: Option[SplitInfo], label: Option[String], invoiceText: String) extends PaymentDescription {
+  val finalDescription: Option[String] = Some(invoiceText).find(_.nonEmpty) orElse label
+  val queryText: String = s"$invoiceText ${label getOrElse new String}"
 }
 
-case class PlainMetaDescription(split: Option[SplitInfo], invoiceText: String, meta: String) extends PaymentDescription {
-  val queryText: String = s"$invoiceText $meta"
+case class PlainMetaDescription(split: Option[SplitInfo], label: Option[String], invoiceText: String, meta: String) extends PaymentDescription {
+  val finalDescription: Option[String] = List(meta, invoiceText).find(_.nonEmpty) orElse label
+  val queryText: String = s"$invoiceText $meta ${label getOrElse new String}"
 }
 
 // Relayed preimages

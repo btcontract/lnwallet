@@ -137,6 +137,11 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
       case plain: PlainTxDescription => labelOrFallback(plain)
     }
 
+    private def labelOrFallback(plainTxDescription: PlainTxDescription): String = plainTxDescription.label.getOrElse {
+      val htmlOpt = plainTxDescription.addresses.headOption.map(_.shortAddress).map(short => s"&#160;<font color=$cardZero>$short</font>")
+      getString(tx_btc) + htmlOpt.getOrElse(new String)
+    }
+
     private def setTxTypeIcon(holder: PaymentLineViewHolder, info: TxInfo): Unit = info.description match {
       case _: PlainTxDescription if info.isIncoming => holder.setVisibleIcon(id = R.id.btcIncoming)
       case _: OpReturnTxDescription => holder.setVisibleIcon(id = R.id.btcOutgoing)
@@ -149,11 +154,6 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
         holder.iconMap(R.id.btcOutgoingToSelf) setVisibility BaseActivity.goneMap(info.sentSat == info.receivedSat)
         holder.iconMap(R.id.btcOutgoingNormal) setVisibility BaseActivity.goneMap(info.sentSat != info.receivedSat)
         holder.setVisibleIcon(id = R.id.btcOutgoing)
-    }
-
-    private def labelOrFallback(plainTxDescription: PlainTxDescription): String = plainTxDescription.label.getOrElse {
-      val htmlOpt = plainTxDescription.addresses.headOption.map(_.shortAddress).map(short => s" <font color=$cardZero>$short</font>")
-      getString(tx_btc) + htmlOpt.getOrElse(new String)
     }
 
     private def txMeta(info: TxInfo): String =
@@ -169,11 +169,9 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
 
     // LN helpers
 
-    private def paymentDescription(info: PaymentInfo): String = info.description match {
-      case PlainDescription(None, invoiceText) => Some(invoiceText).find(_.nonEmpty).getOrElse(lnDefTitle)
-      case PlainMetaDescription(None, invoiceText, meta) => List(meta, invoiceText).find(_.nonEmpty).getOrElse(lnDefTitle)
-      case PlainDescription(Some(split), invoiceText) => lnSplitNotice.format(split.sentRatio) + Some(invoiceText).find(_.nonEmpty).getOrElse(lnDefTitle)
-      case PlainMetaDescription(Some(split), invoiceText, meta) => lnSplitNotice.format(split.sentRatio) + List(meta, invoiceText).find(_.nonEmpty).getOrElse(lnDefTitle)
+    private def paymentDescription(info: PaymentInfo): String = info.description.split match {
+      case Some(split) => lnSplitNotice.format(split.sentRatio) + info.description.finalDescription.getOrElse(lnDefTitle)
+      case None => info.description.finalDescription.getOrElse(lnDefTitle)
     }
 
     private def setPaymentTypeIcon(holder: PaymentLineViewHolder, info: PaymentInfo): Unit =
@@ -474,7 +472,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
         val hash: ByteVector32 = Crypto.sha256(preimage)
         val invoiceKey = LNParams.secret.keys.fakeInvoiceKey(hash)
         val hop = List(commits.updateOpt.map(_ extraHop commits.remoteInfo.nodeId).toList)
-        val description = PlainDescription(split = None, manager.resultExtraInput getOrElse new String)
+        val description = PlainDescription(split = None, label = None, manager.resultExtraInput getOrElse new String)
         val prExt = PaymentRequestExt from PaymentRequest(LNParams.chainHash, Some(manager.resultMsat), hash, invoiceKey, description.invoiceText, LNParams.incomingFinalCltvExpiry, hop)
         val chainFee = Transactions.weight2fee(LNParams.feeRatesInfo.onChainFeeConf.feeEstimator.getFeeratePerKw(LNParams.feeRatesInfo.onChainFeeConf.feeTargets.fundingBlockTarget), 700)
         LNParams.cm.payBag.replaceIncomingPayment(prExt, preimage, description, lnBalance, LNParams.fiatRatesInfo.rates, chainFee.toMilliSatoshi)
