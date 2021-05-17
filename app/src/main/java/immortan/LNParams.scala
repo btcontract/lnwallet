@@ -117,7 +117,7 @@ object LNParams {
   def makeChannelParams(remoteInfo: RemoteNodeInfo, defaultFinalScriptPubkey: ByteVector, walletStaticPaymentBasepoint: PublicKey, isFunder: Boolean, fundingAmount: Satoshi): LocalParams =
     makeChannelParams(defaultFinalScriptPubkey, walletStaticPaymentBasepoint, isFunder, ChannelKeys.newKeyPath(isFunder), fundingAmount)
 
-  // Note: we send local maxHtlcValueInFlightMsat to channel capacity to simplify calculations
+  // Note: we set local maxHtlcValueInFlightMsat to channel capacity to simplify calculations
   def makeChannelParams(defaultFinalScriptPubkey: ByteVector, walletStaticPaymentBasepoint: PublicKey, isFunder: Boolean, keyPath: DeterministicWallet.KeyPath, fundingAmount: Satoshi): LocalParams =
     LocalParams(ChannelKeys.fromPath(secret.keys.master, keyPath), minDustLimit, UInt64(fundingAmount.toMilliSatoshi.toLong), (fundingAmount * reserveToFundingRatio).max(minDustLimit),
       minPayment, maxToLocalDelay, maxAcceptedHtlcs, isFunder, defaultFinalScriptPubkey, walletStaticPaymentBasepoint)
@@ -189,49 +189,50 @@ case class LastChainBalance(confirmed: Satoshi, unconfirmed: Satoshi, stamp: Lon
 // Interfaces
 
 trait NetworkBag {
-  def addChannelAnnouncement(ca: ChannelAnnouncement, newSqlPQ: PreparedQuery): Unit
-  def addChannelUpdateByPosition(cu: ChannelUpdate, newSqlPQ: PreparedQuery, updSqlPQ: PreparedQuery): Unit
-  def addExcludedChannel(shortId: ShortChannelId, untilStamp: Long, newSqlPQ: PreparedQuery): Unit // Disregard position
-  def removeChannelUpdate(shortId: ShortChannelId, killSqlPQ: PreparedQuery): Unit
+  def addChannelAnnouncement(ca: ChannelAnnouncement, newSqlPQ: PreparedQuery)
+  def addChannelUpdateByPosition(cu: ChannelUpdate, newSqlPQ: PreparedQuery, updSqlPQ: PreparedQuery)
+  def addExcludedChannel(shortId: ShortChannelId, untilStamp: Long, newSqlPQ: PreparedQuery) // Disregard position
+  def removeChannelUpdate(shortId: ShortChannelId, killSqlPQ: PreparedQuery)
 
-  def addChannelUpdateByPosition(cu: ChannelUpdate): Unit
-  def removeChannelUpdate(shortId: ShortChannelId): Unit
+  def addChannelUpdateByPosition(cu: ChannelUpdate)
+  def removeChannelUpdate(shortId: ShortChannelId)
 
   def listChannelAnnouncements: Iterable[ChannelAnnouncement]
   def listChannelUpdates: Iterable[ChannelUpdateExt]
   def listChannelsWithOneUpdate: ShortChanIdSet
   def listExcludedChannels: Set[Long]
 
-  def incrementScore(cu: ChannelUpdateExt): Unit
+  def incrementScore(cu: ChannelUpdateExt)
   def getRoutingData: Map[ShortChannelId, PublicChannel]
-  def removeGhostChannels(ghostIds: ShortChanIdSet, oneSideIds: ShortChanIdSet): Unit
-  def processCompleteHostedData(pure: CompleteHostedRoutingData): Unit
-  def processPureData(data: PureRoutingData): Unit
+  def removeGhostChannels(ghostIds: ShortChanIdSet, oneSideIds: ShortChanIdSet)
+  def processCompleteHostedData(pure: CompleteHostedRoutingData)
+  def processPureData(data: PureRoutingData)
 }
 
 // Bag of stored payments and successful relays
 
 trait PaymentBag {
+  def getPreimage(hash: ByteVector32): Try[ByteVector32]
   def setPreimage(paymentHash: ByteVector32, preimage: ByteVector32)
-  def addRelayedPreimageInfo(fullTag: FullPaymentTag, preimage: ByteVector32, relayed: MilliSatoshi, earned: MilliSatoshi)
+  def addRelayedPreimageInfo(fullTag: FullPaymentTag, preimage: ByteVector32,
+                             relayed: MilliSatoshi, earned: MilliSatoshi)
 
-  def addSearchablePayment(search: String, paymentHash: ByteVector32): Unit
+  def addSearchablePayment(search: String, paymentHash: ByteVector32)
   def searchPayments(rawSearchQuery: String): RichCursor
 
   def replaceOutgoingPayment(prex: PaymentRequestExt, desc: PaymentDescription, action: Option[PaymentAction],
                              finalAmount: MilliSatoshi, balanceSnap: MilliSatoshi, fiatRateSnap: Fiat2Btc,
-                             chainFee: MilliSatoshi): Unit
+                             chainFee: MilliSatoshi)
 
   def replaceIncomingPayment(prex: PaymentRequestExt, preimage: ByteVector32, description: PaymentDescription,
-                             balanceSnap: MilliSatoshi, fiatRateSnap: Fiat2Btc, chainFee: MilliSatoshi): Unit
+                             balanceSnap: MilliSatoshi, fiatRateSnap: Fiat2Btc, chainFee: MilliSatoshi)
 
   def getPaymentInfo(paymentHash: ByteVector32): Try[PaymentInfo]
-  def getPreimage(hash: ByteVector32): Try[ByteVector32]
 
   // These MUST be the only two methods capable of updating payment state to SUCCEEDED
-  def updOkIncoming(receivedAmount: MilliSatoshi, paymentHash: ByteVector32): Unit
-  def updOkOutgoing(fulfill: RemoteFulfill, fee: MilliSatoshi): Unit
-  def updAbortedOutgoing(paymentHash: ByteVector32): Unit
+  def updOkIncoming(receivedAmount: MilliSatoshi, paymentHash: ByteVector32)
+  def updOkOutgoing(fulfill: RemoteFulfill, fee: MilliSatoshi)
+  def updAbortedOutgoing(paymentHash: ByteVector32)
 
   def listRecentRelays(limit: Int): RichCursor
   def listRecentPayments(limit: Int): RichCursor
@@ -241,19 +242,19 @@ trait PaymentBag {
 }
 
 trait DataBag {
-  def putSecret(secret: WalletSecret): Unit
+  def putSecret(secret: WalletSecret)
   def tryGetSecret: Try[WalletSecret]
 
-  def putFeeRatesInfo(data: FeeRatesInfo): Unit
+  def putFeeRatesInfo(data: FeeRatesInfo)
   def tryGetFeeRatesInfo: Try[FeeRatesInfo]
 
-  def putReport(paymentHash: ByteVector32, report: String): Unit
+  def putReport(paymentHash: ByteVector32, report: String)
   def tryGetReport(paymentHash: ByteVector32): Try[String]
 
-  def putBranding(nodeId: PublicKey, branding: HostedChannelBranding): Unit
+  def putBranding(nodeId: PublicKey, branding: HostedChannelBranding)
   def tryGetBranding(nodeId: PublicKey): Try[HostedChannelBranding]
 
-  def putSwapInState(nodeId: PublicKey, state: SwapInState): Unit
+  def putSwapInState(nodeId: PublicKey, state: SwapInState)
   def tryGetSwapInState(nodeId: PublicKey): Try[SwapInStateExt]
 }
 
@@ -264,11 +265,11 @@ object ChannelBag {
 trait ChannelBag {
   val db: DBInterface
   def all: Iterable[PersistentChannelData]
-  def delete(channelId: ByteVector32): Unit
   def put(data: PersistentChannelData): PersistentChannelData
+  def delete(channelId: ByteVector32)
 
   def htlcInfos(commitNumer: Long): Iterable[ChannelBag.Hash160AndCltv]
-  def putHtlcInfo(sid: ShortChannelId, commitNumber: Long, paymentHash: ByteVector32, cltvExpiry: CltvExpiry): Unit
-  def putHtlcInfos(htlcs: Seq[DirectedHtlc], sid: ShortChannelId, commitNumber: Long): Unit
-  def rmHtlcInfos(sid: ShortChannelId): Unit
+  def putHtlcInfo(sid: ShortChannelId, commitNumber: Long, paymentHash: ByteVector32, cltvExpiry: CltvExpiry)
+  def putHtlcInfos(htlcs: Seq[DirectedHtlc], sid: ShortChannelId, commitNumber: Long)
+  def rmHtlcInfos(sid: ShortChannelId)
 }

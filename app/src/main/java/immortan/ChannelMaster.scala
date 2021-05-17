@@ -195,7 +195,7 @@ class ChannelMaster(val payBag: PaymentBag, val chanBag: ChannelBag, val dataBag
   def maxReceivable(sorted: Seq[ChanAndCommits] = Nil): Seq[ChanAndCommits] = {
     // Sorting example: (5/Open, 30/Open, 50/Sleeping, 60/Open, 100/Open) -> (50/Sleeping, 60/Open, 100/Open) -> 60/Open as first one
     val viable = sorted.dropWhile(_.commits.availableForReceive * Math.max(sorted.size - 2, 1) < sorted.last.commits.availableForReceive)
-    viable.sortBy(cnc => Channel isOperationalAndOpen cnc.chan compare false)
+    viable.sortBy(cnc => if (Channel isOperationalAndOpen cnc.chan) 0 else 1)
   }
 
   def maxSendable: MilliSatoshi = {
@@ -259,9 +259,9 @@ class ChannelMaster(val payBag: PaymentBag, val chanBag: ChannelBag, val dataBag
     notifyStateUpdated
   }
 
-  // Mainly to prolong timeouts
-  override def addReceived(add: UpdateAddHtlcExt): Unit = for {
-    reasonableResolution <- Option(initResolveMemo get add) collect { case resolution: ReasonableResolution => resolution }
-    incomingFSM <- inProcessors.values.find(incomingFSM => reasonableResolution.fullTag == incomingFSM.fullTag)
-  } incomingFSM doProcess reasonableResolution
+  // Mainly to prolong FSM timeouts once another add is seen (but not yet committed)
+  override def addReceived(add: UpdateAddHtlcExt): Unit = initResolveMemo.getUnchecked(add) match {
+    case resolution: ReasonableResolution => inProcessors.get(resolution.fullTag).foreach(_ doProcess resolution)
+    case _ => // Do nothing, invalid add will be failed after it gets committed
+  }
 }
