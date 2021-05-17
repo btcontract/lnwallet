@@ -88,12 +88,12 @@ case class SplitInfo(totalSum: MilliSatoshi, ourPart: MilliSatoshi) {
 }
 
 case class PlainDescription(split: Option[SplitInfo], label: Option[String], invoiceText: String) extends PaymentDescription {
-  val finalDescription: Option[String] = Some(invoiceText).find(_.nonEmpty) orElse label
+  val finalDescription: Option[String] = label orElse Some(invoiceText).find(_.nonEmpty)
   val queryText: String = s"$invoiceText ${label getOrElse new String}"
 }
 
 case class PlainMetaDescription(split: Option[SplitInfo], label: Option[String], invoiceText: String, meta: String) extends PaymentDescription {
-  val finalDescription: Option[String] = List(meta, invoiceText).find(_.nonEmpty) orElse label
+  val finalDescription: Option[String] = label orElse List(meta, invoiceText).find(_.nonEmpty)
   val queryText: String = s"$invoiceText $meta ${label getOrElse new String}"
 }
 
@@ -125,9 +125,10 @@ case class TxInfo(txString: String, txidString: String, depth: Long, receivedSat
 
 sealed trait TxDescription {
   def queryText(txid: ByteVector32): String
+  def label: Option[String] = None
 }
 
-case class PlainTxDescription(addresses: List[String], label: Option[String] = None) extends TxDescription {
+case class PlainTxDescription(addresses: List[String], override val label: Option[String] = None) extends TxDescription {
   def queryText(txid: ByteVector32): String = txid.toHex + SEPARATOR + addresses.mkString(SEPARATOR) + SEPARATOR + label.getOrElse(new String)
 }
 

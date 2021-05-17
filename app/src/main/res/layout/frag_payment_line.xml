@@ -198,11 +198,18 @@
                     android:layout_marginBottom="10dp"
                     style="@style/FillingView">
 
+                    <ImageView
+                        style="@style/BoundedView"
+                        android:id="@+id/labelIcon"
+                        android:layout_marginEnd="3dp"
+                        android:layout_centerVertical="true"
+                        android:src="@drawable/baseline_label_20"/>
+
                     <TextView
                         style="@style/FillingView"
                         android:id="@+id/description"
                         android:layout_centerVertical="true"
-                        android:layout_alignParentStart="true"
+                        android:layout_toEndOf="@+id/labelIcon"
                         android:layout_toStartOf="@id/statusIcon"
                         android:textStyle="bold"
                         android:ellipsize="end"
@@ -221,18 +228,18 @@
                 <RelativeLayout style="@style/FillingView">
 
                     <TextView
-                        style="@style/BoundedView"
-                        android:layout_toStartOf="@+id/meta"
-                        android:layout_alignParentStart="true"
+                        android:maxLines="1"
                         android:id="@+id/amount"
                         android:textStyle="bold"
-                        android:maxLines="1"/>
+                        android:layout_toStartOf="@+id/meta"
+                        android:layout_alignParentStart="true"
+                        style="@style/BoundedView"/>
 
                     <TextView
-                        style="@style/BoundedView"
-                        android:layout_alignParentEnd="true"
+                        android:maxLines="1"
                         android:id="@+id/meta"
-                        android:maxLines="1"/>
+                        android:layout_alignParentEnd="true"
+                        style="@style/BoundedView"/>
 
                 </RelativeLayout>
             </LinearLayout>

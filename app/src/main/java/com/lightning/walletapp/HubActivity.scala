@@ -97,6 +97,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
 
       getItem(position) match {
         case info: RelayedPreimageInfo =>
+          holder.labelIcon setVisibility View.GONE
           holder.detailsAndStatus setVisibility View.GONE
           holder.amount setText LNParams.denomination.directedWithSign(info.earned, 0L.msat, cardZero, isPlus = true).html
           if (LNParams.cm.inProcessors contains info.fullTag) holder.cardContainer setBackgroundResource R.drawable.panel_payment_active_bg
@@ -107,6 +108,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
         case info: TxInfo =>
           holder.detailsAndStatus setVisibility View.VISIBLE
           holder.description setText txDescription(info).html
+          holder.labelIcon setVisibility BaseActivity.goneMap(info.description.label.isDefined)
           holder.amount setText LNParams.denomination.directedWithSign(info.receivedSat.toMilliSatoshi, info.sentSat.toMilliSatoshi, cardZero, info.isIncoming).html
           holder.cardContainer setBackgroundResource R.drawable.panel_payment_passive_bg
           holder.statusIcon setImageResource txStatusIcon(info)
@@ -116,6 +118,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
         case info: PaymentInfo =>
           holder.detailsAndStatus setVisibility View.VISIBLE
           holder.description setText paymentDescription(info).html
+          holder.labelIcon setVisibility BaseActivity.goneMap(info.description.label.isDefined)
           holder.amount setText LNParams.denomination.directedWithSign(info.received, info.sent, cardZero, info.isIncoming).html
           holder.cardContainer setBackgroundResource paymentBackground(info)
           holder.statusIcon setImageResource paymentStatusIcon(info)
@@ -222,6 +225,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
     val detailsAndStatus: RelativeLayout = itemView.findViewById(R.id.detailsAndStatus).asInstanceOf[RelativeLayout]
     val description: TextView = itemView.findViewById(R.id.description).asInstanceOf[TextView]
     val statusIcon: ImageView = itemView.findViewById(R.id.statusIcon).asInstanceOf[ImageView]
+    val labelIcon: ImageView = itemView.findViewById(R.id.labelIcon).asInstanceOf[ImageView]
     val amount: TextView = itemView.findViewById(R.id.amount).asInstanceOf[TextView]
     val meta: TextView = itemView.findViewById(R.id.meta).asInstanceOf[TextView]
     itemView.setTag(self)
