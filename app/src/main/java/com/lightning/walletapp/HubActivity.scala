@@ -320,19 +320,19 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
   private val relayEventStream = Subject[Long]
   private val txEventStream = Subject[Long]
 
-  private val paymentObserver: ContentObserver = new ContentObserver(new Handler) {
+  private val paymentObserver = new ContentObserver(new Handler) {
     override def onChange(self: Boolean): Unit = paymentEventStream.onNext(ChannelMaster.updateCounter.incrementAndGet)
   }
 
-  private val relayObserver: ContentObserver = new ContentObserver(new Handler) {
+  private val relayObserver = new ContentObserver(new Handler) {
     override def onChange(self: Boolean): Unit = relayEventStream.onNext(ChannelMaster.updateCounter.incrementAndGet)
   }
 
-  private val txObserver: ContentObserver = new ContentObserver(new Handler) {
+  private val txObserver = new ContentObserver(new Handler) {
     override def onChange(self: Boolean): Unit = txEventStream.onNext(ChannelMaster.updateCounter.incrementAndGet)
   }
 
-  private val netListener: Monitor.ConnectivityListener = new Monitor.ConnectivityListener {
+  private val netListener = new Monitor.ConnectivityListener {
     override def onConnectivityChanged(ct: Int, isConnected: Boolean, isFast: Boolean): Unit = UITask {
       walletCards.offlineIndicator setVisibility BaseActivity.goneMap(!isConnected)
       // This will make channels SLEEPING right away instead of after no Pong
@@ -340,27 +340,27 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
     }.run
   }
 
-  private val chainListener: WalletEventsListener = new WalletEventsListener {
-    override def onChainSynchronized(event: WalletReady): Unit = UITask {
-      updatePendingChainTxStatus
-      walletCards.updateView
-    }.run
+  private val chainListener = new WalletEventsListener {
+    override def onChainSynchronized(event: WalletReady): Unit = {
+      // Check if any of pending chain txs got confirmations
+      UITask(walletCards.updateView).run
+
+      for {
+        transactionInfo <- txInfos if !transactionInfo.isDeeplyBuried && !transactionInfo.isDoubleSpent
+        (newDepth, newDoubleSpent) <- LNParams.chainWallet.wallet.doubleSpent(transactionInfo.tx)
+        if newDepth != transactionInfo.depth || newDoubleSpent != transactionInfo.isDoubleSpent
+        _ = WalletApp.txDataBag.updStatus(transactionInfo.txid, newDepth, newDoubleSpent)
+        // Trigger preimage revealed using a txid to throttle multiple vibrations
+      } ChannelMaster.preimageRevealStream.onNext(transactionInfo.txid)
+    }
   }
 
-  private val fiatRatesListener: FiatRatesListener = new FiatRatesListener {
+  private val fiatRatesListener = new FiatRatesListener {
     def onFiatRates(rates: FiatRatesInfo): Unit = UITask {
       walletCards.updateFiatRates
       walletCards.updateView
     }.run
   }
-
-  def updatePendingChainTxStatus: Unit = for {
-    transactionInfo <- txInfos if !transactionInfo.isDeeplyBuried && !transactionInfo.isDoubleSpent
-    (newDepth, newDoubleSpent) <- LNParams.chainWallet.wallet.doubleSpent(transactionInfo.tx)
-    if newDepth != transactionInfo.depth || newDoubleSpent != transactionInfo.isDoubleSpent
-    _ = WalletApp.txDataBag.updStatus(transactionInfo.txid, newDepth, newDoubleSpent)
-    // Trigger preimage revealed using a txid to throttle multiple vibrations
-  } ChannelMaster.preimageRevealStream.onNext(transactionInfo.txid)
 
   // NFC
 
