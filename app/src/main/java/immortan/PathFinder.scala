@@ -62,10 +62,8 @@ abstract class PathFinder(val normalBag: NetworkBag, val hostedBag: NetworkBag) 
         // likey a first launch or synchronizing
         sender process NotifyRejected
       } else {
-        // In OPERATIONAL state we instruct graph to search through the single pre-selected local channel
-        // it is safe to not check for existance becase base graph never has our private outgoing edges
-        val graph1 = data.graph.addEdge(edge = request.localEdge, checkIfContains = false)
-        sender process handleRouteRequest(graph1, request)
+        // In OPERATIONAL state we instruct graph to search through the pre-selected local channel
+        sender process handleRouteRequest(data.graph replaceEdge request.localEdge, request)
       }
 
     case (Tuple2(sender: CanBeRepliedTo, _: RouteRequest), WAITING) =>
@@ -166,9 +164,9 @@ abstract class PathFinder(val normalBag: NetworkBag, val hostedBag: NetworkBag) 
 
     case (edge: GraphEdge, WAITING | OPERATIONAL) if !data.channels.contains(edge.desc.shortChannelId) =>
       // We add assisted routes to graph as if they are normal channels, also rememeber them to refill later if graph gets reloaded
-      // these edges will be private most of the time, but they may be public and we may have them already so checkIfContains == true
+      // these edges will be private most of the time, but they also may be public yet not visible to us for some reason
       extraEdges.put(edge.updExt.update.toShortIdAndPosition, edge)
-      val data1 = data.copy(graph = data.graph addEdge edge)
+      val data1 = data.copy(graph = data.graph replaceEdge edge)
       become(data1, state)
 
     case _ =>
@@ -201,7 +199,7 @@ abstract class PathFinder(val normalBag: NetworkBag, val hostedBag: NetworkBag) 
       case Some(store) if isEnabled =>
         // This is a legitimate public update, refresh everywhere
         store.addChannelUpdateByPosition(edge.updExt.update)
-        data.copy(graph = data.graph addEdge edge)
+        data.copy(graph = data.graph replaceEdge edge)
 
       case Some(store) =>
         // Save in db because update is fresh
@@ -212,8 +210,8 @@ abstract class PathFinder(val normalBag: NetworkBag, val hostedBag: NetworkBag) 
       case None if isEnabled =>
         // This is a legitimate private/unknown-public update
         extraEdges.put(edge.updExt.update.toShortIdAndPosition, edge)
-        // Don't save in DB but update runtime graph
-        data.copy(graph = data.graph addEdge edge)
+        // Don't save this in DB but update runtime graph
+        data.copy(graph = data.graph replaceEdge edge)
 
       case None =>
         // Disabled private/unknown-public update, remove from graph

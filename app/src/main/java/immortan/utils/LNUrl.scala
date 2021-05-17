@@ -4,15 +4,17 @@ import spray.json._
 import fr.acinq.eclair._
 import immortan.crypto.Tools._
 import immortan.utils.ImplicitJsonFormats._
+import immortan.utils.PayRequest.{AdditionalRoute, PayMetaData}
+import fr.acinq.eclair.router.{Announcements, RouteCalculation}
 import immortan.{LNParams, PaymentAction, RemoteNodeInfo}
+import fr.acinq.eclair.wire.{ChannelUpdate, NodeAddress}
 import fr.acinq.bitcoin.{Bech32, Crypto}
 
+import fr.acinq.eclair.router.Graph.GraphStructure
 import com.github.kevinsawicki.http.HttpRequest
 import fr.acinq.eclair.payment.PaymentRequest
-import immortan.utils.PayRequest.PayMetaData
 import immortan.utils.LNUrl.LNUrlAndData
 import fr.acinq.bitcoin.Crypto.PublicKey
-import fr.acinq.eclair.wire.NodeAddress
 import rx.lang.scala.Observable
 import scodec.bits.ByteVector
 import immortan.utils.uri.Uri
@@ -50,7 +52,7 @@ case class LNUrl(request: String) {
   lazy val k1: Try[String] = Try(uri getQueryParameter "k1")
   lazy val isAuth: Boolean = Try(uri getQueryParameter "tag" equals "login").getOrElse(false)
 
-  lazy val withdrawAttempt: Try[WithdrawRequest] = Try {
+  lazy val fastWithdrawAttempt: Try[WithdrawRequest] = Try {
     require(uri getQueryParameter "tag" equals "withdrawRequest")
     WithdrawRequest(uri.getQueryParameter("callback"), uri.getQueryParameter("k1"),
       uri.getQueryParameter("maxWithdrawable").toLong, uri.getQueryParameter( "defaultDescription"),
@@ -114,9 +116,18 @@ case class WithdrawRequest(callback: String, k1: String, maxWithdrawable: Long, 
   require(minCanReceive <= maxWithdrawable.msat, s"$maxWithdrawable is less than min $minCanReceive")
 }
 
+
 object PayRequest {
   type TagAndContent = List[String]
   type PayMetaData = List[TagAndContent]
+  type KeyAndUpdate = (PublicKey, ChannelUpdate)
+  type AdditionalRoute = List[KeyAndUpdate]
+
+  def routeToHops(additionalRoute: AdditionalRoute = Nil): List[PaymentRequest.ExtraHop] = for {
+    (startNodeId: PublicKey, channelUpdate: ChannelUpdate) <- additionalRoute
+    signatureOk = Announcements.checkSig(channelUpdate)(startNodeId)
+    _ = require(signatureOk, "Route contains an invalid update")
+  } yield channelUpdate extraHop startNodeId
 }
 
 case class PayLinkInfo(image64: String, lnurl: LNUrl, text: String, lastMsat: MilliSatoshi, hash: String, lastDate: Long) {
@@ -149,9 +160,9 @@ case class PayRequest(callback: String, maxSendable: Long, minSendable: Long, me
   val metaDataTextPlain: String = metaDataTexts.head
 }
 
-case class PayRequestFinal(successAction: Option[PaymentAction], disposable: Option[Boolean], routes: List[String], pr: String) extends LNUrlData {
+case class PayRequestFinal(successAction: Option[PaymentAction], routes: List[AdditionalRoute], pr: String) extends LNUrlData {
 
-  val paymentRequest: PaymentRequest = PaymentRequest.read(pr)
+  val additionalRoutes: Set[GraphStructure.GraphEdge] = RouteCalculation.makeExtraEdges(routes.map(PayRequest.routeToHops), paymentRequest.nodeId)
 
-  val isThrowAway: Boolean = disposable.getOrElse(true)
+  lazy val paymentRequest: PaymentRequest = PaymentRequest.read(pr)
 }

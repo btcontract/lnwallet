@@ -47,7 +47,7 @@ object BaseActivity {
   val invisMap: Map[Boolean, Int] = Map(true -> View.VISIBLE, false -> View.INVISIBLE)
 
   implicit class StringOps(source: String) {
-    def s2hex: String = ByteVector.view(source getBytes "UTF-8").toHex
+    def s2hex: String = ByteVector.view(bytes = source getBytes "UTF-8").toHex
     def shortAddress: String = s"${source take 4} <sup><small><small>&#8230;</small></small></sup> ${source takeRight 4}"
     def humanFour: String = source.grouped(4).mkString(s"\u0020")
     def html: Spanned = Html.fromHtml(source)
@@ -171,13 +171,6 @@ trait BaseActivity extends AppCompatActivity { me =>
     val field: TextView = view.asInstanceOf[TextView]
     field setMovementMethod LinkMovementMethod.getInstance
     field
-  }
-
-  def updateView2Blue(oldView: View, newText: String): View = {
-    val titleTip = oldView.findViewById(R.id.titleTip).asInstanceOf[TextView]
-    oldView setBackgroundColor ContextCompat.getColor(me, R.color.ln)
-    titleTip setText s"<font color=#FFFFFF>$newText</font>".html
-    oldView
   }
 
   def titleBodyAsViewBuilder(title: View, body: View): AlertDialog.Builder = new AlertDialog.Builder(me).setCustomTitle(title).setView(body)

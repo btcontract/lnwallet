@@ -3,10 +3,13 @@ package immortan.utils
 import immortan._
 import spray.json._
 import fr.acinq.eclair.wire.CommonCodecs._
+import fr.acinq.eclair.wire.LightningMessageCodecs._
+
 import fr.acinq.bitcoin.{ByteVector32, Satoshi}
 import immortan.sqlite.{PaymentSummary, RelaySummary, TxSummary}
 import immortan.utils.FiatRates.{BitpayItemList, CoinGeckoItemMap}
 import fr.acinq.eclair.blockchain.fee.{FeeratePerKB, FeeratesPerKB}
+import immortan.utils.PayRequest.AdditionalRoute
 import fr.acinq.bitcoin.Crypto.PublicKey
 import immortan.crypto.Tools.Fiat2Btc
 import fr.acinq.eclair.MilliSatoshi
@@ -37,6 +40,8 @@ object ImplicitJsonFormats extends DefaultJsonProtocol {
   implicit val publicKeyFmt: JsonFormat[PublicKey] = sCodecJsonFmt(publicKey)
 
   implicit val byteVector32Fmt: JsonFormat[ByteVector32] = sCodecJsonFmt(bytes32)
+
+  implicit val channelUpdateFmt = sCodecJsonFmt(channelUpdateCodec)
 
   implicit val milliSatoshiFmt: JsonFormat[MilliSatoshi] = jsonFormat[Long, MilliSatoshi](MilliSatoshi.apply, "underlying")
 
@@ -171,8 +176,9 @@ object ImplicitJsonFormats extends DefaultJsonProtocol {
   implicit val payRequestFmt: JsonFormat[PayRequest] = taggedJsonFmt(jsonFormat[String, Long, Long, String, Option[Int],
     PayRequest](PayRequest.apply, "callback", "maxSendable", "minSendable", "metadata", "commentAllowed"), tag = "payRequest")
 
-  implicit val payRequestFinalFmt: JsonFormat[PayRequestFinal] = jsonFormat[Option[PaymentAction], Option[Boolean], List[String], String,
-    PayRequestFinal](PayRequestFinal.apply, "successAction", "disposable", "routes", "pr")
+  implicit val payRequestFinalFmt: JsonFormat[PayRequestFinal] =
+    jsonFormat[Option[PaymentAction], List[AdditionalRoute], String,
+      PayRequestFinal](PayRequestFinal.apply, "successAction", "routes", "pr")
 
   // Fiat feerates
 

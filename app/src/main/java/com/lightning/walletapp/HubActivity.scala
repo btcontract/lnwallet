@@ -438,84 +438,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
         case _ => // Can send it
       }
 
-    case uri: BitcoinUri if uri.isValid =>
-      val body = getLayoutInflater.inflate(R.layout.frag_input_on_chain, null).asInstanceOf[ScrollView]
-      val manager = new RateManager(body, getString(dialog_add_memo).toSome, dialog_visibility_private, LNParams.fiatRatesInfo.rates, WalletApp.fiatCode)
-      val canSend = LNParams.denomination.parsedWithSign(WalletApp.lastChainBalance.totalBalance, Colors.cardZero)
-      val canSendFiat = WalletApp.currentMsatInFiatHuman(WalletApp.lastChainBalance.totalBalance)
-
-      def switch(alert: AlertDialog): Unit = {
-        uri.prExt.foreach(ext => InputParser.value = ext)
-        checkExternalData(noneRunnable)
-        alert.dismiss
-      }
-
-      def warnSendingFailed: TimerTask = UITask {
-        val builder = new AlertDialog.Builder(me).setMessage(error_btc_broadcast_fail)
-        showForm(builder.setNegativeButton(dialog_ok, null).create)
-      }
-
-      def attempt(alert: AlertDialog): Unit = {
-        // On success tx will be recorded in a listener
-        // on failure user will be notified right away
-        alert.dismiss
-
-        for {
-          txAndFee <- LNParams.chainWallet.wallet.sendPayment(manager.resultSat, uri.address, feeView.rate)
-          // Record this description before attempting to send, we won't be able to know a memo otherwise
-          knownDescription = PlainTxDescription(uri.address :: Nil, manager.resultExtraInput)
-          _ = WalletApp.txDataBag.descriptions += (txAndFee.tx.txid -> knownDescription)
-          isDefinitelyCommitted <- LNParams.chainWallet.wallet.commit(txAndFee.tx)
-          if !isDefinitelyCommitted
-        } warnSendingFailed.run
-      }
-
-      lazy val alert = {
-        val neutralRes = if (uri.amount.isDefined) -1 else dialog_max
-        val builder = titleBodyAsViewBuilder(getString(dialog_send_btc).format(uri.address.shortAddress, BaseActivity formattedBitcoinUri uri).html, manager.content)
-        if (uri.prExt.isEmpty) mkCheckFormNeutral(attempt, none, _ => manager.updateText(WalletApp.lastChainBalance.totalBalance), builder, dialog_pay, dialog_cancel, neutralRes)
-        else mkCheckFormNeutral(attempt, none, switch, builder, dialog_pay, dialog_cancel, lightning_wallet)
-      }
-
-      lazy val feeView = new FeeView(body) {
-        override def update(feeOpt: Option[MilliSatoshi], showIssue: Boolean): TimerTask = {
-          manager.updateOkButton(getPositiveButton(alert), feeOpt.isDefined).run
-          super.update(feeOpt, showIssue)
-        }
-
-        rate = {
-          val target = LNParams.feeRatesInfo.onChainFeeConf.feeTargets.mutualCloseBlockTarget
-          LNParams.feeRatesInfo.onChainFeeConf.feeEstimator.getFeeratePerKw(target)
-        }
-      }
-
-      lazy val worker = new ThrottledWork[Satoshi, TxAndFee] {
-        def work(amount: Satoshi): Observable[TxAndFee] = Rx fromFutureOnIo LNParams.chainWallet.wallet.sendPayment(amount, uri.address, feeView.rate)
-        def process(amount: Satoshi, txAndFee: TxAndFee): Unit = feeView.update(feeOpt = Some(txAndFee.fee.toMilliSatoshi), showIssue = false).run
-        def error(exc: Throwable): Unit = feeView.update(feeOpt = None, showIssue = manager.resultSat >= LNParams.minDustLimit).run
-      }
-
-      feeView.customFeerate addOnChangeListener new Slider.OnChangeListener {
-        override def onValueChange(slider: Slider, value: Float, fromUser: Boolean): Unit = {
-          val newFeerate = FeeratePerVByte(value.toLong.sat)
-          feeView.rate = FeeratePerKw(newFeerate)
-          worker addWork manager.resultSat
-        }
-      }
-
-      manager.inputAmount addTextChangedListener onTextChange { _ =>
-        worker addWork manager.resultSat
-      }
-
-      uri.amount.foreach { asked =>
-        manager.updateText(value = asked)
-        manager.inputAmount.setEnabled(false)
-        manager.fiatInputAmount.setEnabled(false)
-      }
-
-      manager.hintDenom.setText(getString(dialog_can_send).format(canSend).html)
-      manager.hintFiatDenom.setText(getString(dialog_can_send).format(canSendFiat).html)
-      feeView.update(feeOpt = None, showIssue = false).run
+    case uri: BitcoinUri if uri.isValid => bringSendBitcoinPopup(uri)
 
     case _: LNUrl =>
 
@@ -672,6 +595,86 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
 
   def goToReceiveBitcoinPage(view: View): Unit = onChoiceMade(CHOICE_RECEIVE_TAG, 0)
   def bringLnReceivePopup(view: View): Unit = onChoiceMade(CHOICE_RECEIVE_TAG, 1)
+
+  def bringSendBitcoinPopup(uri: BitcoinUri): Unit = {
+    val body = getLayoutInflater.inflate(R.layout.frag_input_on_chain, null).asInstanceOf[ScrollView]
+    val manager = new RateManager(body, getString(dialog_add_memo).toSome, dialog_visibility_private, LNParams.fiatRatesInfo.rates, WalletApp.fiatCode)
+    val canSend = LNParams.denomination.parsedWithSign(WalletApp.lastChainBalance.totalBalance, Colors.cardZero)
+    val canSendFiat = WalletApp.currentMsatInFiatHuman(WalletApp.lastChainBalance.totalBalance)
+
+    def switchToLn(alert: AlertDialog): Unit = {
+      uri.prExt.foreach(ext => InputParser.value = ext)
+      checkExternalData(noneRunnable)
+      alert.dismiss
+    }
+
+    def warnSendingFailed: TimerTask = UITask {
+      val builder = new AlertDialog.Builder(me).setMessage(error_btc_broadcast_fail)
+      showForm(builder.setNegativeButton(dialog_ok, null).create)
+    }
+
+    def attempt(alert: AlertDialog): Unit = {
+      // On success tx will be recorded in a listener
+      // on failure user will be notified right away
+      alert.dismiss
+
+      for {
+        txAndFee <- LNParams.chainWallet.wallet.sendPayment(manager.resultSat, uri.address, feeView.rate)
+        // Record this description before attempting to send, we won't be able to know a memo otherwise
+        knownDescription = PlainTxDescription(uri.address :: Nil, manager.resultExtraInput)
+        _ = WalletApp.txDataBag.descriptions += (txAndFee.tx.txid -> knownDescription)
+        isDefinitelyCommitted <- LNParams.chainWallet.wallet.commit(txAndFee.tx)
+        if !isDefinitelyCommitted
+      } warnSendingFailed.run
+    }
+
+    lazy val alert = {
+      val neutralRes = if (uri.amount.isDefined) -1 else dialog_max
+      val builder = titleBodyAsViewBuilder(getString(dialog_send_btc).format(uri.address.shortAddress, BaseActivity formattedBitcoinUri uri).html, manager.content)
+      if (uri.prExt.isEmpty) mkCheckFormNeutral(attempt, none, _ => manager.updateText(WalletApp.lastChainBalance.totalBalance), builder, dialog_pay, dialog_cancel, neutralRes)
+      else mkCheckFormNeutral(attempt, none, switchToLn, builder, dialog_pay, dialog_cancel, lightning_wallet)
+    }
+
+    lazy val feeView = new FeeView(body) {
+      override def update(feeOpt: Option[MilliSatoshi], showIssue: Boolean): TimerTask = {
+        manager.updateOkButton(getPositiveButton(alert), feeOpt.isDefined).run
+        super.update(feeOpt, showIssue)
+      }
+
+      rate = {
+        val target = LNParams.feeRatesInfo.onChainFeeConf.feeTargets.mutualCloseBlockTarget
+        LNParams.feeRatesInfo.onChainFeeConf.feeEstimator.getFeeratePerKw(target)
+      }
+    }
+
+    lazy val worker = new ThrottledWork[Satoshi, TxAndFee] {
+      def work(amount: Satoshi): Observable[TxAndFee] = Rx fromFutureOnIo LNParams.chainWallet.wallet.sendPayment(amount, uri.address, feeView.rate)
+      def process(amount: Satoshi, txAndFee: TxAndFee): Unit = feeView.update(feeOpt = Some(txAndFee.fee.toMilliSatoshi), showIssue = false).run
+      def error(exc: Throwable): Unit = feeView.update(feeOpt = None, showIssue = manager.resultSat >= LNParams.minDustLimit).run
+    }
+
+    feeView.customFeerate addOnChangeListener new Slider.OnChangeListener {
+      override def onValueChange(slider: Slider, value: Float, fromUser: Boolean): Unit = {
+        val newFeerate = FeeratePerVByte(value.toLong.sat)
+        feeView.rate = FeeratePerKw(newFeerate)
+        worker addWork manager.resultSat
+      }
+    }
+
+    manager.inputAmount addTextChangedListener onTextChange { _ =>
+      worker addWork manager.resultSat
+    }
+
+    uri.amount.foreach { asked =>
+      manager.updateText(value = asked)
+      manager.inputAmount.setEnabled(false)
+      manager.fiatInputAmount.setEnabled(false)
+    }
+
+    manager.hintDenom.setText(getString(dialog_can_send).format(canSend).html)
+    manager.hintFiatDenom.setText(getString(dialog_can_send).format(canSendFiat).html)
+    feeView.update(feeOpt = None, showIssue = false).run
+  }
 
   def updatePaymentList: Unit = {
     paymentsAdapter.notifyDataSetChanged

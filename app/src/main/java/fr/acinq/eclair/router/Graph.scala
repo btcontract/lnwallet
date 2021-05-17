@@ -270,12 +270,12 @@ object Graph {
        * @param edge the edge that is going to be added to the graph
        * @return a new graph containing this edge
        */
-      def addEdge(edge: GraphEdge, checkIfContains: Boolean = true): DirectedGraph = {
+      def replaceEdge(edge: GraphEdge): DirectedGraph = {
         val vertexIn = edge.desc.from
         val vertexOut = edge.desc.to
         // the graph is allowed to have multiple edges between the same vertices but only one per channel
-        if (checkIfContains && containsEdge(edge.desc)) {
-          removeEdge(edge.desc).addEdge(edge) // the recursive call will have the original params
+        if (containsEdge(edge.desc)) {
+          removeEdge(edge.desc).replaceEdge(edge) // the recursive call will have the original params
         } else {
           val withVertices = addVertex(vertexIn).addVertex(vertexOut)
           val vertices1 = edge +: withVertices.vertices(vertexOut)
@@ -300,7 +300,7 @@ object Graph {
 
       def removeEdges(descList: Iterable[ChannelDesc]): DirectedGraph = descList.foldLeft(this)(_ removeEdge _)
 
-      def addEdges(edges: Iterable[GraphEdge]): DirectedGraph = edges.foldLeft(this)(_ addEdge _)
+      def addEdges(edges: Iterable[GraphEdge]): DirectedGraph = edges.foldLeft(this)(_ replaceEdge _)
 
       /**
        * @param keyB the key associated with the target vertex
@@ -337,7 +337,7 @@ object Graph {
 
       def apply(key: PublicKey): DirectedGraph = new DirectedGraph(Map(key -> List.empty))
 
-      def apply(edge: GraphEdge): DirectedGraph = DirectedGraph().addEdge(edge)
+      def apply(edge: GraphEdge): DirectedGraph = DirectedGraph().replaceEdge(edge)
 
       def apply(edges: Seq[GraphEdge]): DirectedGraph = DirectedGraph().addEdges(edges)
 
