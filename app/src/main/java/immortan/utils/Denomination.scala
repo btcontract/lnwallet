@@ -45,8 +45,8 @@ object SatDenomination extends Denomination {
   }
 
   def directedWithSign(incoming: MilliSatoshi, outgoing: MilliSatoshi, zeroColor: String, isPlus: Boolean): String =
-    if (isPlus) "+" + parsedWithSign(incoming, zeroColor)
-    else "-" + parsedWithSign(outgoing, zeroColor)
+    if (isPlus) "+&#160;" + parsedWithSign(incoming, zeroColor)
+    else "-&#160;" + parsedWithSign(outgoing, zeroColor)
 }
 
 object BtcDenomination extends Denomination {
@@ -78,6 +78,6 @@ object BtcDenomination extends Denomination {
   }
 
   def directedWithSign(incoming: MilliSatoshi, outgoing: MilliSatoshi, zeroColor: String, isPlus: Boolean): String =
-    if (isPlus) s"<font color=$zeroColor>+</font>" + parsedWithSign(incoming, zeroColor)
-    else s"<font color=$zeroColor>-</font>" + parsedWithSign(outgoing, zeroColor)
+    if (isPlus) s"<font color=$zeroColor>+&#160;</font>" + parsedWithSign(incoming, zeroColor)
+    else s"<font color=$zeroColor>-&#160;</font>" + parsedWithSign(outgoing, zeroColor)
 }

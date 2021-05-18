@@ -9,11 +9,12 @@ import java.io.{File, FileOutputStream}
 import android.graphics.{Bitmap, Color}
 import android.graphics.Color.{BLACK, WHITE}
 import android.content.{DialogInterface, Intent}
-import immortan.{Channel, LNParams, PaymentInfo}
 import immortan.crypto.Tools.{Fiat2Btc, none, runAnd}
 import com.google.zxing.{BarcodeFormat, EncodeHintType}
+import fr.acinq.bitcoin.{ByteVector32, Crypto, Satoshi}
 import android.text.{Editable, Html, Spanned, TextWatcher}
 import androidx.core.content.{ContextCompat, FileProvider}
+import immortan.{Channel, LNParams, PaymentDescription, PaymentInfo}
 import fr.acinq.eclair.blockchain.fee.{FeeratePerKw, FeeratePerVByte}
 import com.google.android.material.snackbar.{BaseTransientBottomBar, Snackbar}
 import immortan.utils.{BitcoinUri, Denomination, InputParser, PaymentRequestExt}
@@ -24,6 +25,7 @@ import com.google.android.material.textfield.TextInputLayout
 import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
 import com.lightning.walletapp.BaseActivity.StringOps
 import concurrent.ExecutionContext.Implicits.global
+import fr.acinq.eclair.transactions.Transactions
 import androidx.appcompat.widget.AppCompatButton
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.slider.Slider
@@ -32,22 +34,20 @@ import androidx.appcompat.app.AppCompatActivity
 import android.text.method.LinkMovementMethod
 import fr.acinq.eclair.payment.PaymentRequest
 import com.google.zxing.qrcode.QRCodeWriter
+import fr.acinq.eclair.channel.Commitments
 import androidx.appcompat.app.AlertDialog
 import scala.language.implicitConversions
 import android.content.pm.PackageManager
 import android.view.View.OnClickListener
 import androidx.core.graphics.ColorUtils
 import androidx.core.app.ActivityCompat
-import fr.acinq.bitcoin.Satoshi
 import scala.concurrent.Future
-import scodec.bits.ByteVector
 import android.os.Bundle
 
 
 object BaseActivity {
   implicit class StringOps(source: String) {
     def shortAddress: String = s"${source take 4}&#160;<sup><small><small>&#8230;</small></small></sup>&#160;${source takeRight 4}"
-    def s2hex: String = ByteVector.view(source getBytes "UTF-8").toHex
     def humanFour: String = source.grouped(4).mkString(s"\u0020")
     def html: Spanned = Html.fromHtml(source)
   }
@@ -100,10 +100,8 @@ trait BaseActivity extends AppCompatActivity { me =>
     timer.cancel
   }
 
-  override def onBackPressed: Unit = currentSnackbar match {
-    case Some(bar) => runAnd(bar.dismiss) { currentSnackbar = None }
-    case None => super.onBackPressed
-  }
+  override def onBackPressed: Unit =
+    removeCurrentSnack(super.onBackPressed)
 
   def INIT(state: Bundle): Unit
 
@@ -118,6 +116,11 @@ trait BaseActivity extends AppCompatActivity { me =>
   def share(text: String): Unit = startActivity {
     val share = new Intent setAction Intent.ACTION_SEND
     share.setType("text/plain").putExtra(Intent.EXTRA_TEXT, text)
+  }
+
+  def removeCurrentSnack(onNoBar: => Unit): Unit = currentSnackbar match {
+    case Some(snackBar) => runAnd { snackBar.dismiss } { currentSnackbar = None }
+    case None => onNoBar
   }
 
   def snack(parent: View, msg: CharSequence, actionRes: Int, fun: Snackbar => Unit): Unit = try {
@@ -344,7 +347,7 @@ trait BaseActivity extends AppCompatActivity { me =>
     }
   }
 
-  // Guards
+  // Guards and send/receive helpers
 
   def lnSendGuard(prExt: PaymentRequestExt, container: View)(onOK: => Unit): Unit = LNParams.cm.checkIfSendable(prExt.pr.paymentHash) match {
     case _ if prExt.pr.prefix != PaymentRequest.prefixes(LNParams.chainHash) => snack(container, getString(error_ln_send_network).html, dialog_ok, _.dismiss)
@@ -380,6 +383,50 @@ trait BaseActivity extends AppCompatActivity { me =>
         val reserveHuman = LNParams.denomination.parsedWithSign(-cnc.commits.availableForReceive, Colors.cardZero)
         snack(container, getString(error_ln_receive_reserve).format(reserveHuman).html, dialog_ok, _.dismiss)
       } else onOk
+  }
+
+  abstract class OffChainReceiver(maxReceivable: MilliSatoshi, minReceivable: MilliSatoshi, lnBalance: MilliSatoshi) {
+    val body: ViewGroup = getLayoutInflater.inflate(R.layout.frag_input_off_chain, null).asInstanceOf[ViewGroup]
+    // Currently a single relatively smallest channel is used to improve privacy and maximize delivery chances
+    val commits: Commitments = LNParams.cm.maxReceivable(LNParams.cm.allSortedReceivable).head.commits
+    val manager: RateManager = getManager
+
+    val finalMaxReceivable: MilliSatoshi = maxReceivable min commits.availableForReceive
+    val finalMinReceivable: MilliSatoshi = minReceivable max LNParams.minPayment
+
+    val canReceiveHuman: String = LNParams.denomination.parsedWithSign(finalMaxReceivable, Colors.cardZero)
+    val canReceiveFiatHuman: String = WalletApp.currentMsatInFiatHuman(finalMaxReceivable)
+
+    def attempt(alert: AlertDialog): Unit = {
+      val preimage: ByteVector32 = randomBytes32
+      val hash: ByteVector32 = Crypto.sha256(preimage)
+      val invoiceKey = LNParams.secret.keys.fakeInvoiceKey(hash)
+      val description = getDescription(manager.resultExtraInput getOrElse new String)
+      val hop = List(commits.updateOpt.map(_ extraHop commits.remoteInfo.nodeId).toList)
+      val prExt = PaymentRequestExt from PaymentRequest(LNParams.chainHash, Some(manager.resultMsat), hash, invoiceKey, description.invoiceText, LNParams.incomingFinalCltvExpiry, hop)
+      val chainFee = Transactions.weight2fee(LNParams.feeRatesInfo.onChainFeeConf.feeEstimator.getFeeratePerKw(LNParams.feeRatesInfo.onChainFeeConf.feeTargets.fundingBlockTarget), 700)
+      LNParams.cm.payBag.replaceIncomingPayment(prExt, preimage, description, lnBalance, LNParams.fiatRatesInfo.rates, chainFee.toMilliSatoshi)
+      processInvoice(prExt)
+      alert.dismiss
+    }
+
+    val alert: AlertDialog =
+      mkCheckFormNeutral(attempt, none, _ => manager.updateText(finalMaxReceivable),
+        titleBodyAsViewBuilder(getTitleText, manager.content), dialog_ok, dialog_cancel, dialog_max)
+
+    manager.hintFiatDenom.setText(getString(dialog_can_receive).format(canReceiveFiatHuman).html)
+    manager.hintDenom.setText(getString(dialog_can_receive).format(canReceiveHuman).html)
+    manager.updateOkButton(getPositiveButton(alert), isEnabled = false).run
+
+    manager.inputAmount addTextChangedListener onTextChange { _ =>
+      val withinBounds = finalMinReceivable <= manager.resultMsat && finalMaxReceivable >= manager.resultMsat
+      manager.updateOkButton(getPositiveButton(alert), isEnabled = withinBounds).run
+    }
+
+    def getManager: RateManager
+    def getTitleText: CharSequence
+    def getDescription(input: String): PaymentDescription
+    def processInvoice(prExt: PaymentRequestExt): Unit
   }
 }
 

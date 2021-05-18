@@ -5,10 +5,10 @@ import immortan.utils._
 import android.widget._
 import fr.acinq.eclair._
 import immortan.crypto.Tools._
+
 import scala.concurrent.duration._
 import com.lightning.walletapp.Colors._
 import com.lightning.walletapp.R.string._
-
 import android.os.{Bundle, Handler}
 import android.view.{MenuItem, View, ViewGroup}
 import rx.lang.scala.{Observable, Subject, Subscription}
@@ -19,6 +19,7 @@ import fr.acinq.eclair.blockchain.fee.{FeeratePerKw, FeeratePerVByte}
 import fr.acinq.eclair.blockchain.electrum.ElectrumWallet.WalletReady
 import com.lightning.walletapp.BaseActivity.StringOps
 import org.ndeftools.util.activity.NfcReaderActivity
+
 import concurrent.ExecutionContext.Implicits.global
 import com.github.mmin18.widget.RealtimeBlurView
 import androidx.recyclerview.widget.RecyclerView
@@ -33,6 +34,8 @@ import fr.acinq.eclair.wire.PaymentTagTlv
 import android.database.ContentObserver
 import org.ndeftools.Message
 import java.util.TimerTask
+
+import fr.acinq.eclair.channel.Commitments
 
 
 class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataChecker with ChoiceReceiver { me =>
@@ -417,37 +420,11 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
 
     case (CHOICE_RECEIVE_TAG, 1) =>
       lnReceiveGuard(contentWindow) {
-        val commits = LNParams.cm.maxReceivable(LNParams.cm.allSortedReceivable).head.commits
-        val body = getLayoutInflater.inflate(R.layout.frag_input_off_chain, null).asInstanceOf[ViewGroup]
-        val manager = new RateManager(body, getString(dialog_add_description).toSome, dialog_visibility_public, LNParams.fiatRatesInfo.rates, WalletApp.fiatCode)
-        val canReceive = LNParams.denomination.parsedWithSign(commits.availableForReceive, Colors.cardZero)
-        val canReceiveFiat = WalletApp.currentMsatInFiatHuman(commits.availableForReceive)
-
-        def attempt(alert: AlertDialog): Unit = {
-          val preimage: ByteVector32 = randomBytes32
-          val hash: ByteVector32 = Crypto.sha256(preimage)
-          val invoiceKey = LNParams.secret.keys.fakeInvoiceKey(hash)
-          val hop = List(commits.updateOpt.map(_ extraHop commits.remoteInfo.nodeId).toList)
-          val description = PlainDescription(split = None, label = None, manager.resultExtraInput getOrElse new String)
-          val prExt = PaymentRequestExt from PaymentRequest(LNParams.chainHash, Some(manager.resultMsat), hash, invoiceKey, description.invoiceText, LNParams.incomingFinalCltvExpiry, hop)
-          val chainFee = Transactions.weight2fee(LNParams.feeRatesInfo.onChainFeeConf.feeEstimator.getFeeratePerKw(LNParams.feeRatesInfo.onChainFeeConf.feeTargets.fundingBlockTarget), 700)
-          LNParams.cm.payBag.replaceIncomingPayment(prExt, preimage, description, lnBalance, LNParams.fiatRatesInfo.rates, chainFee.toMilliSatoshi)
-          me goTo ClassNames.qrInvoiceActivityClass
-          InputParser.value = prExt
-          alert.dismiss
-        }
-
-        val alert = mkCheckFormNeutral(attempt, none, _ => manager.updateText(commits.availableForReceive),
-          titleBodyAsViewBuilder(getString(dialog_receive_ln).html, manager.content), dialog_ok, dialog_cancel, dialog_max)
-
-        manager.hintFiatDenom.setText(getString(dialog_can_receive).format(canReceiveFiat).html)
-        manager.hintDenom.setText(getString(dialog_can_receive).format(canReceive).html)
-        manager.updateOkButton(getPositiveButton(alert), isEnabled = false).run
-
-        manager.inputAmount addTextChangedListener onTextChange { _ =>
-          val notTooLow: Boolean = LNParams.minPayment <= manager.resultMsat
-          val notTooHigh: Boolean = commits.availableForReceive >= manager.resultMsat
-          manager.updateOkButton(getPositiveButton(alert), notTooLow && notTooHigh).run
+        new OffChainReceiver(maxReceivable = Long.MaxValue.msat, minReceivable = 0L.msat, lnBalance) {
+          override def getManager: RateManager = new RateManager(body, getString(dialog_add_description).toSome, dialog_visibility_public, LNParams.fiatRatesInfo.rates, WalletApp.fiatCode)
+          override def processInvoice(prExt: PaymentRequestExt): Unit = runAnd(InputParser.value = prExt)(me goTo ClassNames.qrInvoiceActivityClass)
+          override def getDescription(input: String): PaymentDescription = PlainDescription(split = None, label = None, input)
+          override def getTitleText: CharSequence = getString(dialog_receive_ln).html
         }
       }
 
