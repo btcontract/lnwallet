@@ -5,8 +5,7 @@
     style="@style/StandardLinearLayout">
 
     <org.apmem.tools.layouts.FlowLayout
-        style="@style/XMarginFillingView"
-        android:layout_marginTop="25dp"
+        style="@style/XYMarginFillingView"
         f:layout_newLine="true">
 
         <TextView
@@ -35,7 +34,9 @@
 
     </org.apmem.tools.layouts.FlowLayout>
 
-    <FrameLayout style="@style/XMarginFillingView">
+    <FrameLayout
+        android:layout_marginTop="-15dp"
+        style="@style/XMarginFillingView">
 
         <TextView
             style="@style/BoundedView"
@@ -43,16 +44,14 @@
             android:text="@string/dialog_change_feerate"
             android:layout_marginBottom="25dp"
             android:layout_marginStart="2dp"
-            android:layout_marginTop="10dp"
             android:textStyle="bold"/>
 
         <com.google.android.material.slider.Slider
             app:trackColor="@color/buttonGrayRipple"
             app:thumbColor="@color/colorAccent"
             app:haloColor="@color/colorAccent"
-            android:layout_marginBottom="7dp"
+            android:layout_marginBottom="10dp"
             android:id="@+id/customFeerate"
-            android:layout_marginTop="5dp"
             style="@style/FillingView"
             android:visibility="gone"
             app:labelBehavior="gone"

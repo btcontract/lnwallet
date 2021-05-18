@@ -61,19 +61,20 @@
     <string name="dialog_visibility_public">visible to sender</string>
     <string name="dialog_visibility_private">visible to you only</string>
     <string name="dialog_add_description">Add description&#8230;</string>
-    <string name="dialog_add_memo">Add transaction memo&#8230;</string>
+    <string name="dialog_add_btc_memo">Add transaction memo&#8230;</string>
+    <string name="dialog_add_ln_memo">Add payment memo&#8230;</string>
 
-    <string name="dialog_receive_btc"><![CDATA[Receive to <strong>Bitcoin</strong> Address]]></string>
-    <string name="dialog_receive_ln"><![CDATA[Receive to <strong>Lightning</strong> Invoice]]></string>
+    <string name="dialog_receive_btc"><![CDATA[Receive to <b>Bitcoin</b> Address]]></string>
+    <string name="dialog_receive_ln"><![CDATA[Receive to <b>Lightning</b> Invoice]]></string>
 
-    <string name="dialog_can_send"><![CDATA[<strong>can send</strong> %1$s]]></string>
-    <string name="dialog_can_receive"><![CDATA[<strong>can receive</strong> %1$s]]></string>
-    <string name="dialog_fee_sat_vbyte"><![CDATA[fee %1$s <strong>sat/vB</strong>]]></string>
+    <string name="dialog_can_send"><![CDATA[<b>can send up to</b> %1$s]]></string>
+    <string name="dialog_can_receive"><![CDATA[<b>can receive up to</b> %1$s]]></string>
+    <string name="dialog_fee_sat_vbyte"><![CDATA[fee %1$s <b>sat/vB</b>]]></string>
     <string name="dialog_insufficient_funds">insufficient funds</string>
     <string name="dialog_change_feerate">Change feerate&#8230;</string>
     <string name="dialog_sat_vbyte">sat/vB</string>
 
-    <string name="dialog_send_ln"><![CDATA[Send <strong>Lightning</strong> payment<br><br>%1$s]]></string>
+    <string name="dialog_send_ln"><![CDATA[Send <strong>Lightning</strong> payment%1$s]]></string>
     <string name="dialog_send_btc"><![CDATA[Send <strong>Bitcoin</strong> transaction<br><b>to address</b> %1$s%2$s]]></string>
 
     <string name="dialog_split_ln_remain"><![CDATA[<b>Left to pay</b><br>%1$s]]></string>

@@ -9,11 +9,11 @@ import java.io.{File, FileOutputStream}
 import android.graphics.{Bitmap, Color}
 import android.graphics.Color.{BLACK, WHITE}
 import android.content.{DialogInterface, Intent}
-import immortan.crypto.Tools.{Fiat2Btc, none, runAnd}
 import com.google.zxing.{BarcodeFormat, EncodeHintType}
 import fr.acinq.bitcoin.{ByteVector32, Crypto, Satoshi}
 import android.text.{Editable, Html, Spanned, TextWatcher}
 import androidx.core.content.{ContextCompat, FileProvider}
+import immortan.crypto.Tools.{Fiat2Btc, Any2Some, none, runAnd}
 import immortan.{Channel, LNParams, PaymentDescription, PaymentInfo}
 import fr.acinq.eclair.blockchain.fee.{FeeratePerKw, FeeratePerVByte}
 import com.google.android.material.snackbar.{BaseTransientBottomBar, Snackbar}
@@ -178,6 +178,13 @@ trait BaseActivity extends AppCompatActivity { me =>
     view
   }
 
+  def updateView2Color(oldView: View, newText: String, colorRes: Int): View = {
+    val titleTip = oldView.findViewById(R.id.titleTip).asInstanceOf[TextView]
+    oldView setBackgroundColor ContextCompat.getColor(me, colorRes)
+    titleTip setText s"<font color=#FFFFFF>$newText</font>".html
+    oldView
+  }
+
   def clickableTextField(view: View): TextView = {
     val field: TextView = view.asInstanceOf[TextView]
     field setMovementMethod LinkMovementMethod.getInstance
@@ -268,7 +275,7 @@ trait BaseActivity extends AppCompatActivity { me =>
     val extraInputLayout: TextInputLayout = content.findViewById(R.id.extraInputLayout).asInstanceOf[TextInputLayout]
     val extraInput: EditText = content.findViewById(R.id.extraInput).asInstanceOf[EditText]
 
-    def updateOkButton(button: Button, isEnabled: Boolean): TimerTask = UITask {
+    def updateButton(button: Button, isEnabled: Boolean): TimerTask = UITask {
       val alpha = if (isEnabled) 1F else 0.3F
       button.setEnabled(isEnabled)
       button.setAlpha(alpha)
@@ -328,12 +335,15 @@ trait BaseActivity extends AppCompatActivity { me =>
     var rate: FeeratePerKw = _
 
     def update(feeOpt: Option[MilliSatoshi], showIssue: Boolean): TimerTask = UITask {
-      feeOpt.map(fee => LNParams.denomination.parsedWithSign(fee, Colors.cardZero).html).foreach(bitcoinFee.setText)
-      feeOpt.map(fee => WalletApp.currentMsatInFiatHuman(fee).html).foreach(fiatFee.setText)
       feeRate setText getString(dialog_fee_sat_vbyte).format(rate.toLong / 1000).html
       setVis(feeOpt.isDefined, bitcoinFee)
       setVis(feeOpt.isDefined, fiatFee)
       setVis(showIssue, txIssues)
+
+      feeOpt.foreach { fee =>
+        bitcoinFee setText LNParams.denomination.parsedWithSign(fee, Colors.cardZero).html
+        fiatFee setText WalletApp.currentMsatInFiatHuman(fee).html
+      }
     }
 
     customFeerateOption setOnClickListener onButtonTap {
@@ -349,8 +359,7 @@ trait BaseActivity extends AppCompatActivity { me =>
 
   // Guards and send/receive helpers
 
-  def lnSendGuard(prExt: PaymentRequestExt, container: View)(onOK: => Unit): Unit = LNParams.cm.checkIfSendable(prExt.pr.paymentHash) match {
-    case _ if prExt.pr.prefix != PaymentRequest.prefixes(LNParams.chainHash) => snack(container, getString(error_ln_send_network).html, dialog_ok, _.dismiss)
+  def lnSendGuard(prExt: PaymentRequestExt, container: View)(onOK: Option[MilliSatoshi] => Unit): Unit = LNParams.cm.checkIfSendable(prExt.pr.paymentHash) match {
     case _ if !LNParams.ourInit.features.areSupported(prExt.pr.features.features) => snack(container, getString(error_ln_send_features).html, dialog_ok, _.dismiss)
     case _ if !LNParams.cm.all.values.exists(Channel.isOperationalOrWaiting) => snack(container, getString(error_ln_no_chans).html, dialog_ok, _.dismiss)
     case _ if LNParams.cm.all.values.forall(Channel.isWaiting) => snack(container, getString(error_ln_waiting).html, dialog_ok, _.dismiss)
@@ -370,7 +379,8 @@ trait BaseActivity extends AppCompatActivity { me =>
     case _ if prExt.pr.isExpired => snack(container, getString(error_ln_send_expired).html, dialog_ok, _.dismiss)
     case Some(PaymentInfo.NOT_SENDABLE_IN_FLIGHT) => snack(container, getString(error_ln_send_in_flight).html, dialog_ok, _.dismiss)
     case Some(PaymentInfo.NOT_SENDABLE_SUCCESS) => snack(container, getString(error_ln_send_done_already).html, dialog_ok, _.dismiss)
-    case _ => onOK
+    case _ if prExt.pr.prefix != PaymentRequest.prefixes(LNParams.chainHash) => snack(container, getString(error_ln_send_network).html, dialog_ok, _.dismiss)
+    case _ => onOK(prExt.pr.amount)
   }
 
   def lnReceiveGuard(container: View)(onOk: => Unit): Unit = LNParams.cm.allSortedReceivable.lastOption match {
@@ -385,6 +395,29 @@ trait BaseActivity extends AppCompatActivity { me =>
       } else onOk
   }
 
+  abstract class OffChainSender(val maxSendable: MilliSatoshi, val minSendable: MilliSatoshi) {
+    val body: ViewGroup = getLayoutInflater.inflate(R.layout.frag_input_off_chain, null).asInstanceOf[ViewGroup]
+    val manager = new RateManager(body, getString(dialog_add_ln_memo).toSome, dialog_visibility_private, LNParams.fiatRatesInfo.rates, WalletApp.fiatCode)
+    val alert: AlertDialog = getAlertDialog
+
+    val canSendHuman: String = LNParams.denomination.parsedWithSign(maxSendable, Colors.cardZero)
+    val canSendFiatHuman: String = WalletApp.currentMsatInFiatHuman(maxSendable)
+
+    manager.hintFiatDenom.setText(getString(dialog_can_send).format(canSendFiatHuman).html)
+    manager.hintDenom.setText(getString(dialog_can_send).format(canSendHuman).html)
+
+    manager.inputAmount addTextChangedListener onTextChange { _ =>
+      manager.updateButton(getPositiveButton(alert), isPayEnabled).run
+      manager.updateButton(getNeutralButton(alert), isNeutralEnabled).run
+    }
+
+    def neutral(alert: AlertDialog): Unit
+    def send(alert: AlertDialog): Unit
+    def getAlertDialog: AlertDialog
+    def isNeutralEnabled: Boolean
+    def isPayEnabled: Boolean
+  }
+
   abstract class OffChainReceiver(maxReceivable: MilliSatoshi, minReceivable: MilliSatoshi, lnBalance: MilliSatoshi) {
     val body: ViewGroup = getLayoutInflater.inflate(R.layout.frag_input_off_chain, null).asInstanceOf[ViewGroup]
     // Currently a single relatively smallest channel is used to improve privacy and maximize delivery chances
@@ -397,7 +430,7 @@ trait BaseActivity extends AppCompatActivity { me =>
     val canReceiveHuman: String = LNParams.denomination.parsedWithSign(finalMaxReceivable, Colors.cardZero)
     val canReceiveFiatHuman: String = WalletApp.currentMsatInFiatHuman(finalMaxReceivable)
 
-    def attempt(alert: AlertDialog): Unit = {
+    def receive(alert: AlertDialog): Unit = {
       val preimage: ByteVector32 = randomBytes32
       val hash: ByteVector32 = Crypto.sha256(preimage)
       val invoiceKey = LNParams.secret.keys.fakeInvoiceKey(hash)
@@ -411,16 +444,16 @@ trait BaseActivity extends AppCompatActivity { me =>
     }
 
     val alert: AlertDialog =
-      mkCheckFormNeutral(attempt, none, _ => manager.updateText(finalMaxReceivable),
+      mkCheckFormNeutral(receive, none, _ => manager.updateText(finalMaxReceivable),
         titleBodyAsViewBuilder(getTitleText, manager.content), dialog_ok, dialog_cancel, dialog_max)
 
     manager.hintFiatDenom.setText(getString(dialog_can_receive).format(canReceiveFiatHuman).html)
     manager.hintDenom.setText(getString(dialog_can_receive).format(canReceiveHuman).html)
-    manager.updateOkButton(getPositiveButton(alert), isEnabled = false).run
+    manager.updateButton(getPositiveButton(alert), isEnabled = false).run
 
     manager.inputAmount addTextChangedListener onTextChange { _ =>
       val withinBounds = finalMinReceivable <= manager.resultMsat && finalMaxReceivable >= manager.resultMsat
-      manager.updateOkButton(getPositiveButton(alert), isEnabled = withinBounds).run
+      manager.updateButton(getPositiveButton(alert), isEnabled = withinBounds).run
     }
 
     def getManager: RateManager

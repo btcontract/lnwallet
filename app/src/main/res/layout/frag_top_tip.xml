@@ -7,5 +7,4 @@
         android:textColor="@color/colorAccent"
         android:id="@+id/titleTip"/>
 
-    <View style="@style/GrayDivider"/>
 </LinearLayout>

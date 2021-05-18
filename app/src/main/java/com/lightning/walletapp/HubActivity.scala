@@ -406,7 +406,24 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
 
     case prExt: PaymentRequestExt =>
       lnSendGuard(prExt, contentWindow) {
-        // Send payment here
+        case Some(askedAmount: MilliSatoshi) =>
+          new OffChainSender(maxSendable = LNParams.cm.maxSendable.min(askedAmount * 2), minSendable = LNParams.minPayment) {
+            override def isNeutralEnabled: Boolean = manager.resultMsat >= minSendable && manager.resultMsat < askedAmount - minSendable
+            override def isPayEnabled: Boolean = manager.resultMsat >= askedAmount && manager.resultMsat <= maxSendable
+            manager.updateText(askedAmount)
+
+            override def neutral(alert: AlertDialog): Unit = ???
+            override def send(alert: AlertDialog): Unit = ???
+
+            override def getAlertDialog: AlertDialog = {
+              val description = prExt.pr.description.left.toOption.map(descriptionText => s"<br><br>${descriptionText take 72}").getOrElse(new String)
+              val builder = titleBodyAsViewBuilder(updateView2Color(new String, getString(dialog_send_ln).format(description), R.color.cardLightning), manager.content)
+              mkCheckFormNeutral(send, none, neutral, builder, dialog_pay, dialog_cancel, dialog_split)
+            }
+          }
+
+        case None =>
+
       }
 
     case _: LNUrl =>
@@ -414,22 +431,15 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
     case _ => whenNone.run
   }
 
-  // Important: order of cases matters here
-  override def onChoiceMade(tag: String, pos: Int): Unit = (tag, pos) match {
-    case (CHOICE_RECEIVE_TAG, 0) => me goTo ClassNames.qrChainActivityClass
-
-    case (CHOICE_RECEIVE_TAG, 1) =>
-      lnReceiveGuard(contentWindow) {
-        new OffChainReceiver(maxReceivable = Long.MaxValue.msat, minReceivable = 0L.msat, lnBalance) {
-          override def getManager: RateManager = new RateManager(body, getString(dialog_add_description).toSome, dialog_visibility_public, LNParams.fiatRatesInfo.rates, WalletApp.fiatCode)
-          override def processInvoice(prExt: PaymentRequestExt): Unit = runAnd(InputParser.value = prExt)(me goTo ClassNames.qrInvoiceActivityClass)
-          override def getDescription(input: String): PaymentDescription = PlainDescription(split = None, label = None, input)
-          override def getTitleText: CharSequence = getString(dialog_receive_ln).html
-        }
+  override def onChoiceMade(tag: String, pos: Int): Unit =
+    if (pos == 0) me goTo ClassNames.qrChainActivityClass else lnReceiveGuard(contentWindow) {
+      new OffChainReceiver(maxReceivable = Long.MaxValue.msat, minReceivable = 0L.msat, lnBalance) {
+        override def getManager: RateManager = new RateManager(body, getString(dialog_add_description).toSome, dialog_visibility_public, LNParams.fiatRatesInfo.rates, WalletApp.fiatCode)
+        override def processInvoice(prExt: PaymentRequestExt): Unit = runAnd(InputParser.value = prExt)(me goTo ClassNames.qrInvoiceActivityClass)
+        override def getDescription(input: String): PaymentDescription = PlainDescription(split = None, label = None, input)
+        override def getTitleText: CharSequence = getString(dialog_receive_ln).html
       }
-
-    case _ =>
-  }
+    }
 
   def INIT(state: Bundle): Unit =
     if (WalletApp.isAlive && LNParams.isOperational) {
@@ -528,7 +538,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
 
   def bringSendBitcoinPopup(uri: BitcoinUri): Unit = {
     val body = getLayoutInflater.inflate(R.layout.frag_input_on_chain, null).asInstanceOf[ScrollView]
-    val manager = new RateManager(body, getString(dialog_add_memo).toSome, dialog_visibility_private, LNParams.fiatRatesInfo.rates, WalletApp.fiatCode)
+    val manager = new RateManager(body, getString(dialog_add_btc_memo).toSome, dialog_visibility_private, LNParams.fiatRatesInfo.rates, WalletApp.fiatCode)
     val canSend = LNParams.denomination.parsedWithSign(WalletApp.lastChainBalance.totalBalance, Colors.cardZero)
     val canSendFiat = WalletApp.currentMsatInFiatHuman(WalletApp.lastChainBalance.totalBalance)
 
@@ -559,15 +569,16 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
     }
 
     lazy val alert = {
+      val formattedUri = BaseActivity.formattedBitcoinUri(uri)
       val neutralRes = if (uri.amount.isDefined) -1 else dialog_max
-      val builder = titleBodyAsViewBuilder(getString(dialog_send_btc).format(uri.address.shortAddress, BaseActivity formattedBitcoinUri uri).html, manager.content)
+      val builder = titleBodyAsViewBuilder(updateView2Color(new String, getString(dialog_send_btc).format(uri.address.shortAddress, formattedUri), R.color.cardBitcoin), manager.content)
       if (uri.prExt.isEmpty) mkCheckFormNeutral(attempt, none, _ => manager.updateText(WalletApp.lastChainBalance.totalBalance), builder, dialog_pay, dialog_cancel, neutralRes)
       else mkCheckFormNeutral(attempt, none, switchToLn, builder, dialog_pay, dialog_cancel, lightning_wallet)
     }
 
     lazy val feeView = new FeeView(body) {
       override def update(feeOpt: Option[MilliSatoshi], showIssue: Boolean): TimerTask = {
-        manager.updateOkButton(getPositiveButton(alert), feeOpt.isDefined).run
+        manager.updateButton(getPositiveButton(alert), feeOpt.isDefined).run
         super.update(feeOpt, showIssue)
       }
 
