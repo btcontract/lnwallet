@@ -397,104 +397,59 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
   }
 
   override def checkExternalData(whenNone: Runnable): Unit = InputParser.checkAndMaybeErase {
-    case prExt: PaymentRequestExt if !LNParams.ourInit.features.areSupported(prExt.pr.features.features) =>
-      snack(contentWindow, getString(error_ln_send_features).html, dialog_ok, _.dismiss)
-
-    case _: PaymentRequestExt if !LNParams.cm.all.values.exists(Channel.isOperationalOrWaiting) =>
-      snack(contentWindow, getString(error_ln_no_chans).html, dialog_ok, _.dismiss)
-
-    case _: PaymentRequestExt if LNParams.cm.all.values.forall(Channel.isWaiting) =>
-      snack(contentWindow, getString(error_ln_waiting).html, dialog_ok, _.dismiss)
-
-    case _: PaymentRequestExt if LNParams.isChainDisconnectedTooLong =>
-      snack(contentWindow, getString(error_ln_send_chain_disconnect).html, dialog_ok, _.dismiss)
-
-    case _: PaymentRequestExt if LNParams.cm.allSortedSendable.last.commits.availableForSend < LNParams.minPayment =>
-      val reserveHuman = LNParams.denomination.parsedWithSign(-LNParams.cm.allSortedSendable.head.commits.availableForSend, cardZero)
-      snack(contentWindow, getString(error_ln_send_reserve).format(reserveHuman).html, dialog_ok, _.dismiss)
-
-    case prExt: PaymentRequestExt if prExt.pr.prefix != PaymentRequest.prefixes(LNParams.chainHash) =>
-      snack(contentWindow, getString(error_ln_send_network).html, dialog_ok, _.dismiss)
-
-    case prExt: PaymentRequestExt if prExt.pr.amount.exists(_ < LNParams.minPayment) =>
-      val requestedHuman = LNParams.denomination.parsedWithSign(prExt.pr.amount.get, cardZero)
-      val minHuman = LNParams.denomination.parsedWithSign(LNParams.minPayment, cardZero)
-      val msg = getString(error_ln_send_small).format(requestedHuman, minHuman)
-      snack(contentWindow, msg.html, dialog_ok, _.dismiss)
-
-    case prExt: PaymentRequestExt if prExt.pr.isExpired =>
-      snack(contentWindow, getString(error_ln_send_expired).html, dialog_ok, _.dismiss)
-
-    case prExt: PaymentRequestExt if prExt.hasSplitIssue =>
-      snack(contentWindow, getString(error_ln_send_split).html, dialog_ok, _.dismiss)
-
-    case prExt: PaymentRequestExt =>
-      LNParams.cm.checkIfSendable(prExt.pr.paymentHash) match {
-        case Some(PaymentInfo.NOT_SENDABLE_IN_FLIGHT) => snack(contentWindow, getString(error_ln_send_in_flight).html, dialog_ok, _.dismiss)
-        case Some(PaymentInfo.NOT_SENDABLE_SUCCESS) => snack(contentWindow, getString(error_ln_send_done_already).html, dialog_ok, _.dismiss)
-        case _ => // Can send it
-      }
+    case _: RemoteNodeInfo => me goTo ClassNames.remotePeerActivityClass
 
     case uri: BitcoinUri if uri.isValid => bringSendBitcoinPopup(uri)
 
-    case _: LNUrl =>
+    case prExt: PaymentRequestExt =>
+      lnSendGuard(prExt, contentWindow) {
+        // Send payment here
+      }
 
-    case _: RemoteNodeInfo => me goTo ClassNames.remotePeerActivityClass
+    case _: LNUrl =>
 
     case _ => whenNone.run
   }
 
   // Important: order of cases matters here
   override def onChoiceMade(tag: String, pos: Int): Unit = (tag, pos) match {
-    case (CHOICE_RECEIVE_TAG, 1) if !LNParams.cm.all.values.exists(Channel.isOperationalOrWaiting) =>
-      snack(contentWindow, getString(error_ln_no_chans).html, dialog_ok, _.dismiss)
-
-    case (CHOICE_RECEIVE_TAG, 1) if LNParams.cm.all.values.forall(Channel.isWaiting) =>
-      snack(contentWindow, getString(error_ln_waiting).html, dialog_ok, _.dismiss)
-
-    case (CHOICE_RECEIVE_TAG, 1) if LNParams.cm.allSortedReceivable.isEmpty =>
-      snack(contentWindow, getString(error_ln_receive_no_update).html, dialog_ok, _.dismiss)
-
-    case (CHOICE_RECEIVE_TAG, 1) if LNParams.cm.allSortedReceivable.last.commits.availableForReceive < MilliSatoshi(0L) =>
-      val reserveHuman = LNParams.denomination.parsedWithSign(-LNParams.cm.allSortedReceivable.head.commits.availableForReceive, cardZero)
-      snack(contentWindow, getString(error_ln_receive_reserve).format(reserveHuman).html, dialog_ok, _.dismiss)
+    case (CHOICE_RECEIVE_TAG, 0) => me goTo ClassNames.qrChainActivityClass
 
     case (CHOICE_RECEIVE_TAG, 1) =>
-      val commits = LNParams.cm.maxReceivable(LNParams.cm.allSortedReceivable).head.commits
-      val body = getLayoutInflater.inflate(R.layout.frag_input_off_chain, null).asInstanceOf[ViewGroup]
-      val manager = new RateManager(body, getString(dialog_add_description).toSome, dialog_visibility_public, LNParams.fiatRatesInfo.rates, WalletApp.fiatCode)
-      val canReceive = LNParams.denomination.parsedWithSign(commits.availableForReceive, Colors.cardZero)
-      val canReceiveFiat = WalletApp.currentMsatInFiatHuman(commits.availableForReceive)
+      lnReceiveGuard(contentWindow) {
+        val commits = LNParams.cm.maxReceivable(LNParams.cm.allSortedReceivable).head.commits
+        val body = getLayoutInflater.inflate(R.layout.frag_input_off_chain, null).asInstanceOf[ViewGroup]
+        val manager = new RateManager(body, getString(dialog_add_description).toSome, dialog_visibility_public, LNParams.fiatRatesInfo.rates, WalletApp.fiatCode)
+        val canReceive = LNParams.denomination.parsedWithSign(commits.availableForReceive, Colors.cardZero)
+        val canReceiveFiat = WalletApp.currentMsatInFiatHuman(commits.availableForReceive)
 
-      def attempt(alert: AlertDialog): Unit = {
-        val preimage: ByteVector32 = randomBytes32
-        val hash: ByteVector32 = Crypto.sha256(preimage)
-        val invoiceKey = LNParams.secret.keys.fakeInvoiceKey(hash)
-        val hop = List(commits.updateOpt.map(_ extraHop commits.remoteInfo.nodeId).toList)
-        val description = PlainDescription(split = None, label = None, manager.resultExtraInput getOrElse new String)
-        val prExt = PaymentRequestExt from PaymentRequest(LNParams.chainHash, Some(manager.resultMsat), hash, invoiceKey, description.invoiceText, LNParams.incomingFinalCltvExpiry, hop)
-        val chainFee = Transactions.weight2fee(LNParams.feeRatesInfo.onChainFeeConf.feeEstimator.getFeeratePerKw(LNParams.feeRatesInfo.onChainFeeConf.feeTargets.fundingBlockTarget), 700)
-        LNParams.cm.payBag.replaceIncomingPayment(prExt, preimage, description, lnBalance, LNParams.fiatRatesInfo.rates, chainFee.toMilliSatoshi)
-        me goTo ClassNames.qrInvoiceActivityClass
-        InputParser.value = prExt
-        alert.dismiss
+        def attempt(alert: AlertDialog): Unit = {
+          val preimage: ByteVector32 = randomBytes32
+          val hash: ByteVector32 = Crypto.sha256(preimage)
+          val invoiceKey = LNParams.secret.keys.fakeInvoiceKey(hash)
+          val hop = List(commits.updateOpt.map(_ extraHop commits.remoteInfo.nodeId).toList)
+          val description = PlainDescription(split = None, label = None, manager.resultExtraInput getOrElse new String)
+          val prExt = PaymentRequestExt from PaymentRequest(LNParams.chainHash, Some(manager.resultMsat), hash, invoiceKey, description.invoiceText, LNParams.incomingFinalCltvExpiry, hop)
+          val chainFee = Transactions.weight2fee(LNParams.feeRatesInfo.onChainFeeConf.feeEstimator.getFeeratePerKw(LNParams.feeRatesInfo.onChainFeeConf.feeTargets.fundingBlockTarget), 700)
+          LNParams.cm.payBag.replaceIncomingPayment(prExt, preimage, description, lnBalance, LNParams.fiatRatesInfo.rates, chainFee.toMilliSatoshi)
+          me goTo ClassNames.qrInvoiceActivityClass
+          InputParser.value = prExt
+          alert.dismiss
+        }
+
+        val alert = mkCheckFormNeutral(attempt, none, _ => manager.updateText(commits.availableForReceive),
+          titleBodyAsViewBuilder(getString(dialog_receive_ln).html, manager.content), dialog_ok, dialog_cancel, dialog_max)
+
+        manager.hintFiatDenom.setText(getString(dialog_can_receive).format(canReceiveFiat).html)
+        manager.hintDenom.setText(getString(dialog_can_receive).format(canReceive).html)
+        manager.updateOkButton(getPositiveButton(alert), isEnabled = false).run
+
+        manager.inputAmount addTextChangedListener onTextChange { _ =>
+          val notTooLow: Boolean = LNParams.minPayment <= manager.resultMsat
+          val notTooHigh: Boolean = commits.availableForReceive >= manager.resultMsat
+          manager.updateOkButton(getPositiveButton(alert), notTooLow && notTooHigh).run
+        }
       }
-
-      val alert = mkCheckFormNeutral(attempt, none, _ => manager.updateText(commits.availableForReceive),
-        titleBodyAsViewBuilder(getString(dialog_receive_ln).html, manager.content), dialog_ok, dialog_cancel, dialog_max)
-
-      manager.hintFiatDenom.setText(getString(dialog_can_receive).format(canReceiveFiat).html)
-      manager.hintDenom.setText(getString(dialog_can_receive).format(canReceive).html)
-      manager.updateOkButton(getPositiveButton(alert), isEnabled = false).run
-
-      manager.inputAmount addTextChangedListener onTextChange { _ =>
-        val notTooLow: Boolean = LNParams.minPayment <= manager.resultMsat
-        val notTooHigh: Boolean = commits.availableForReceive >= manager.resultMsat
-        manager.updateOkButton(getPositiveButton(alert), notTooLow && notTooHigh).run
-      }
-
-    case (CHOICE_RECEIVE_TAG, 0) =>
-      me goTo ClassNames.qrChainActivityClass
 
     case _ =>
   }
@@ -530,15 +485,16 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
       walletCards.updateFiatRates
       walletCards.updateView
 
+      val window = 500.millis
       // Throttle all types of burst updates, but make sure the last one is always called
-      val stateEvents = Rx.uniqueFirstAndLastWithinWindow(ChannelMaster.stateUpdateStream, 1.second)
-      val txEvents = Rx.uniqueFirstAndLastWithinWindow(txEventStream, 1.second).doOnNext(_ => reloadTxInfos)
-      val paymentEvents = Rx.uniqueFirstAndLastWithinWindow(paymentEventStream, 1.second).doOnNext(_ => reloadPaymentInfos)
-      val relayEvents = Rx.uniqueFirstAndLastWithinWindow(relayEventStream, 1.second).doOnNext(_ => reloadRelayedPreimageInfos)
+      val stateEvents = Rx.uniqueFirstAndLastWithinWindow(ChannelMaster.stateUpdateStream, window)
+      val txEvents = Rx.uniqueFirstAndLastWithinWindow(txEventStream, window).doOnNext(_ => reloadTxInfos)
+      val paymentEvents = Rx.uniqueFirstAndLastWithinWindow(paymentEventStream, window).doOnNext(_ => reloadPaymentInfos)
+      val relayEvents = Rx.uniqueFirstAndLastWithinWindow(relayEventStream, window).doOnNext(_ => reloadRelayedPreimageInfos)
 
       streamSubscription = txEvents.merge(paymentEvents).merge(relayEvents).doOnNext(_ => updAllInfos).merge(stateEvents).subscribe(_ => UITask(updatePaymentList).run).toSome
-      statusSubscription = Rx.uniqueFirstAndLastWithinWindow(ChannelMaster.statusUpdateStream, 1.second).merge(stateEvents).subscribe(_ => UITask(walletCards.updateView).run).toSome
-      successSubscription = ChannelMaster.preimageRevealStream.merge(ChannelMaster.preimageObtainStream).throttleFirst(1.second).subscribe(_ => Vibrator.vibrate).toSome
+      statusSubscription = Rx.uniqueFirstAndLastWithinWindow(ChannelMaster.statusUpdateStream, window).merge(stateEvents).subscribe(_ => UITask(walletCards.updateView).run).toSome
+      successSubscription = ChannelMaster.preimageRevealStream.merge(ChannelMaster.preimageObtainStream).throttleFirst(window).subscribe(_ => Vibrator.vibrate).toSome
     } else {
       WalletApp.freePossiblyUsedResouces
       me exitTo ClassNames.mainActivityClass

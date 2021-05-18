@@ -124,7 +124,7 @@ object LNParams {
 
   def currentBlockDay: Long = blockCount.get / blocksPerDay
 
-  def isChainDisconnectedTooLong: Boolean = lastDisconnect.get < System.currentTimeMillis - 60 * 60 * 1000L * 2
+  def isChainDisconnectTooLong: Boolean = lastDisconnect.get < System.currentTimeMillis - 60 * 60 * 1000L * 2
 
   def incorrectDetails(amount: MilliSatoshi): FailureMessage = IncorrectOrUnknownPaymentDetails(amount, blockCount.get)
 

@@ -162,7 +162,7 @@ case class PayRequest(callback: String, maxSendable: Long, minSendable: Long, me
 
 case class PayRequestFinal(successAction: Option[PaymentAction], routes: List[AdditionalRoute], pr: String) extends LNUrlData {
 
-  val additionalRoutes: Set[GraphStructure.GraphEdge] = RouteCalculation.makeExtraEdges(routes.map(PayRequest.routeToHops), paymentRequest.nodeId)
+  val additionalRoutes: Set[GraphStructure.GraphEdge] = RouteCalculation.makeExtraEdges(routes.map(PayRequest.routeToHops), prExt.pr.nodeId)
 
-  lazy val paymentRequest: PaymentRequest = PaymentRequest.read(pr)
+  lazy val prExt: PaymentRequestExt = PaymentRequestExt.fromRaw(pr)
 }

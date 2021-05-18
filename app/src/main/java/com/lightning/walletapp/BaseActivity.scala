@@ -9,14 +9,16 @@ import java.io.{File, FileOutputStream}
 import android.graphics.{Bitmap, Color}
 import android.graphics.Color.{BLACK, WHITE}
 import android.content.{DialogInterface, Intent}
+import immortan.{Channel, LNParams, PaymentInfo}
 import immortan.crypto.Tools.{Fiat2Btc, none, runAnd}
 import com.google.zxing.{BarcodeFormat, EncodeHintType}
 import android.text.{Editable, Html, Spanned, TextWatcher}
 import androidx.core.content.{ContextCompat, FileProvider}
-import immortan.utils.{BitcoinUri, Denomination, InputParser}
 import fr.acinq.eclair.blockchain.fee.{FeeratePerKw, FeeratePerVByte}
 import com.google.android.material.snackbar.{BaseTransientBottomBar, Snackbar}
+import immortan.utils.{BitcoinUri, Denomination, InputParser, PaymentRequestExt}
 import android.widget.{ArrayAdapter, Button, EditText, ImageView, LinearLayout, ListView, TextView}
+
 import com.cottacush.android.currencyedittext.CurrencyEditText
 import com.google.android.material.textfield.TextInputLayout
 import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
@@ -28,6 +30,7 @@ import com.google.android.material.slider.Slider
 import android.graphics.Bitmap.Config.ARGB_8888
 import androidx.appcompat.app.AppCompatActivity
 import android.text.method.LinkMovementMethod
+import fr.acinq.eclair.payment.PaymentRequest
 import com.google.zxing.qrcode.QRCodeWriter
 import androidx.appcompat.app.AlertDialog
 import scala.language.implicitConversions
@@ -39,7 +42,6 @@ import fr.acinq.bitcoin.Satoshi
 import scala.concurrent.Future
 import scodec.bits.ByteVector
 import android.os.Bundle
-import immortan.LNParams
 
 
 object BaseActivity {
@@ -340,6 +342,44 @@ trait BaseActivity extends AppCompatActivity { me =>
       customFeerateOption setVisibility View.GONE
       customFeerate setVisibility View.VISIBLE
     }
+  }
+
+  // Guards
+
+  def lnSendGuard(prExt: PaymentRequestExt, container: View)(onOK: => Unit): Unit = LNParams.cm.checkIfSendable(prExt.pr.paymentHash) match {
+    case _ if prExt.pr.prefix != PaymentRequest.prefixes(LNParams.chainHash) => snack(container, getString(error_ln_send_network).html, dialog_ok, _.dismiss)
+    case _ if !LNParams.ourInit.features.areSupported(prExt.pr.features.features) => snack(container, getString(error_ln_send_features).html, dialog_ok, _.dismiss)
+    case _ if !LNParams.cm.all.values.exists(Channel.isOperationalOrWaiting) => snack(container, getString(error_ln_no_chans).html, dialog_ok, _.dismiss)
+    case _ if LNParams.cm.all.values.forall(Channel.isWaiting) => snack(container, getString(error_ln_waiting).html, dialog_ok, _.dismiss)
+    case _ if LNParams.isChainDisconnectTooLong => snack(container, getString(error_ln_send_chain_disconnect).html, dialog_ok, _.dismiss)
+
+    case _ if LNParams.cm.allSortedSendable.last.commits.availableForSend < LNParams.minPayment =>
+      val reserveHuman = LNParams.denomination.parsedWithSign(-LNParams.cm.allSortedSendable.head.commits.availableForSend, Colors.cardZero)
+      snack(container, getString(error_ln_send_reserve).format(reserveHuman).html, dialog_ok, _.dismiss)
+
+    case _ if prExt.pr.amount.exists(_ < LNParams.minPayment) =>
+      val requestedHuman = LNParams.denomination.parsedWithSign(prExt.pr.amount.get, Colors.cardZero)
+      val minHuman = LNParams.denomination.parsedWithSign(LNParams.minPayment, Colors.cardZero)
+      val msg = getString(error_ln_send_small).format(requestedHuman, minHuman).html
+      snack(container, msg, dialog_ok, _.dismiss)
+
+    case _ if prExt.hasSplitIssue => snack(container, getString(error_ln_send_split).html, dialog_ok, _.dismiss)
+    case _ if prExt.pr.isExpired => snack(container, getString(error_ln_send_expired).html, dialog_ok, _.dismiss)
+    case Some(PaymentInfo.NOT_SENDABLE_IN_FLIGHT) => snack(container, getString(error_ln_send_in_flight).html, dialog_ok, _.dismiss)
+    case Some(PaymentInfo.NOT_SENDABLE_SUCCESS) => snack(container, getString(error_ln_send_done_already).html, dialog_ok, _.dismiss)
+    case _ => onOK
+  }
+
+  def lnReceiveGuard(container: View)(onOk: => Unit): Unit = LNParams.cm.allSortedReceivable.lastOption match {
+    case _ if !LNParams.cm.all.values.exists(Channel.isOperationalOrWaiting) => snack(container, getString(error_ln_no_chans).html, dialog_ok, _.dismiss)
+    case _ if LNParams.cm.all.values.forall(Channel.isWaiting) => snack(container, getString(error_ln_waiting).html, dialog_ok, _.dismiss)
+    case None => snack(container, getString(error_ln_receive_no_update).html, dialog_ok, _.dismiss)
+
+    case Some(cnc) =>
+      if (cnc.commits.availableForReceive < 0L.msat) {
+        val reserveHuman = LNParams.denomination.parsedWithSign(-cnc.commits.availableForReceive, Colors.cardZero)
+        snack(container, getString(error_ln_receive_reserve).format(reserveHuman).html, dialog_ok, _.dismiss)
+      } else onOk
   }
 }
 
