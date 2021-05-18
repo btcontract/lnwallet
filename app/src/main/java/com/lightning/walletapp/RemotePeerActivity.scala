@@ -8,7 +8,6 @@ import fr.acinq.eclair.Features._
 import com.lightning.walletapp.R.string._
 
 import android.view.{View, ViewGroup}
-import fr.acinq.bitcoin.{ByteVector32, Satoshi}
 import immortan.utils.{InputParser, Rx, ThrottledWork}
 import android.widget.{LinearLayout, ProgressBar, TextView}
 import immortan.fsm.{HCOpenHandler, NCFundeeOpenHandler, NCFunderOpenHandler}
@@ -18,6 +17,7 @@ import concurrent.ExecutionContext.Implicits.global
 import androidx.appcompat.app.AlertDialog
 import com.ornach.nobobutton.NoboButton
 import rx.lang.scala.Observable
+import fr.acinq.bitcoin.Satoshi
 import java.util.TimerTask
 import android.os.Bundle
 
@@ -82,9 +82,9 @@ class RemotePeerActivity extends BaseActivity with ExternalDataChecker { me =>
       }
 
       switchView(showProgress = false)
-      viewNoFeatureSupport setVisibility BaseActivity.goneMap(!criticalSupportAvailable)
-      viewYesFeatureSupport setVisibility BaseActivity.goneMap(criticalSupportAvailable)
-      optionHostedChannel setVisibility BaseActivity.goneMap(checkFeature apply HostedChannels)
+      setVis(!criticalSupportAvailable, viewNoFeatureSupport)
+      setVis(criticalSupportAvailable, viewYesFeatureSupport)
+      setVis(checkFeature(HostedChannels), optionHostedChannel)
     }.run
   }
 
@@ -209,8 +209,8 @@ class RemotePeerActivity extends BaseActivity with ExternalDataChecker { me =>
   }
 
   def switchView(showProgress: Boolean): Unit = UITask {
-    progressBar setVisibility BaseActivity.goneMap(showProgress)
-    peerDetails setVisibility BaseActivity.goneMap(!showProgress)
+    setVis(!showProgress, peerDetails)
+    setVis(showProgress, progressBar)
   }.run
 
   def revertAndInform(reason: Throwable): Unit = {

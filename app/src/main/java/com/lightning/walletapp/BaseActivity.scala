@@ -43,12 +43,9 @@ import immortan.LNParams
 
 
 object BaseActivity {
-  val goneMap: Map[Boolean, Int] = Map(true -> View.VISIBLE, false -> View.GONE)
-  val invisMap: Map[Boolean, Int] = Map(true -> View.VISIBLE, false -> View.INVISIBLE)
-
   implicit class StringOps(source: String) {
-    def s2hex: String = ByteVector.view(bytes = source getBytes "UTF-8").toHex
-    def shortAddress: String = s"${source take 4} <sup><small><small>&#8230;</small></small></sup> ${source takeRight 4}"
+    def shortAddress: String = s"${source take 4}&#160;<sup><small><small>&#8230;</small></small></sup>&#160;${source takeRight 4}"
+    def s2hex: String = ByteVector.view(source getBytes "UTF-8").toHex
     def humanFour: String = source.grouped(4).mkString(s"\u0020")
     def html: Spanned = Html.fromHtml(source)
   }
@@ -108,6 +105,8 @@ trait BaseActivity extends AppCompatActivity { me =>
 
   def INIT(state: Bundle): Unit
 
+  // Helpers
+
   def contrastedTextColor(color: Int): Int = {
     val whiteContrast = ColorUtils.calculateContrast(WHITE, color)
     val blackContrast = ColorUtils.calculateContrast(BLACK, color)
@@ -119,23 +118,25 @@ trait BaseActivity extends AppCompatActivity { me =>
     share.setType("text/plain").putExtra(Intent.EXTRA_TEXT, text)
   }
 
-  def snack(parent: View, msg: CharSequence, actionRes: Int, onTap: Snackbar => Unit): Unit = try {
+  def snack(parent: View, msg: CharSequence, actionRes: Int, fun: Snackbar => Unit): Unit = try {
     val bottomSnackbar: Snackbar = Snackbar.make(parent, msg, BaseTransientBottomBar.LENGTH_INDEFINITE)
     bottomSnackbar.getView.findViewById(com.google.android.material.R.id.snackbar_text).asInstanceOf[TextView].setMaxLines(15)
 
     val listener = me onButtonTap {
       currentSnackbar = None
-      onTap(bottomSnackbar)
+      fun(bottomSnackbar)
     }
 
     bottomSnackbar.setAction(actionRes, listener).show
     currentSnackbar = Some(bottomSnackbar)
   } catch none
 
-  def onButtonTap(exec: => Unit): OnClickListener = new OnClickListener { def onClick(view: View): Unit = exec }
+  def onButtonTap(fun: => Unit): OnClickListener = new OnClickListener {
+    def onClick(view: View): Unit = fun
+  }
 
-  def onTextChange(exec: CharSequence => Unit): TextWatcher = new TextWatcher {
-    override def onTextChanged(c: CharSequence, x: Int, y: Int, z: Int): Unit = exec(c)
+  def onTextChange(fun: CharSequence => Unit): TextWatcher = new TextWatcher {
+    override def onTextChanged(c: CharSequence, x: Int, y: Int, z: Int): Unit = fun(c)
     override def beforeTextChanged(s: CharSequence, x: Int, y: Int, z: Int): Unit = none
     override def afterTextChanged(e: Editable): Unit = none
   }
@@ -147,8 +148,13 @@ trait BaseActivity extends AppCompatActivity { me =>
     case Success(result) => UITask(ok apply result).run case Failure(error) => UITask(no apply error).run
   }
 
-  implicit def UITask(exec: => Any): TimerTask = {
-    val runnableExec = new Runnable { override def run: Unit = exec }
+  def setVis(isVisible: Boolean, view: View): Unit = {
+    val nextMode = if (isVisible) View.VISIBLE else View.GONE
+    if (view.getVisibility != nextMode) view.setVisibility(nextMode)
+  }
+
+  implicit def UITask(fun: => Any): TimerTask = {
+    val runnableExec = new Runnable { override def run: Unit = fun }
     new TimerTask { def run: Unit = me runOnUiThread runnableExec }
   }
 
@@ -187,9 +193,11 @@ trait BaseActivity extends AppCompatActivity { me =>
     // both POSITIVE and NEGATIVE buttons may be omitted by providing -1 as their resource ids
     if (-1 != noRes) bld.setNegativeButton(noRes, null)
     if (-1 != okRes) bld.setPositiveButton(okRes, null)
-
     val alert = showForm(bld.create)
-    val posAct = me onButtonTap ok(alert)
+
+    val posAct = me onButtonTap {
+      ok(alert)
+    }
 
     val negAct = me onButtonTap {
       alert.dismiss
@@ -206,7 +214,10 @@ trait BaseActivity extends AppCompatActivity { me =>
 
     if (-1 != neutralRes) bld.setNeutralButton(neutralRes, null)
     val alert = mkCheckForm(ok, no, bld, okRes, noRes)
-    val neutralAct = me onButtonTap neutral(alert)
+
+    val neutralAct = me onButtonTap {
+      neutral(alert)
+    }
 
     // Extend base dialog with a special NEUTRAL button, may be omitted by providing -1
     if (-1 != neutralRes) getNeutralButton(alert) setOnClickListener neutralAct
@@ -223,7 +234,7 @@ trait BaseActivity extends AppCompatActivity { me =>
 
   // Scanner
 
-  final val scannerRequestCode = 101
+  final private val scannerRequestCode = 101
 
   type GrantResults = Array[Int]
 
@@ -315,9 +326,9 @@ trait BaseActivity extends AppCompatActivity { me =>
       feeOpt.map(fee => LNParams.denomination.parsedWithSign(fee, Colors.cardZero).html).foreach(bitcoinFee.setText)
       feeOpt.map(fee => WalletApp.currentMsatInFiatHuman(fee).html).foreach(fiatFee.setText)
       feeRate setText getString(dialog_fee_sat_vbyte).format(rate.toLong / 1000).html
-      bitcoinFee setVisibility BaseActivity.goneMap(feeOpt.isDefined)
-      fiatFee setVisibility BaseActivity.goneMap(feeOpt.isDefined)
-      txIssues setVisibility BaseActivity.goneMap(showIssue)
+      setVis(feeOpt.isDefined, bitcoinFee)
+      setVis(feeOpt.isDefined, fiatFee)
+      setVis(showIssue, txIssues)
     }
 
     customFeerateOption setOnClickListener onButtonTap {

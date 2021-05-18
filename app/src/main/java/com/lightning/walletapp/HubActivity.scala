@@ -108,7 +108,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
         case info: TxInfo =>
           holder.detailsAndStatus setVisibility View.VISIBLE
           holder.description setText txDescription(info).html
-          holder.labelIcon setVisibility BaseActivity.goneMap(info.description.label.isDefined)
+          setVis(info.description.label.isDefined, holder.labelIcon)
           holder.amount setText LNParams.denomination.directedWithSign(info.receivedSat.toMilliSatoshi, info.sentSat.toMilliSatoshi, cardZero, info.isIncoming).html
           holder.cardContainer setBackgroundResource R.drawable.panel_payment_passive_bg
           holder.statusIcon setImageResource txStatusIcon(info)
@@ -118,7 +118,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
         case info: PaymentInfo =>
           holder.detailsAndStatus setVisibility View.VISIBLE
           holder.description setText paymentDescription(info).html
-          holder.labelIcon setVisibility BaseActivity.goneMap(info.description.label.isDefined)
+          setVis(info.description.label.isDefined, holder.labelIcon)
           holder.amount setText LNParams.denomination.directedWithSign(info.received, info.sent, cardZero, info.isIncoming).html
           holder.cardContainer setBackgroundResource paymentBackground(info)
           holder.statusIcon setImageResource paymentStatusIcon(info)
@@ -154,8 +154,8 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
       case _: PenaltyTxDescription => holder.setVisibleIcon(id = R.id.lnBtc)
       case _: PlainTxDescription =>
         // See WalletApp.WalletEventsListener.onTransactionReceived for explanation
-        holder.iconMap(R.id.btcOutgoingToSelf) setVisibility BaseActivity.goneMap(info.sentSat == info.receivedSat)
-        holder.iconMap(R.id.btcOutgoingNormal) setVisibility BaseActivity.goneMap(info.sentSat != info.receivedSat)
+        setVis(info.sentSat != info.receivedSat, holder iconMap R.id.btcOutgoingNormal)
+        setVis(info.sentSat == info.receivedSat, holder iconMap R.id.btcOutgoingToSelf)
         holder.setVisibleIcon(id = R.id.btcOutgoing)
     }
 
@@ -182,8 +182,8 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
       else setOutgoingPaymentIcons(holder, info)
 
     private def setOutgoingPaymentIcons(holder: PaymentLineViewHolder, info: PaymentInfo): Unit = {
-      holder.iconMap(R.id.lnOutgoingAction) setVisibility BaseActivity.goneMap(info.actionString != PaymentInfo.NO_ACTION)
-      holder.iconMap(R.id.lnOutgoingBasic) setVisibility BaseActivity.goneMap(info.actionString == PaymentInfo.NO_ACTION)
+      setVis(info.actionString != PaymentInfo.NO_ACTION, holder iconMap R.id.lnOutgoingAction)
+      setVis(info.actionString == PaymentInfo.NO_ACTION, holder iconMap R.id.lnOutgoingBasic)
       holder.setVisibleIcon(id = R.id.lnOutgoing)
     }
 
@@ -267,28 +267,23 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
       fiatUnitPriceAndChange.setText(unitPriceAndChange.html)
     }
 
-    def setCaptionVisibility: Unit = {
-      val somePaymentsPresent = BaseActivity.goneMap(allInfos.nonEmpty)
-      listCaption.setVisibility(somePaymentsPresent)
-    }
-
     def updateView: Unit = lnBalance match { case currentLnBalance =>
       val walletBalance = currentLnBalance + WalletApp.lastChainBalance.totalBalance
       val states = LNParams.cm.all.values.map(_.state).take(8)
 
       TransitionManager.beginDelayedTransition(view)
-      channelIndicator.createIndicators(states.toArray)
-      channelStateIndicators setVisibility BaseActivity.goneMap(states.nonEmpty)
+      setVis(states.nonEmpty, channelStateIndicators)
+      setVis(WalletApp.lastChainBalance.isTooLongAgo, syncIndicator)
       totalFiatBalance setText WalletApp.currentMsatInFiatHuman(walletBalance).html
       totalBalance setText LNParams.denomination.parsedWithSign(walletBalance, totalZero).html
-      syncIndicator setVisibility BaseActivity.invisMap(!WalletApp.lastChainBalance.isTooLongAgo)
+      channelIndicator.createIndicators(states.toArray)
 
-      totalLightningBalance setVisibility BaseActivity.invisMap(states.nonEmpty)
       totalLightningBalance setText LNParams.denomination.parsedWithSign(currentLnBalance, lnCardZero).html
       totalBitcoinBalance setText LNParams.denomination.parsedWithSign(WalletApp.lastChainBalance.totalBalance, btcCardZero).html
-      totalBitcoinBalance setVisibility BaseActivity.invisMap(WalletApp.lastChainBalance.totalBalance != 0L.msat)
-      receiveBitcoinTip setVisibility BaseActivity.invisMap(WalletApp.lastChainBalance.totalBalance == 0L.msat)
-      addChannelTip setVisibility BaseActivity.invisMap(states.isEmpty)
+      setVis(WalletApp.lastChainBalance.totalBalance != 0L.msat, totalBitcoinBalance)
+      setVis(WalletApp.lastChainBalance.totalBalance == 0L.msat, receiveBitcoinTip)
+      setVis(states.nonEmpty, totalLightningBalance)
+      setVis(states.isEmpty, addChannelTip)
 
       val localInCount = LNParams.cm.inProcessors.count { case (fullTag, _) => fullTag.tag == PaymentTagTlv.FINAL_INCOMING }
       val localOutCount = LNParams.cm.opm.data.payments.count { case (fullTag, _) => fullTag.tag == PaymentTagTlv.LOCALLY_SENT }
@@ -306,7 +301,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
       val currentPublished = LNParams.cm.closingsPublished
       val currentRefunds = LNParams.cm.pendingRefundsAmount(currentPublished).toMilliSatoshi
       pendingRefundsSum setText LNParams.denomination.parsedWithSign(currentRefunds, cardZero).html
-      pendingRefunds setVisibility BaseActivity.goneMap(currentPublished.nonEmpty)
+      setVis(currentPublished.nonEmpty, pendingRefunds)
     }
   }
 
@@ -334,9 +329,9 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
 
   private val netListener = new Monitor.ConnectivityListener {
     override def onConnectivityChanged(ct: Int, isConnected: Boolean, isFast: Boolean): Unit = UITask {
-      walletCards.offlineIndicator setVisibility BaseActivity.goneMap(!isConnected)
-      // This will make channels SLEEPING right away instead of after no Pong
+      // This will make channels SLEEPING right away instead of a bit later when we receive no Pong
       if (!isConnected) CommsTower.workers.values.foreach(_.disconnect)
+      setVis(!isConnected, walletCards.offlineIndicator)
     }.run
   }
 
@@ -680,6 +675,6 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
 
   def updatePaymentList: Unit = {
     paymentsAdapter.notifyDataSetChanged
-    walletCards.setCaptionVisibility
+    setVis(allInfos.nonEmpty, walletCards.listCaption)
   }
 }

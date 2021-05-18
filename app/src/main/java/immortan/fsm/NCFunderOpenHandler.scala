@@ -20,7 +20,9 @@ object NCFunderOpenHandler {
   val dummyLocal: PublicKey = randomKey.publicKey
   val dummyRemote: PublicKey = randomKey.publicKey
 
-  def makeFunding(chainWallet: WalletExt, fundingAmount: Satoshi, feeratePerKw: FeeratePerKw, local: PublicKey = dummyLocal, remote: PublicKey = dummyRemote): Future[MakeFundingTxResponse] = {
+  def makeFunding(chainWallet: WalletExt, fundingAmount: Satoshi, feeratePerKw: FeeratePerKw,
+                  local: PublicKey = dummyLocal, remote: PublicKey = dummyRemote): Future[MakeFundingTxResponse] = {
+
     val program = Script.write(Script pay2wsh Scripts.multiSig2of2(local, remote).toList)
     chainWallet.wallet.makeFundingTx(program, fundingAmount, feeratePerKw)
   }
