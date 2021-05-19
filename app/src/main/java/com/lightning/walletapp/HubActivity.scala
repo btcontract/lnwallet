@@ -5,27 +5,25 @@ import immortan.utils._
 import android.widget._
 import fr.acinq.eclair._
 import immortan.crypto.Tools._
-
 import scala.concurrent.duration._
+import com.softwaremill.quicklens._
 import com.lightning.walletapp.Colors._
 import com.lightning.walletapp.R.string._
+
 import android.os.{Bundle, Handler}
+import fr.acinq.bitcoin.{Satoshi, SatoshiLong}
 import android.view.{MenuItem, View, ViewGroup}
 import rx.lang.scala.{Observable, Subject, Subscription}
 import com.androidstudy.networkmanager.{Monitor, Tovuti}
 import immortan.sqlite.{PaymentTable, RelayTable, Table, TxTable}
-import fr.acinq.bitcoin.{ByteVector32, Crypto, Satoshi, SatoshiLong}
 import fr.acinq.eclair.blockchain.fee.{FeeratePerKw, FeeratePerVByte}
 import fr.acinq.eclair.blockchain.electrum.ElectrumWallet.WalletReady
 import com.lightning.walletapp.BaseActivity.StringOps
 import org.ndeftools.util.activity.NfcReaderActivity
-
 import concurrent.ExecutionContext.Implicits.global
 import com.github.mmin18.widget.RealtimeBlurView
 import androidx.recyclerview.widget.RecyclerView
-import fr.acinq.eclair.transactions.Transactions
 import com.google.android.material.slider.Slider
-import fr.acinq.eclair.payment.PaymentRequest
 import androidx.transition.TransitionManager
 import fr.acinq.eclair.blockchain.TxAndFee
 import com.indicator.ChannelIndicatorLine
@@ -34,8 +32,6 @@ import fr.acinq.eclair.wire.PaymentTagTlv
 import android.database.ContentObserver
 import org.ndeftools.Message
 import java.util.TimerTask
-
-import fr.acinq.eclair.channel.Commitments
 
 
 class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataChecker with ChoiceReceiver { me =>
@@ -401,29 +397,84 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
 
   override def checkExternalData(whenNone: Runnable): Unit = InputParser.checkAndMaybeErase {
     case _: RemoteNodeInfo => me goTo ClassNames.remotePeerActivityClass
-
     case uri: BitcoinUri if uri.isValid => bringSendBitcoinPopup(uri)
 
     case prExt: PaymentRequestExt =>
       lnSendGuard(prExt, contentWindow) {
-        case Some(askedAmount: MilliSatoshi) =>
-          new OffChainSender(maxSendable = LNParams.cm.maxSendable.min(askedAmount * 2), minSendable = LNParams.minPayment) {
-            override def isNeutralEnabled: Boolean = manager.resultMsat >= minSendable && manager.resultMsat < askedAmount - minSendable
-            override def isPayEnabled: Boolean = manager.resultMsat >= askedAmount && manager.resultMsat <= maxSendable
-            manager.updateText(askedAmount)
+        case Some(origAmount) if prExt.splits.nonEmpty =>
+          // Set maxSendable to original invoice amount in case if this payer decides to pay the whole sum
+          new OffChainSender(maxSendable = LNParams.cm.maxSendable.min(origAmount * 2), minSendable = LNParams.minPayment) {
+            override def isNeutralEnabled: Boolean = manager.resultMsat >= minSendable && manager.resultMsat < prExt.splitLeftover - minSendable
+            override def isPayEnabled: Boolean = manager.resultMsat >= prExt.splitLeftover && manager.resultMsat <= maxSendable
 
             override def neutral(alert: AlertDialog): Unit = ???
+
             override def send(alert: AlertDialog): Unit = ???
 
             override def getAlertDialog: AlertDialog = {
-              val description = prExt.pr.description.left.toOption.map(descriptionText => s"<br><br>${descriptionText take 72}").getOrElse(new String)
-              val builder = titleBodyAsViewBuilder(updateView2Color(new String, getString(dialog_send_ln).format(description), R.color.cardLightning), manager.content)
+              val titleText = getString(dialog_split_ln) format BaseActivity.formattedSplit(me, prExt, totalAmount = origAmount)
+              val builder = titleBodyAsViewBuilder(updateView2Color(new String, titleText, R.color.cardLightning), manager.content)
               mkCheckFormNeutral(send, none, neutral, builder, dialog_pay, dialog_cancel, dialog_split)
             }
+
+            // Prefill with leftover, not invoice amount
+            manager.updateText(prExt.splitLeftover)
+          }
+
+        case Some(origAmount) =>
+          new OffChainSender(maxSendable = LNParams.cm.maxSendable.min(origAmount * 2), minSendable = LNParams.minPayment) {
+            override def isNeutralEnabled: Boolean = manager.resultMsat >= minSendable && manager.resultMsat < origAmount - minSendable
+            override def isPayEnabled: Boolean = manager.resultMsat >= origAmount && manager.resultMsat <= maxSendable
+
+            override def neutral(alert: AlertDialog): Unit = {
+              val cmd = makeSendCmd(prExt, paySum = manager.resultMsat).modify(_.split.totalSum).setTo(origAmount)
+              val desc = PlainDescription(cmd.split.toSome, manager.resultExtraInput, prExt.description getOrElse new String)
+              InputParser.value = PaymentSplit(prExt, None, desc, cmd, typicalChainTxFee)
+              me goTo ClassNames.qrSplitActivityClass
+              alert.dismiss
+            }
+
+            override def send(alert: AlertDialog): Unit = {
+              val cmd = makeSendCmd(prExt, paySum = manager.resultMsat)
+              val desc = PlainDescription(split = None, label = manager.resultExtraInput, invoiceText = prExt.description getOrElse new String)
+              LNParams.cm.payBag.replaceOutgoingPayment(prExt, desc, None, cmd.split.myPart, WalletApp.lastChainBalance.totalBalance, LNParams.fiatRatesInfo.rates, typicalChainTxFee)
+              LNParams.cm.opm process cmd
+              alert.dismiss
+            }
+
+            override def getAlertDialog: AlertDialog = {
+              val titleText = getString(dialog_send_ln) format prExt.description.map(desc => s"<br><br>$desc").getOrElse(new String)
+              val builder = titleBodyAsViewBuilder(updateView2Color(new String, titleText, R.color.cardLightning), manager.content)
+              mkCheckFormNeutral(send, none, neutral, builder, dialog_pay, dialog_cancel, dialog_split)
+            }
+
+            // Prefill with full invoice amount
+            manager.updateText(prExt.splitLeftover)
           }
 
         case None =>
+          new OffChainSender(maxSendable = LNParams.cm.maxSendable, minSendable = LNParams.minPayment) {
+            override def isPayEnabled: Boolean = manager.resultMsat >= minSendable && manager.resultMsat <= maxSendable
+            override def neutral(alert: AlertDialog): Unit = manager.updateText(maxSendable)
+            override def isNeutralEnabled: Boolean = true
 
+            override def send(alert: AlertDialog): Unit = {
+              val cmd = makeSendCmd(prExt, paySum = manager.resultMsat)
+              val desc = PlainDescription(split = None, label = manager.resultExtraInput, invoiceText = prExt.description getOrElse new String)
+              LNParams.cm.payBag.replaceOutgoingPayment(prExt, desc, None, cmd.split.myPart, WalletApp.lastChainBalance.totalBalance, LNParams.fiatRatesInfo.rates, typicalChainTxFee)
+              LNParams.cm.opm process cmd
+              alert.dismiss
+            }
+
+            override def getAlertDialog: AlertDialog = {
+              val titleText = getString(dialog_send_ln) format prExt.description.map(desc => s"<br><br>$desc").getOrElse(new String)
+              val builder = titleBodyAsViewBuilder(updateView2Color(new String, titleText, R.color.cardLightning), manager.content)
+              mkCheckFormNeutral(send, none, neutral, builder, dialog_pay, dialog_cancel, dialog_max)
+            }
+
+            // Disable PAY button at start since amount is not present yet
+            manager.updateButton(getPositiveButton(alert), isEnabled = false).run
+          }
       }
 
     case _: LNUrl =>

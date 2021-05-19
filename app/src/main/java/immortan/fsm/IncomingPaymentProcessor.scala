@@ -259,17 +259,17 @@ class TrampolinePaymentRelayer(val fullTag: FullPaymentTag, cm: ChannelMaster) e
         abort(data1, adds)
 
       case None =>
-        val innerPayload = first(adds).innerPayload
-        val totalFeeReserve = lastAmountIn - innerPayload.amountToForward - relayFee(innerPayload, LNParams.trampoline)
-        val routerConf = LNParams.routerConf.copy(maxCltvDelta = expiryIn(adds) - innerPayload.outgoingCltv - LNParams.trampoline.cltvExpiryDelta)
-        val extraEdges = RouteCalculation.makeExtraEdges(innerPayload.invoiceRoutingInfo.map(_.map(_.toList).toList).getOrElse(Nil), innerPayload.outgoingNodeId)
+        val inner = first(adds).innerPayload
+        val totalFeeReserve = lastAmountIn - inner.amountToForward - relayFee(inner, LNParams.trampoline)
+        val extraEdges = RouteCalculation.makeExtraEdges(inner.invoiceRoutingInfo.getOrElse(Nil), inner.outgoingNodeId)
+        val routerConf = LNParams.routerConf.copy(maxCltvDelta = expiryIn(adds) - inner.outgoingCltv - LNParams.trampoline.cltvExpiryDelta)
         // It makes no sense to try to route out a payment through channels used by peer to route it in, this also includes possible unused multiple channels with same peer
         val allowedChans = cm.all -- adds.map(_.add.channelId).flatMap(cm.all.get).flatMap(Channel.chanAndCommitsOpt).map(_.commits.remoteInfo.nodeId).flatMap(cm.fromNode).map(_.commits.channelId)
-        val send = SendMultiPart(fullTag, routerConf, innerPayload.outgoingNodeId, innerPayload.amountToForward, innerPayload.amountToForward, totalFeeReserve, innerPayload.outgoingCltv, allowedChans.values.toSeq)
+        val send = SendMultiPart(fullTag, Left(inner.outgoingCltv), SplitInfo(inner.amountToForward, inner.amountToForward), routerConf, inner.outgoingNodeId, totalFeeReserve, allowedChans.values.toSeq)
 
-        become(TrampolineProcessing(innerPayload.outgoingNodeId), SENDING)
-        // If invoice features are present then sender is asking for relay to non-trampoline recipient, it is known that recipient supports MPP
-        if (innerPayload.invoiceFeatures.isDefined) cm.opm process send.copy(assistedEdges = extraEdges, outerPaymentSecret = innerPayload.paymentSecret.get)
+        become(TrampolineProcessing(inner.outgoingNodeId), SENDING)
+        // If invoice features are present then sender is asking for non-trampoline relay, it's known that recipient supports MPP
+        if (inner.invoiceFeatures.isDefined) cm.opm process send.copy(assistedEdges = extraEdges, outerPaymentSecret = inner.paymentSecret.get)
         else cm.opm process send.copy(onionTlvs = OnionTlv.TrampolineOnion(adds.head.packet.nextPacket) :: Nil, outerPaymentSecret = randomBytes32)
     }
   }

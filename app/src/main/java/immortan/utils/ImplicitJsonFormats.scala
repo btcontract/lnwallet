@@ -14,6 +14,7 @@ import fr.acinq.eclair.wire.ChannelUpdate
 import fr.acinq.bitcoin.Crypto.PublicKey
 import immortan.crypto.Tools.Fiat2Btc
 import fr.acinq.eclair.MilliSatoshi
+import immortan.fsm.SplitInfo
 import scodec.bits.BitVector
 
 
@@ -110,7 +111,7 @@ object ImplicitJsonFormats extends DefaultJsonProtocol {
   }
 
   implicit val splitInfoFmt: JsonFormat[SplitInfo] =
-    jsonFormat[MilliSatoshi, MilliSatoshi, SplitInfo](SplitInfo.apply, "totalSum", "ourPart")
+    jsonFormat[MilliSatoshi, MilliSatoshi, SplitInfo](SplitInfo.apply, "totalSum", "myPart")
 
   implicit val plainDescriptionFmt: JsonFormat[PlainDescription] = taggedJsonFmt(jsonFormat[Option[SplitInfo], Option[String], String,
     PlainDescription](PlainDescription.apply, "split", "label", "invoiceText"), tag = "PlainDescription")

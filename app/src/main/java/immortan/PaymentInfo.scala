@@ -2,11 +2,11 @@ package immortan
 
 import immortan.utils.ImplicitJsonFormats._
 import fr.acinq.eclair.channel.{DATA_CLOSING, DATA_NEGOTIATING, HasNormalCommitments}
+import immortan.fsm.{IncomingPaymentProcessor, SendMultiPart, SplitInfo}
 import immortan.crypto.Tools.{Bytes, Fiat2Btc, SEPARATOR, ratio}
 import fr.acinq.bitcoin.{ByteVector32, Satoshi, Transaction}
 import fr.acinq.eclair.wire.{FullPaymentTag, PaymentTagTlv}
 import immortan.utils.{LNUrl, PaymentRequestExt}
-import immortan.fsm.IncomingPaymentProcessor
 import fr.acinq.bitcoin.Crypto.PublicKey
 import fr.acinq.eclair.MilliSatoshi
 import scodec.bits.ByteVector
@@ -31,6 +31,9 @@ sealed trait TransactionDetails {
   lazy val date: Date = new Date(seenAt)
   val seenAt: Long
 }
+
+case class PaymentSplit(prExt: PaymentRequestExt, action: Option[PaymentAction],
+                        description: PaymentDescription, cmd: SendMultiPart, chainFee: MilliSatoshi)
 
 case class PaymentInfo(prString: String, preimage: ByteVector32, status: String, seenAt: Long, descriptionString: String,
                        actionString: String, paymentHash: ByteVector32, paymentSecret: ByteVector32, received: MilliSatoshi,
@@ -81,10 +84,6 @@ sealed trait PaymentDescription {
   val label: Option[String]
   val invoiceText: String
   val queryText: String
-}
-
-case class SplitInfo(totalSum: MilliSatoshi, ourPart: MilliSatoshi) {
-  val sentRatio: Long = ratio(totalSum, ourPart)
 }
 
 case class PlainDescription(split: Option[SplitInfo], label: Option[String], invoiceText: String) extends PaymentDescription {

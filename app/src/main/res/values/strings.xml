@@ -37,7 +37,7 @@
     </string>
 
     <string name="action_backup_present_title"><![CDATA[
-        Wallet recovery phrase<br><br><small><strong>Lightning backup file is present</strong>.
+        Wallet recovery phrase<br><br><small><b>Lightning backup file is present</b>.
         <br><br>Recovery phrase will be used to decrypt it and restore fully working channels on this device.<br><br>
         Lightning channels can work correctly on one device at a time, please do not use them on previous device once restored on this one.</small>
     ]]></string>
@@ -69,25 +69,25 @@
 
     <string name="dialog_can_send"><![CDATA[<b>can send up to</b> %1$s]]></string>
     <string name="dialog_can_receive"><![CDATA[<b>can receive up to</b> %1$s]]></string>
-    <string name="dialog_fee_sat_vbyte"><![CDATA[fee %1$s <b>sat/vB</b>]]></string>
+    <string name="dialog_fee_sat_vbyte"><![CDATA[<b>fee</b> %1$s sat/vB]]></string>
     <string name="dialog_insufficient_funds">insufficient funds</string>
     <string name="dialog_change_feerate">Change feerate&#8230;</string>
     <string name="dialog_sat_vbyte">sat/vB</string>
 
-    <string name="dialog_send_ln"><![CDATA[Send <strong>Lightning</strong> payment%1$s]]></string>
-    <string name="dialog_send_btc"><![CDATA[Send <strong>Bitcoin</strong> transaction<br><b>to address</b> %1$s%2$s]]></string>
-
-    <string name="dialog_split_ln_remain"><![CDATA[<b>Left to pay</b><br>%1$s]]></string>
-    <string name="dialog_split_ln"><![CDATA[Split <strong>Lightning</strong> payment<br><br>%1$s]]></string>
-    <string name="dialog_split_ln_tip">First let someone scan split invoice.\nThen tap pay at about the same time.</string>
+    <string name="dialog_send_ln"><![CDATA[Send <b>Lightning</b> payment%1$s]]></string>
+    <string name="dialog_split_ln"><![CDATA[Split <b>Lightning</b> payment%1$s]]></string>
+    <string name="dialog_send_btc"><![CDATA[Send <b>Bitcoin</b> transaction<br><b>to address</b> %1$s%2$s]]></string>
+    <string name="dialog_split_ln_tip">First let someone scan a split invoice.\nThen tap PAY at about the same time.</string>
+    <string name="dialog_split_ln_left"><![CDATA[<b>Left to pay</b>%1$s]]></string>
+    <string name="dialog_split_ln_total"><![CDATA[<b>Total sum</b>%1$s]]></string>
 
     <!-- errors -->
 
     <string name="error_rejected_incoming_public">Rejected public channel offer, only private channels are allowed.</string>
     <string name="error_btc_broadcast_fail">Could not broadcast a transaction, please make sure that wallet has network connection and then try again.</string>
-    <string name="error_could_not_decrypt"><![CDATA[<strong>Backup decryption failed</strong>.<br><br>Make sure that both backup file and recovery phrase are correct.<br><br>Error details:<br><br>%1$s]]></string>
-    <string name="error_wrong_phrase"><![CDATA[<strong>A phrase must be 12 or 24 words long</strong>.<br><br><strong>All words must be different</strong>.]]></string>
-    <string name="error_nothing_useful">Nothing useful is found</string>
+    <string name="error_could_not_decrypt"><![CDATA[<b>Backup decryption failed</b>.<br><br>Make sure that both backup file and recovery phrase are correct.<br><br>Error details:<br><br>%1$s]]></string>
+    <string name="error_wrong_phrase"><![CDATA[<b>A phrase must be 12 or 24 words long</b>.<br><br><b>All words must be different</b>.]]></string>
+    <string name="error_nothing_useful">Nothing useful is found.</string>
 
     <string name="error_ln_no_chans"><![CDATA[Can\'t proceed because no open payment channels are present.]]></string>
     <string name="error_ln_waiting"><![CDATA[Can\'t proceed because none of your channels is open yet, please wait for more funding confirmations.]]></string>
@@ -106,12 +106,12 @@
     <string name="error_ln_send_in_flight"><![CDATA[Can\'t send this Lightning payment because it is already in-flight.]]></string>
 
     <string name="error_nothing_in_clipboard"><![CDATA[
-        <strong>Nothing useful is found in clipboard</strong>, please copy something first.
+        <b>Nothing useful is found in clipboard</b>, please copy something first.
         <br><br>A complete list of stuff which can be pasted into or shared with this wallet:<br><br>
-        - <strong>Bitcoin addresses</strong><br>
-        - <strong>Lightning invoices</strong><br>
-        - <strong>Lightning node keys</strong><br>
-        - <strong>LNURL links</strong>
+        - <b>Bitcoin addresses</b><br>
+        - <b>Lightning invoices</b><br>
+        - <b>Lightning node keys</b><br>
+        - <b>LNURL links</b>
     ]]></string>
 
     <!-- /errors -->

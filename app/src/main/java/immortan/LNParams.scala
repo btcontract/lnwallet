@@ -40,6 +40,7 @@ object LNParams {
   val maxChainConnectionsCount: Int = 5
   val maxAcceptedHtlcs: Int = 483
 
+  val minInvoiceExpiryDelta = CltvExpiryDelta(18)
   val minPayment: MilliSatoshi = MilliSatoshi(5000L)
   val minFundingSatoshis: Satoshi = Satoshi(100000L)
   val minDustLimit: Satoshi = Satoshi(546L)

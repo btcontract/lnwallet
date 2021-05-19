@@ -8,18 +8,19 @@ import android.view.{View, ViewGroup}
 import java.io.{File, FileOutputStream}
 import android.graphics.{Bitmap, Color}
 import android.graphics.Color.{BLACK, WHITE}
+import immortan.fsm.{SendMultiPart, SplitInfo}
 import android.content.{DialogInterface, Intent}
+import android.text.{Editable, Spanned, TextWatcher}
 import com.google.zxing.{BarcodeFormat, EncodeHintType}
 import fr.acinq.bitcoin.{ByteVector32, Crypto, Satoshi}
-import android.text.{Editable, Html, Spanned, TextWatcher}
 import androidx.core.content.{ContextCompat, FileProvider}
-import immortan.crypto.Tools.{Fiat2Btc, Any2Some, none, runAnd}
+import fr.acinq.eclair.wire.{FullPaymentTag, PaymentTagTlv}
+import immortan.crypto.Tools.{Any2Some, Fiat2Btc, none, runAnd}
 import immortan.{Channel, LNParams, PaymentDescription, PaymentInfo}
 import fr.acinq.eclair.blockchain.fee.{FeeratePerKw, FeeratePerVByte}
 import com.google.android.material.snackbar.{BaseTransientBottomBar, Snackbar}
 import immortan.utils.{BitcoinUri, Denomination, InputParser, PaymentRequestExt}
 import android.widget.{ArrayAdapter, Button, EditText, ImageView, LinearLayout, ListView, TextView}
-
 import com.cottacush.android.currencyedittext.CurrencyEditText
 import com.google.android.material.textfield.TextInputLayout
 import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
@@ -31,6 +32,7 @@ import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.slider.Slider
 import android.graphics.Bitmap.Config.ARGB_8888
 import androidx.appcompat.app.AppCompatActivity
+import fr.acinq.eclair.router.RouteCalculation
 import android.text.method.LinkMovementMethod
 import fr.acinq.eclair.payment.PaymentRequest
 import com.google.zxing.qrcode.QRCodeWriter
@@ -41,21 +43,37 @@ import android.content.pm.PackageManager
 import android.view.View.OnClickListener
 import androidx.core.graphics.ColorUtils
 import androidx.core.app.ActivityCompat
+import immortan.LNParams.feeRatesInfo
 import scala.concurrent.Future
 import android.os.Bundle
 
 
 object BaseActivity {
   implicit class StringOps(source: String) {
-    def shortAddress: String = s"${source take 4}&#160;<sup><small><small>&#8230;</small></small></sup>&#160;${source takeRight 4}"
+    def html: Spanned = android.text.Html.fromHtml(source)
     def humanFour: String = source.grouped(4).mkString(s"\u0020")
-    def html: Spanned = Html.fromHtml(source)
+
+    def shortAddress: String = {
+      val doubleSmall = "<sup><small><small>&#8230;</small></small></sup>"
+      s"${source take 4}&#160;$doubleSmall&#160;${source takeRight 4}"
+    }
   }
 
   def formattedBitcoinUri(uri: BitcoinUri): String = {
     val formattedLabel = uri.label.map(label => s"<br><br><b>$label</b>").getOrElse(new String)
     val formattedMessage = uri.message.map(message => s"<br><i>$message<i>").getOrElse(new String)
     formattedLabel + formattedMessage
+  }
+
+  def formattedSplit(host: BaseActivity, prExt: PaymentRequestExt, totalAmount: MilliSatoshi): String = {
+    val leftToPayHuman = LNParams.denomination.parsedWithSign(prExt.splitLeftover, Colors.cardZero)
+    val totalHuman = LNParams.denomination.parsedWithSign(totalAmount, Colors.cardZero)
+    val fmtLeft = host.getString(dialog_split_ln_left).format(s": $leftToPayHuman")
+    val fmtTotal = host.getString(dialog_split_ln_total).format(s": $totalHuman")
+
+    val description = prExt.description.map(desc => s"<br><br>$desc").getOrElse(new String)
+    val combinedSplitInfo = s"$description<br><br>$fmtTotal<br>$fmtLeft"
+    host.getString(dialog_split_ln).format(combinedSplitInfo)
   }
 }
 
@@ -360,7 +378,7 @@ trait BaseActivity extends AppCompatActivity { me =>
   // Guards and send/receive helpers
 
   def lnSendGuard(prExt: PaymentRequestExt, container: View)(onOK: Option[MilliSatoshi] => Unit): Unit = LNParams.cm.checkIfSendable(prExt.pr.paymentHash) match {
-    case _ if !LNParams.ourInit.features.areSupported(prExt.pr.features.features) => snack(container, getString(error_ln_send_features).html, dialog_ok, _.dismiss)
+    case _ if !prExt.pr.features.allowMultiPart || !prExt.pr.features.allowPaymentSecret => snack(container, getString(error_ln_send_features).html, dialog_ok, _.dismiss)
     case _ if !LNParams.cm.all.values.exists(Channel.isOperationalOrWaiting) => snack(container, getString(error_ln_no_chans).html, dialog_ok, _.dismiss)
     case _ if LNParams.cm.all.values.forall(Channel.isWaiting) => snack(container, getString(error_ln_waiting).html, dialog_ok, _.dismiss)
     case _ if LNParams.isChainDisconnectTooLong => snack(container, getString(error_ln_send_chain_disconnect).html, dialog_ok, _.dismiss)
@@ -395,8 +413,8 @@ trait BaseActivity extends AppCompatActivity { me =>
       } else onOk
   }
 
-  abstract class OffChainSender(val maxSendable: MilliSatoshi, val minSendable: MilliSatoshi) {
-    val body: ViewGroup = getLayoutInflater.inflate(R.layout.frag_input_off_chain, null).asInstanceOf[ViewGroup]
+  abstract class OffChainSender(val maxSendable: MilliSatoshi, val minSendable: MilliSatoshi) extends HasTypicalChainFee {
+    val body: android.view.ViewGroup = getLayoutInflater.inflate(R.layout.frag_input_off_chain, null).asInstanceOf[android.view.ViewGroup]
     val manager = new RateManager(body, getString(dialog_add_ln_memo).toSome, dialog_visibility_private, LNParams.fiatRatesInfo.rates, WalletApp.fiatCode)
     val alert: AlertDialog = getAlertDialog
 
@@ -416,9 +434,19 @@ trait BaseActivity extends AppCompatActivity { me =>
     def getAlertDialog: AlertDialog
     def isNeutralEnabled: Boolean
     def isPayEnabled: Boolean
+
+    def makeSendCmd(prExt: PaymentRequestExt, paySum: MilliSatoshi): SendMultiPart = {
+      val extraEdges = RouteCalculation.makeExtraEdges(prExt.pr.routingInfo, prExt.pr.nodeId)
+      // Supply relative expiry in case if we initiate a payment when chain tip is not yet known
+      val cltvExpiry = Right(prExt.pr.minFinalCltvExpiryDelta getOrElse LNParams.minInvoiceExpiryDelta)
+      val fullTag = FullPaymentTag(prExt.pr.paymentHash, prExt.pr.paymentSecret.get, PaymentTagTlv.LOCALLY_SENT)
+      // An assumption here is that maxSendable is at most ChannelMaster.maxSendable so max off-chain fee ratio is already counted in so we can send amount + fee
+      val feeReserve = paySum * LNParams.offChainFeeRatio match { case pct if pct > typicalChainTxFee && WalletApp.capLNFeeToChain => typicalChainTxFee case pct => pct }
+      SendMultiPart(fullTag, cltvExpiry, SplitInfo(paySum, paySum), LNParams.routerConf, prExt.pr.nodeId, feeReserve, LNParams.cm.all.values.toSeq, fullTag.paymentSecret, extraEdges)
+    }
   }
 
-  abstract class OffChainReceiver(maxReceivable: MilliSatoshi, minReceivable: MilliSatoshi, lnBalance: MilliSatoshi) {
+  abstract class OffChainReceiver(maxReceivable: MilliSatoshi, minReceivable: MilliSatoshi, lnBalance: MilliSatoshi) extends HasTypicalChainFee {
     val body: ViewGroup = getLayoutInflater.inflate(R.layout.frag_input_off_chain, null).asInstanceOf[ViewGroup]
     // Currently a single relatively smallest channel is used to improve privacy and maximize delivery chances
     val commits: Commitments = LNParams.cm.maxReceivable(LNParams.cm.allSortedReceivable).head.commits
@@ -437,8 +465,7 @@ trait BaseActivity extends AppCompatActivity { me =>
       val description = getDescription(manager.resultExtraInput getOrElse new String)
       val hop = List(commits.updateOpt.map(_ extraHop commits.remoteInfo.nodeId).toList)
       val prExt = PaymentRequestExt from PaymentRequest(LNParams.chainHash, Some(manager.resultMsat), hash, invoiceKey, description.invoiceText, LNParams.incomingFinalCltvExpiry, hop)
-      val chainFee = Transactions.weight2fee(LNParams.feeRatesInfo.onChainFeeConf.feeEstimator.getFeeratePerKw(LNParams.feeRatesInfo.onChainFeeConf.feeTargets.fundingBlockTarget), 700)
-      LNParams.cm.payBag.replaceIncomingPayment(prExt, preimage, description, lnBalance, LNParams.fiatRatesInfo.rates, chainFee.toMilliSatoshi)
+      LNParams.cm.payBag.replaceIncomingPayment(prExt, preimage, description, balanceSnap = lnBalance, fiatRateSnap = LNParams.fiatRatesInfo.rates, typicalChainTxFee)
       processInvoice(prExt)
       alert.dismiss
     }
@@ -453,7 +480,7 @@ trait BaseActivity extends AppCompatActivity { me =>
 
     manager.inputAmount addTextChangedListener onTextChange { _ =>
       val withinBounds = finalMinReceivable <= manager.resultMsat && finalMaxReceivable >= manager.resultMsat
-      manager.updateButton(getPositiveButton(alert), isEnabled = withinBounds).run
+      manager.updateButton(button = getPositiveButton(alert), isEnabled = withinBounds).run
     }
 
     def getManager: RateManager
@@ -463,8 +490,16 @@ trait BaseActivity extends AppCompatActivity { me =>
   }
 }
 
+trait HasTypicalChainFee {
+  lazy val typicalChainTxFee: MilliSatoshi = {
+    val target = LNParams.feeRatesInfo.onChainFeeConf.feeTargets.fundingBlockTarget
+    val feerate = feeRatesInfo.onChainFeeConf.feeEstimator.getFeeratePerKw(target)
+    Transactions.weight2fee(feerate, weight = 700).toMilliSatoshi
+  }
+}
+
 trait QRActivity extends BaseActivity { me =>
-  lazy val qrSize: Int = getResources getDimensionPixelSize R.dimen.qr_size
+  lazy val qrSize: Int = getResources.getDimensionPixelSize(R.dimen.qr_size)
 
   def shareData(bitmap: Bitmap, bech32: String): Unit = {
     val paymentRequestFilePath = new File(getCacheDir, "images")

@@ -1,12 +1,12 @@
 package com.lightning.walletapp
 
-import immortan.LNParams
 import android.os.Bundle
 import android.widget.TextView
 import immortan.crypto.Tools.none
+import immortan.utils.InputParser
 import com.ornach.nobobutton.NoboButton
 import com.lightning.walletapp.BaseActivity.StringOps
-import immortan.utils.{InputParser, PaymentSplit}
+import immortan.{LNParams, PaymentSplit}
 
 
 class QRSplitActivity extends QRActivity with ExternalDataChecker { me =>
@@ -24,24 +24,25 @@ class QRSplitActivity extends QRActivity with ExternalDataChecker { me =>
       me exitTo ClassNames.mainActivityClass
     }
 
-  def showSplitInvoice(split: PaymentSplit): Unit = {
-    val mySplitHuman = LNParams.denomination.parsedWithSign(split.mySplit, Colors.totalZero)
-    val remainderHuman = LNParams.denomination.parsedWithSign(split.remainder, Colors.totalZero)
-    val remainderHumanDesc = getString(R.string.dialog_split_ln_remain).format(remainderHuman)
-    splitQrMore setText s"${me getString R.string.dialog_pay} $mySplitHuman".html
+  def showSplitInvoice(ps: PaymentSplit): Unit = {
+    val nextSplitLink = ps.prExt.withNewSplit(newSplit = ps.cmd.split.myPart)
+    val leftHuman = LNParams.denomination.parsedWithSign(ps.prExt.splitLeftover - ps.cmd.split.myPart, Colors.totalZero)
+    val mySplitHuman = LNParams.denomination.parsedWithSign(ps.cmd.split.myPart, Colors.totalZero)
+    splitQrMore.setText(s"${me getString R.string.dialog_pay} $mySplitHuman".html)
 
-    runInFutureProcessOnUI(QRActivity.get(split.uriWithAllSplits.toUpperCase, qrSize), onFail) { bitmap =>
-      def share: Unit = runInFutureProcessOnUI(shareData(bitmap, split.uriWithAllSplits), onFail)(none)
-      qrViewHolder.qrCopy setOnClickListener onButtonTap(WalletApp.app copy split.uriWithAllSplits)
-      qrViewHolder.qrCode setOnClickListener onButtonTap(WalletApp.app copy split.uriWithAllSplits)
-      qrViewHolder.qrShare setOnClickListener onButtonTap(share)
-      qrViewHolder.qrLabel setText remainderHumanDesc.html
+    runInFutureProcessOnUI(QRActivity.get(nextSplitLink.toUpperCase, qrSize), onFail) { bitmap =>
+      def shareSplitLink: Unit = runInFutureProcessOnUI(shareData(bitmap, nextSplitLink), onFail)(none)
+      qrViewHolder.qrLabel setText getString(R.string.dialog_split_ln_left).format(s"<br>$leftHuman").html
+      qrViewHolder.qrCopy setOnClickListener onButtonTap(WalletApp.app copy nextSplitLink)
+      qrViewHolder.qrCode setOnClickListener onButtonTap(WalletApp.app copy nextSplitLink)
+      qrViewHolder.qrShare setOnClickListener onButtonTap(shareSplitLink)
       qrViewHolder.qrCode setImageBitmap bitmap
     }
   }
 
   override def checkExternalData(whenNone: Runnable): Unit = InputParser.checkAndMaybeErase {
-    case split: PaymentSplit if split.isValid => showSplitInvoice(split)
+    case ps: PaymentSplit if ps.prExt.splitLeftover - ps.cmd.split.myPart < LNParams.minPayment => finish
+    case ps: PaymentSplit if ps.prExt.pr.amount.nonEmpty => showSplitInvoice(ps)
     case _ => finish
   }
 
