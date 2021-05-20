@@ -3,7 +3,6 @@ package com.lightning.walletapp
 import R.string._
 import fr.acinq.eclair._
 import com.softwaremill.quicklens._
-
 import java.util.{Timer, TimerTask}
 import scala.util.{Failure, Success}
 import android.view.{View, ViewGroup}
@@ -22,8 +21,7 @@ import immortan.utils.{Denomination, InputParser, PaymentRequestExt}
 import fr.acinq.eclair.blockchain.fee.{FeeratePerKw, FeeratePerVByte}
 import com.google.android.material.snackbar.{BaseTransientBottomBar, Snackbar}
 import android.widget.{ArrayAdapter, Button, EditText, ImageView, LinearLayout, ListView, TextView}
-import immortan.{Channel, LNParams, PaymentAction, PaymentDescription, PaymentInfo, PlainDescription, SplitParams}
-
+import immortan.{Channel, LNParams, PathFinder, PaymentAction, PaymentDescription, PaymentInfo, PlainDescription, SplitParams}
 import com.cottacush.android.currencyedittext.CurrencyEditText
 import com.google.android.material.textfield.TextInputLayout
 import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
@@ -71,7 +69,7 @@ object Colors {
 }
 
 trait ExternalDataChecker {
-  val noneRunnable: Runnable = new Runnable { override def run: Unit = none }
+  val noneRunnable: Runnable = new Runnable {override def run: Unit = none }
   def checkExternalData(onNothing: Runnable): Unit
 }
 
@@ -80,7 +78,6 @@ trait ChoiceReceiver {
 }
 
 trait BaseActivity extends AppCompatActivity { me =>
-  var currentSnackbar = Option.empty[Snackbar]
   val timer = new Timer
 
   val goTo: Class[_] => Any = target => {
@@ -122,6 +119,10 @@ trait BaseActivity extends AppCompatActivity { me =>
     share.setType("text/plain").putExtra(Intent.EXTRA_TEXT, text)
   }
 
+  // Snackbar
+
+  var currentSnackbar = Option.empty[Snackbar]
+
   def removeCurrentSnack(onNoBar: => Unit): Unit = currentSnackbar match {
     case Some(snackBar) => runAnd { snackBar.dismiss } { currentSnackbar = None }
     case None => onNoBar
@@ -139,6 +140,8 @@ trait BaseActivity extends AppCompatActivity { me =>
     bottomSnackbar.setAction(actionRes, listener).show
     currentSnackbar = Some(bottomSnackbar)
   } catch none
+
+  // Listener helpers
 
   def onButtonTap(fun: => Unit): OnClickListener = new OnClickListener {
     def onClick(view: View): Unit = fun
@@ -415,6 +418,9 @@ trait BaseActivity extends AppCompatActivity { me =>
       manager.updateButton(getNeutralButton(alert), isNeutralEnabled).run
     }
 
+    // Load graph while user is looking at payment form
+    LNParams.cm.pf process PathFinder.CMDLoadGraph
+
     def neutral(alert: AlertDialog): Unit
     def send(alert: AlertDialog): Unit
     def getAlertDialog: AlertDialog
@@ -454,8 +460,8 @@ trait BaseActivity extends AppCompatActivity { me =>
     val commits: Commitments = LNParams.cm.maxReceivable(LNParams.cm.allSortedReceivable).head.commits
     val manager: RateManager = getManager
 
-    val finalMaxReceivable: MilliSatoshi = maxReceivable min commits.availableForReceive
-    val finalMinReceivable: MilliSatoshi = minReceivable max LNParams.minPayment
+    val finalMaxReceivable: MilliSatoshi = maxReceivable.min(commits.availableForReceive)
+    val finalMinReceivable: MilliSatoshi = minReceivable.max(LNParams.minPayment)
 
     val canReceiveHuman: String = LNParams.denomination.parsedWithSign(finalMaxReceivable, Colors.cardZero)
     val canReceiveFiatHuman: String = WalletApp.currentMsatInFiatHuman(finalMaxReceivable)
@@ -464,7 +470,7 @@ trait BaseActivity extends AppCompatActivity { me =>
       val preimage: ByteVector32 = randomBytes32
       val hash: ByteVector32 = Crypto.sha256(preimage)
       val invoiceKey = LNParams.secret.keys.fakeInvoiceKey(hash)
-      val description = getDescription(manager.resultExtraInput getOrElse new String)
+      val description = getDescription(manager.resultExtraInput)
       val hop = List(commits.updateOpt.map(_ extraHop commits.remoteInfo.nodeId).toList)
       val prExt = PaymentRequestExt from PaymentRequest(LNParams.chainHash, Some(manager.resultMsat), hash, invoiceKey, description.invoiceText, LNParams.incomingFinalCltvExpiry, hop)
       LNParams.cm.payBag.replaceIncomingPayment(prExt, preimage, description, balanceSnap = lnBalance, fiatRateSnap = LNParams.fiatRatesInfo.rates, typicalChainTxFee)
@@ -487,14 +493,14 @@ trait BaseActivity extends AppCompatActivity { me =>
 
     def getManager: RateManager
     def getTitleText: CharSequence
-    def getDescription(input: String): PaymentDescription
+    def getDescription(input: Option[String] = None): PaymentDescription
     def processInvoice(prExt: PaymentRequestExt): Unit
   }
 }
 
 trait HasTypicalChainFee {
   lazy val typicalChainTxFee: MilliSatoshi = {
-    // Should not be used by long-lived instances this this info is getting outdated
+    // Should not be used by long-lived instances since this info is getting outdated
     val target = LNParams.feeRatesInfo.onChainFeeConf.feeTargets.fundingBlockTarget
     val feerate = feeRatesInfo.onChainFeeConf.feeEstimator.getFeeratePerKw(target)
     Transactions.weight2fee(feerate, weight = 700).toMilliSatoshi

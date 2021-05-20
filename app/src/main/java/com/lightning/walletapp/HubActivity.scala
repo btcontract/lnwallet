@@ -462,20 +462,33 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
           }
       }
 
-    case _: LNUrl =>
+    case lnUrl: LNUrl =>
+      lnUrl.fastWithdrawAttempt.toOption match {
+        case Some(withdraw) => bringLnUrlWithdrawPopup(withdraw)
+        case None if lnUrl.isAuth => showAuthForm(lnUrl)
+        case None =>
+      }
 
     case _ => whenNone.run
   }
 
-  override def onChoiceMade(tag: String, pos: Int): Unit =
-    if (pos == 0) me goTo ClassNames.qrChainActivityClass else lnReceiveGuard(contentWindow) {
-      new OffChainReceiver(maxReceivable = Long.MaxValue.msat, minReceivable = 0L.msat, lnBalance) {
-        override def getManager: RateManager = new RateManager(body, getString(dialog_add_description).toSome, dialog_visibility_public, LNParams.fiatRatesInfo.rates, WalletApp.fiatCode)
-        override def processInvoice(prExt: PaymentRequestExt): Unit = runAnd(InputParser.value = prExt)(me goTo ClassNames.qrInvoiceActivityClass)
-        override def getDescription(input: String): PaymentDescription = PlainDescription(split = None, label = None, input)
-        override def getTitleText: CharSequence = getString(dialog_receive_ln).html
+  def showAuthForm(lnUrl: LNUrl): Unit = {
+
+  }
+
+  override def onChoiceMade(tag: String, pos: Int): Unit = pos match {
+    case 0 => me goTo ClassNames.qrChainActivityClass
+
+    case _ =>
+      lnReceiveGuard(contentWindow) {
+        new OffChainReceiver(maxReceivable = Long.MaxValue.msat, minReceivable = 0L.msat, lnBalance) {
+          override def getManager: RateManager = new RateManager(body, getString(dialog_add_description).toSome, dialog_visibility_public, LNParams.fiatRatesInfo.rates, WalletApp.fiatCode)
+          override def getDescription(input: Option[String] = None): PaymentDescription = PlainDescription(split = None, label = None, invoiceText = input getOrElse new String)
+          override def processInvoice(prExt: PaymentRequestExt): Unit = runAnd(InputParser.value = prExt)(me goTo ClassNames.qrInvoiceActivityClass)
+          override def getTitleText: CharSequence = getString(dialog_receive_ln).html
+        }
       }
-    }
+  }
 
   def INIT(state: Bundle): Unit =
     if (WalletApp.isAlive && LNParams.isOperational) {
@@ -517,7 +530,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
 
       streamSubscription = txEvents.merge(paymentEvents).merge(relayEvents).doOnNext(_ => updAllInfos).merge(stateEvents).subscribe(_ => UITask(updatePaymentList).run).toSome
       statusSubscription = Rx.uniqueFirstAndLastWithinWindow(ChannelMaster.statusUpdateStream, window).merge(stateEvents).subscribe(_ => UITask(walletCards.updateView).run).toSome
-      successSubscription = ChannelMaster.preimageRevealStream.merge(ChannelMaster.preimageObtainStream).throttleFirst(window).subscribe(_ => Vibrator.vibrate).toSome
+      successSubscription = ChannelMaster.preimageRevealStream.merge(ChannelMaster.preimageObtainStream).throttleFirst(window).subscribe(_ => UITask(vibrateAndRemoveSnack).run).toSome
     } else {
       WalletApp.freePossiblyUsedResouces
       me exitTo ClassNames.mainActivityClass
@@ -654,8 +667,32 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
     feeView.update(feeOpt = None, showIssue = false).run
   }
 
+  def bringLnUrlWithdrawPopup(withdraw: WithdrawRequest): Unit = lnReceiveGuard(contentWindow) {
+    new OffChainReceiver(maxReceivable = withdraw.maxWithdrawable.msat, minReceivable = withdraw.minCanReceive, lnBalance) {
+      override def getManager: RateManager = new RateManager(body, getString(dialog_add_ln_memo).toSome, dialog_visibility_private, LNParams.fiatRatesInfo.rates, WalletApp.fiatCode)
+      override def getDescription(input: Option[String] = None): PaymentDescription = PlainMetaDescription(split = None, label = input, invoiceText = new String, meta = withdraw.descriptionOrEmpty)
+      override def getTitleText: CharSequence = getString(dialog_lnurl_withdraw).format(withdraw.callbackUri.getHost, withdraw.brDescription)
+
+      override def processInvoice(prExt: PaymentRequestExt): Unit = {
+        val amountHuman = LNParams.denomination.parsedWithSign(prExt.pr.amount.get, Colors.cardZero)
+        val message = getString(dialog_lnurl_withdrawing).format(amountHuman, withdraw.callbackUri.getHost)
+        // Note: there is no logic here to remove a snack on success, it should be done on receiving of payment
+        def removeSnackAndFail(error: Throwable): Unit = runAnd(me removeCurrentSnack none)(me onFail error)
+        withdraw.requestWithdraw(prExt).foreach(none, removeSnackAndFail)
+        snack(contentWindow, message.html, dialog_ok, _.dismiss)
+      }
+    }
+  }
+
   def updatePaymentList: Unit = {
     paymentsAdapter.notifyDataSetChanged
     setVis(allInfos.nonEmpty, walletCards.listCaption)
+  }
+
+  def vibrateAndRemoveSnack: Unit = {
+    // Haptic feedback on successfully sent and received payments
+    // Also removes snackbar (if present) for lnurl-withdraw/pay
+    removeCurrentSnack(none)
+    Vibrator.vibrate
   }
 }

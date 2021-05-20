@@ -107,7 +107,7 @@
 
     <string name="error_nothing_in_clipboard"><![CDATA[
         <b>Nothing useful is found in clipboard</b>, please copy something first.
-        <br><br>A complete list of stuff which can be pasted into or shared with this wallet:<br><br>
+        <br><br>A complete list of stuff which can be pasted into or <b>shared</b> with this wallet:<br><br>
         - <b>Bitcoin addresses</b><br>
         - <b>Lightning invoices</b><br>
         - <b>Lightning node keys</b><br>
@@ -204,5 +204,16 @@
         <item>%1$d\%% collected</item>
         <item>finalizing</item>
     </array>
+
+    <!-- lnurl -->
+
+    <string name="dialog_lnurl_withdraw"><![CDATA[<b>Lightning</b> withdraw link<br><br><b>%1$s</b>%2$s]]></string>
+    <string name="dialog_lnurl_pay"><![CDATA[<b>Lightning</b> payment link<br><br><b>%1$s</b>%2$s]]></string>
+
+    <string name="dialog_lnurl_processing"><![CDATA[Processing&#8230;<br><br><b>%1$s</b>]]></string>
+    <string name="dialog_lnurl_withdrawing"><![CDATA[Withdrawing %1$s&#8230;<br><br><b>%2$s</b>]]></string>
+    <string name="dialog_lnurl_sending"><![CDATA[Sending %1$s&#8230;<br><br><b>%2$s</b>]]></string>
+
+    <!-- /lnurl -->
 
 </resources>

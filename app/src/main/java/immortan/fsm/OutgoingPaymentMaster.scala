@@ -128,8 +128,8 @@ class OutgoingPaymentMaster(val cm: ChannelMaster) extends StateMachine[Outgoing
       val req1 = req.copy(ignoreNodes = ignoreNodes.toSet, ignoreChannels = ignoreChansFailedTimes.toSet ++ ignoreChansCanNotHandle ++ ignoreChansFailedAtAmount)
       // Note: we may get many route request messages from payment FSMs with parts waiting for routes
       // so it is important to immediately switch to WAITING_FOR_ROUTE after seeing a first message
+      cm.pf process PathFinder.FindRoute(me, req1)
       become(data, WAITING_FOR_ROUTE)
-      cm.pf process Tuple2(me, req1)
 
     case (PathFinder.NotifyRejected, WAITING_FOR_ROUTE) =>
       // Pathfinder is not yet ready, switch local state back

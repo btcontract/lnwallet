@@ -27,17 +27,23 @@ object PathFinder {
   val CMDResync = "cmd-resync"
 
   val RESYNC_PERIOD: Long = 1000L * 3600 * 24 * 2 // days in msecs
-}
 
-case class AvgHopParams(cltvExpiryDelta: CltvExpiryDelta, feeProportionalMillionths: MilliSatoshi, feeBaseMsat: MilliSatoshi, sampleSize: Long)
+  case class AvgHopParams(cltvExpiryDelta: CltvExpiryDelta, feeProportionalMillionths: MilliSatoshi, feeBaseMsat: MilliSatoshi, sampleSize: Long)
+
+  case class FindRoute(sender: CanBeRepliedTo, request: RouteRequest)
+}
 
 abstract class PathFinder(val normalBag: NetworkBag, val hostedBag: NetworkBag) extends StateMachine[Data] { me =>
   private val extraEdges = CacheBuilder.newBuilder.expireAfterWrite(1, TimeUnit.DAYS).maximumSize(5000).build[ShortIdAndPosition, GraphEdge]
+
   val extraEdgesMap: mutable.Map[ShortIdAndPosition, GraphEdge] = extraEdges.asMap.asScala
+
   var listeners: Set[CanBeRepliedTo] = Set.empty
+
   var debugMode: Boolean = false
 
   implicit val context: ExecutionContextExecutor = ExecutionContext fromExecutor Executors.newSingleThreadExecutor
+
   def process(changeMessage: Any): Unit = scala.concurrent.Future(me doProcess changeMessage)
 
   // We don't load routing data on every startup but when user (or system) actually needs it
@@ -55,28 +61,20 @@ abstract class PathFinder(val normalBag: NetworkBag, val hostedBag: NetworkBag) 
   def getExtraNodes: Set[RemoteNodeInfo]
 
   def doProcess(change: Any): Unit = (change, state) match {
-    case (Tuple2(sender: CanBeRepliedTo, request: RouteRequest), OPERATIONAL) =>
+    // Graph is loaded but it is empty: likey thsi is first launch or synchronizing
+    case (fr: FindRoute, OPERATIONAL) if data.channels.isEmpty => fr.sender process NotifyRejected
+    // In OPERATIONAL state we instruct graph to search through the single pre-selected local channel
+    case (fr: FindRoute, OPERATIONAL) => fr.sender process handleRouteRequest(data.graph replaceEdge fr.request.localEdge, fr.request)
 
-      if (data.channels.isEmpty) {
-        // Graph is loaded but it is empty
-        // likey a first launch or synchronizing
-        sender process NotifyRejected
-      } else {
-        // In OPERATIONAL state we instruct graph to search through the pre-selected local channel
-        sender process handleRouteRequest(data.graph replaceEdge request.localEdge, request)
-      }
+    case (fr: FindRoute, WAITING) if debugMode =>
+      // Do not proceed, just inform the sender
+      fr.sender process NotifyRejected
 
-    case (Tuple2(sender: CanBeRepliedTo, _: RouteRequest), WAITING) =>
-
-      if (debugMode) {
-        // Do not proceed, just inform the sender
-        sender process NotifyRejected
-      } else {
-        // We need a loaded routing data to search for path properly
-        // load that data while notifying sender if it's absent
-        sender process NotifyRejected
-        me process CMDLoadGraph
-      }
+    case (fr: FindRoute, WAITING) =>
+      // We need a loaded routing data to search for path properly
+      // load that data while notifying sender if it's absent
+      fr.sender process NotifyRejected
+      me process CMDLoadGraph
 
     case (CMDResync, WAITING) =>
       // We need a loaded routing data to sync properly
@@ -103,7 +101,7 @@ abstract class PathFinder(val normalBag: NetworkBag, val hostedBag: NetworkBag) 
     case (CMDResync, OPERATIONAL) =>
       // Normal resync has happened recently, but PHC resync is outdated (PHC failed last time due to running out of attempts)
       // in this case we skip normal sync and start directly with PHC sync to save time and increase PHC sync success chances
-      startPHCSync
+      if (LNParams.syncParams.phcSyncNodes.nonEmpty) startPHCSync else updateLastTotalResyncStamp(System.currentTimeMillis)
 
     case (pure: CompleteHostedRoutingData, OPERATIONAL) =>
       // First, completely replace PHC data with obtained one
@@ -219,10 +217,10 @@ abstract class PathFinder(val normalBag: NetworkBag, val hostedBag: NetworkBag) 
     }
   }
 
-  def startPHCSync: Unit = {
-    val phcSync = new PHCSyncMaster(data) { def onSyncComplete(pure: CompleteHostedRoutingData): Unit = me process pure }
-    phcSync process SyncMasterPHCData(LNParams.syncParams.phcSyncNodes, getPHCExtraNodes, Set.empty)
-  }
+  def startPHCSync: Unit =
+    new PHCSyncMaster(data) {
+      def onSyncComplete(pure: CompleteHostedRoutingData): Unit = me process pure
+    } process SyncMasterPHCData(LNParams.syncParams.phcSyncNodes, getPHCExtraNodes, Set.empty)
 
   def getAvgHopParams: AvgHopParams = {
     val sample = data.channels.values.toVector.flatMap(pc => pc.update1Opt ++ pc.update2Opt)
