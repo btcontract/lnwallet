@@ -67,11 +67,14 @@ object PaymentRequestExt {
 }
 
 case class PaymentRequestExt(uri: Try[Uri], pr: PaymentRequest, raw: String) {
-  def withNewSplit(newSplit: MilliSatoshi): String = s"$lightning$raw?splits=" + (newSplit :: splits).map(_.toLong).mkString(",")
+  def withNewSplit(anotherPart: MilliSatoshi): String = s"$lightning$raw?splits=" + (anotherPart :: splits).map(_.toLong).mkString(",")
   val splits: List[MilliSatoshi] = uri.map(_.getQueryParameter("splits").split(',').toList.map(_.toLong) map MilliSatoshi.apply).getOrElse(Nil)
-  val hasSplitIssue: Boolean = pr.amount.exists(totalAMount => splits.sum + LNParams.minPayment > totalAMount) || (pr.amount.isEmpty && splits.nonEmpty)
-  val description: Option[String] = pr.description.left.toOption.map(_.trim).map(_ take 72).filter(_.nonEmpty)
+  val hasSplitIssue: Boolean = pr.amount.forall(splits.sum + LNParams.minPayment > _) || (pr.amount.isEmpty && splits.nonEmpty)
   val splitLeftover: MilliSatoshi = pr.amount.map(_ - splits.sum).getOrElse(0L.msat)
+
+  val descriptionOpt: Option[String] = pr.description.left.toOption.map(_.trim).map(_ take 72).filter(_.nonEmpty)
+  val brDescription: String = descriptionOpt.map(desc => s"<br><br>$desc").getOrElse(new String)
+  val descriptionOrEmpty: String = descriptionOpt.getOrElse(new String)
 }
 
 object BitcoinUri {

@@ -78,8 +78,8 @@
     <string name="dialog_split_ln"><![CDATA[Split <b>Lightning</b> payment%1$s]]></string>
     <string name="dialog_send_btc"><![CDATA[Send <b>Bitcoin</b> transaction<br><b>to address</b> %1$s%2$s]]></string>
     <string name="dialog_split_ln_tip">First let someone scan a split invoice.\nThen tap PAY at about the same time.</string>
-    <string name="dialog_split_ln_left"><![CDATA[<b>Left to pay</b>%1$s]]></string>
-    <string name="dialog_split_ln_total"><![CDATA[<b>Total sum</b>%1$s]]></string>
+    <string name="dialog_split_ln_total"><![CDATA[<b>Amount total</b>%1$s]]></string>
+    <string name="dialog_split_ln_left"><![CDATA[<b>Amount left</b>%1$s]]></string>
 
     <!-- errors -->
 

@@ -2,6 +2,8 @@ package com.lightning.walletapp
 
 import R.string._
 import fr.acinq.eclair._
+import com.softwaremill.quicklens._
+
 import java.util.{Timer, TimerTask}
 import scala.util.{Failure, Success}
 import android.view.{View, ViewGroup}
@@ -16,11 +18,12 @@ import fr.acinq.bitcoin.{ByteVector32, Crypto, Satoshi}
 import androidx.core.content.{ContextCompat, FileProvider}
 import fr.acinq.eclair.wire.{FullPaymentTag, PaymentTagTlv}
 import immortan.crypto.Tools.{Any2Some, Fiat2Btc, none, runAnd}
-import immortan.{Channel, LNParams, PaymentDescription, PaymentInfo}
+import immortan.utils.{Denomination, InputParser, PaymentRequestExt}
 import fr.acinq.eclair.blockchain.fee.{FeeratePerKw, FeeratePerVByte}
 import com.google.android.material.snackbar.{BaseTransientBottomBar, Snackbar}
-import immortan.utils.{BitcoinUri, Denomination, InputParser, PaymentRequestExt}
 import android.widget.{ArrayAdapter, Button, EditText, ImageView, LinearLayout, ListView, TextView}
+import immortan.{Channel, LNParams, PaymentAction, PaymentDescription, PaymentInfo, PlainDescription, SplitParams}
+
 import com.cottacush.android.currencyedittext.CurrencyEditText
 import com.google.android.material.textfield.TextInputLayout
 import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
@@ -57,23 +60,6 @@ object BaseActivity {
       val doubleSmall = "<sup><small><small>&#8230;</small></small></sup>"
       s"${source take 4}&#160;$doubleSmall&#160;${source takeRight 4}"
     }
-  }
-
-  def formattedBitcoinUri(uri: BitcoinUri): String = {
-    val formattedLabel = uri.label.map(label => s"<br><br><b>$label</b>").getOrElse(new String)
-    val formattedMessage = uri.message.map(message => s"<br><i>$message<i>").getOrElse(new String)
-    formattedLabel + formattedMessage
-  }
-
-  def formattedSplit(host: BaseActivity, prExt: PaymentRequestExt, totalAmount: MilliSatoshi): String = {
-    val leftToPayHuman = LNParams.denomination.parsedWithSign(prExt.splitLeftover, Colors.cardZero)
-    val totalHuman = LNParams.denomination.parsedWithSign(totalAmount, Colors.cardZero)
-    val fmtLeft = host.getString(dialog_split_ln_left).format(s": $leftToPayHuman")
-    val fmtTotal = host.getString(dialog_split_ln_total).format(s": $totalHuman")
-
-    val description = prExt.description.map(desc => s"<br><br>$desc").getOrElse(new String)
-    val combinedSplitInfo = s"$description<br><br>$fmtTotal<br>$fmtLeft"
-    host.getString(dialog_split_ln).format(combinedSplitInfo)
   }
 }
 
@@ -444,6 +430,22 @@ trait BaseActivity extends AppCompatActivity { me =>
       val feeReserve = paySum * LNParams.offChainFeeRatio match { case pct if pct > typicalChainTxFee && WalletApp.capLNFeeToChain => typicalChainTxFee case pct => pct }
       SendMultiPart(fullTag, cltvExpiry, SplitInfo(paySum, paySum), LNParams.routerConf, prExt.pr.nodeId, feeReserve, LNParams.cm.all.values.toSeq, fullTag.paymentSecret, extraEdges)
     }
+
+    def baseSendNow(prExt: PaymentRequestExt, alert: AlertDialog): Unit = {
+      val desc = PlainDescription(None, manager.resultExtraInput, prExt.descriptionOrEmpty)
+      val cmd: SendMultiPart = makeSendCmd(prExt, paySum = manager.resultMsat)
+      replaceOutgoingPayment(prExt, desc, None, cmd.split.myPart)
+      LNParams.cm.opm process cmd
+      alert.dismiss
+    }
+
+    def proceedSplit(prExt: PaymentRequestExt, origAmount: MilliSatoshi, alert: AlertDialog): Unit = {
+      val cmd = makeSendCmd(prExt, paySum = manager.resultMsat).modify(_.split.totalSum).setTo(origAmount)
+      val desc = PlainDescription(cmd.split.toSome, manager.resultExtraInput, prExt.descriptionOrEmpty)
+      InputParser.value = SplitParams(prExt, None, desc, cmd, typicalChainTxFee)
+      me goTo ClassNames.qrSplitActivityClass
+      alert.dismiss
+    }
   }
 
   abstract class OffChainReceiver(maxReceivable: MilliSatoshi, minReceivable: MilliSatoshi, lnBalance: MilliSatoshi) extends HasTypicalChainFee {
@@ -492,10 +494,14 @@ trait BaseActivity extends AppCompatActivity { me =>
 
 trait HasTypicalChainFee {
   lazy val typicalChainTxFee: MilliSatoshi = {
+    // Should not be used by long-lived instances this this info is getting outdated
     val target = LNParams.feeRatesInfo.onChainFeeConf.feeTargets.fundingBlockTarget
     val feerate = feeRatesInfo.onChainFeeConf.feeEstimator.getFeeratePerKw(target)
     Transactions.weight2fee(feerate, weight = 700).toMilliSatoshi
   }
+
+  def replaceOutgoingPayment(ext: PaymentRequestExt, description: PaymentDescription, action: Option[PaymentAction], sentAmount: MilliSatoshi): Unit =
+    LNParams.cm.payBag.replaceOutgoingPayment(ext, description, action, sentAmount, WalletApp.lastChainBalance.totalBalance, LNParams.fiatRatesInfo.rates, typicalChainTxFee)
 }
 
 trait QRActivity extends BaseActivity { me =>

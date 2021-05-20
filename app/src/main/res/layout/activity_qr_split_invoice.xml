@@ -30,14 +30,14 @@
         android:layout_marginBottom="15dp"
         android:layout_centerHorizontal="true"
         android:text="@string/dialog_split_ln_tip"
-        android:layout_above="@+id/splitQrMore"
+        android:layout_above="@+id/splitQrPay"
         style="@style/ChipTextGray"/>
 
     <com.ornach.nobobutton.NoboButton
         android:layout_marginBottom="25dp"
         android:layout_alignParentBottom="true"
         android:layout_centerHorizontal="true"
-        android:id="@+id/splitQrMore"
+        android:id="@+id/splitQrPay"
         style="@style/BlueButton"/>
 
 </RelativeLayout>

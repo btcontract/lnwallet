@@ -32,12 +32,9 @@ sealed trait TransactionDetails {
   val seenAt: Long
 }
 
-case class PaymentSplit(prExt: PaymentRequestExt, action: Option[PaymentAction],
-                        description: PaymentDescription, cmd: SendMultiPart, chainFee: MilliSatoshi)
-
-case class PaymentInfo(prString: String, preimage: ByteVector32, status: String, seenAt: Long, descriptionString: String,
-                       actionString: String, paymentHash: ByteVector32, paymentSecret: ByteVector32, received: MilliSatoshi,
-                       sent: MilliSatoshi, fee: MilliSatoshi, balanceSnapshot: MilliSatoshi, fiatRatesString: String,
+case class SplitParams(prExt: PaymentRequestExt, action: Option[PaymentAction], description: PaymentDescription, cmd: SendMultiPart, chainFee: MilliSatoshi)
+case class PaymentInfo(prString: String, preimage: ByteVector32, status: String, seenAt: Long, descriptionString: String, actionString: String, paymentHash: ByteVector32,
+                       paymentSecret: ByteVector32, received: MilliSatoshi, sent: MilliSatoshi, fee: MilliSatoshi, balanceSnapshot: MilliSatoshi, fiatRatesString: String,
                        chainFee: MilliSatoshi, incoming: Long) extends TransactionDetails {
 
   val isIncoming: Boolean = 1 == incoming

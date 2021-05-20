@@ -402,22 +402,30 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
     case prExt: PaymentRequestExt =>
       lnSendGuard(prExt, contentWindow) {
         case Some(origAmount) if prExt.splits.nonEmpty =>
-          // Set maxSendable to original invoice amount in case if this payer decides to pay the whole sum
-          new OffChainSender(maxSendable = LNParams.cm.maxSendable.min(origAmount * 2), minSendable = LNParams.minPayment) {
+          new OffChainSender(maxSendable = LNParams.cm.maxSendable.min(prExt.splitLeftover * 2), minSendable = LNParams.minPayment) {
             override def isNeutralEnabled: Boolean = manager.resultMsat >= minSendable && manager.resultMsat < prExt.splitLeftover - minSendable
             override def isPayEnabled: Boolean = manager.resultMsat >= prExt.splitLeftover && manager.resultMsat <= maxSendable
+            override def neutral(alert: AlertDialog): Unit = proceedSplit(prExt, origAmount, alert)
 
-            override def neutral(alert: AlertDialog): Unit = ???
-
-            override def send(alert: AlertDialog): Unit = ???
-
-            override def getAlertDialog: AlertDialog = {
-              val titleText = getString(dialog_split_ln) format BaseActivity.formattedSplit(me, prExt, totalAmount = origAmount)
-              val builder = titleBodyAsViewBuilder(updateView2Color(new String, titleText, R.color.cardLightning), manager.content)
-              mkCheckFormNeutral(send, none, neutral, builder, dialog_pay, dialog_cancel, dialog_split)
+            override def send(alert: AlertDialog): Unit = {
+              val cmd = makeSendCmd(prExt, paySum = manager.resultMsat).modify(_.split.totalSum).setTo(origAmount)
+              val desc = PlainDescription(cmd.split.toSome, manager.resultExtraInput, prExt.descriptionOrEmpty)
+              replaceOutgoingPayment(prExt, desc, None, cmd.split.myPart)
+              LNParams.cm.opm process cmd
+              alert.dismiss
             }
 
-            // Prefill with leftover, not invoice amount
+            override def getAlertDialog: AlertDialog = {
+              val leftToPayHuman = LNParams.denomination.parsedWithSign(prExt.splitLeftover, Colors.cardZero)
+              val totalHuman = LNParams.denomination.parsedWithSign(origAmount, Colors.cardZero)
+              val left = getString(dialog_split_ln_left).format(s"&#160;$leftToPayHuman")
+              val total = getString(dialog_split_ln_total).format(s"&#160;$totalHuman")
+
+              val title = updateView2Color(new String, getString(dialog_split_ln).format(s"${prExt.brDescription}<br><br>$total<br>$left"), R.color.cardLightning)
+              mkCheckFormNeutral(send, none, neutral, titleBodyAsViewBuilder(title, manager.content), dialog_pay, dialog_cancel, dialog_split)
+            }
+
+            // Prefill with what's left to pay
             manager.updateText(prExt.splitLeftover)
           }
 
@@ -425,54 +433,31 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
           new OffChainSender(maxSendable = LNParams.cm.maxSendable.min(origAmount * 2), minSendable = LNParams.minPayment) {
             override def isNeutralEnabled: Boolean = manager.resultMsat >= minSendable && manager.resultMsat < origAmount - minSendable
             override def isPayEnabled: Boolean = manager.resultMsat >= origAmount && manager.resultMsat <= maxSendable
-
-            override def neutral(alert: AlertDialog): Unit = {
-              val cmd = makeSendCmd(prExt, paySum = manager.resultMsat).modify(_.split.totalSum).setTo(origAmount)
-              val desc = PlainDescription(cmd.split.toSome, manager.resultExtraInput, prExt.description getOrElse new String)
-              InputParser.value = PaymentSplit(prExt, None, desc, cmd, typicalChainTxFee)
-              me goTo ClassNames.qrSplitActivityClass
-              alert.dismiss
-            }
-
-            override def send(alert: AlertDialog): Unit = {
-              val cmd = makeSendCmd(prExt, paySum = manager.resultMsat)
-              val desc = PlainDescription(split = None, label = manager.resultExtraInput, invoiceText = prExt.description getOrElse new String)
-              LNParams.cm.payBag.replaceOutgoingPayment(prExt, desc, None, cmd.split.myPart, WalletApp.lastChainBalance.totalBalance, LNParams.fiatRatesInfo.rates, typicalChainTxFee)
-              LNParams.cm.opm process cmd
-              alert.dismiss
-            }
+            override def neutral(alert: AlertDialog): Unit = proceedSplit(prExt, origAmount, alert)
+            override def send(alert: AlertDialog): Unit = baseSendNow(prExt, alert)
 
             override def getAlertDialog: AlertDialog = {
-              val titleText = getString(dialog_send_ln) format prExt.description.map(desc => s"<br><br>$desc").getOrElse(new String)
-              val builder = titleBodyAsViewBuilder(updateView2Color(new String, titleText, R.color.cardLightning), manager.content)
-              mkCheckFormNeutral(send, none, neutral, builder, dialog_pay, dialog_cancel, dialog_split)
+              val title = updateView2Color(new String, getString(dialog_send_ln).format(prExt.brDescription), R.color.cardLightning)
+              mkCheckFormNeutral(send, none, neutral, titleBodyAsViewBuilder(title, manager.content), dialog_pay, dialog_cancel, dialog_split)
             }
 
-            // Prefill with full invoice amount
-            manager.updateText(prExt.splitLeftover)
+            // Prefill with asked amount
+            manager.updateText(origAmount)
           }
 
         case None =>
           new OffChainSender(maxSendable = LNParams.cm.maxSendable, minSendable = LNParams.minPayment) {
             override def isPayEnabled: Boolean = manager.resultMsat >= minSendable && manager.resultMsat <= maxSendable
             override def neutral(alert: AlertDialog): Unit = manager.updateText(maxSendable)
+            override def send(alert: AlertDialog): Unit = baseSendNow(prExt, alert)
             override def isNeutralEnabled: Boolean = true
 
-            override def send(alert: AlertDialog): Unit = {
-              val cmd = makeSendCmd(prExt, paySum = manager.resultMsat)
-              val desc = PlainDescription(split = None, label = manager.resultExtraInput, invoiceText = prExt.description getOrElse new String)
-              LNParams.cm.payBag.replaceOutgoingPayment(prExt, desc, None, cmd.split.myPart, WalletApp.lastChainBalance.totalBalance, LNParams.fiatRatesInfo.rates, typicalChainTxFee)
-              LNParams.cm.opm process cmd
-              alert.dismiss
-            }
-
             override def getAlertDialog: AlertDialog = {
-              val titleText = getString(dialog_send_ln) format prExt.description.map(desc => s"<br><br>$desc").getOrElse(new String)
-              val builder = titleBodyAsViewBuilder(updateView2Color(new String, titleText, R.color.cardLightning), manager.content)
-              mkCheckFormNeutral(send, none, neutral, builder, dialog_pay, dialog_cancel, dialog_max)
+              val title = updateView2Color(new String, getString(dialog_send_ln).format(prExt.brDescription), R.color.cardLightning)
+              mkCheckFormNeutral(send, none, neutral, titleBodyAsViewBuilder(title, manager.content), dialog_pay, dialog_cancel, dialog_max)
             }
 
-            // Disable PAY button at start since amount is not present yet
+            // Do not prefill since amount is unknown, disable pay button
             manager.updateButton(getPositiveButton(alert), isEnabled = false).run
           }
       }
@@ -620,9 +605,10 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
     }
 
     lazy val alert = {
-      val formattedUri = BaseActivity.formattedBitcoinUri(uri)
       val neutralRes = if (uri.amount.isDefined) -1 else dialog_max
-      val builder = titleBodyAsViewBuilder(updateView2Color(new String, getString(dialog_send_btc).format(uri.address.shortAddress, formattedUri), R.color.cardBitcoin), manager.content)
+      val label = uri.label.map(label => s"<br><br><b>$label</b>").getOrElse(new String)
+      val message = uri.message.map(message => s"<br><i>$message<i>").getOrElse(new String)
+      val builder = titleBodyAsViewBuilder(updateView2Color(new String, getString(dialog_send_btc).format(uri.address.shortAddress, label + message), R.color.cardBitcoin), manager.content)
       if (uri.prExt.isEmpty) mkCheckFormNeutral(attempt, none, _ => manager.updateText(WalletApp.lastChainBalance.totalBalance), builder, dialog_pay, dialog_cancel, neutralRes)
       else mkCheckFormNeutral(attempt, none, switchToLn, builder, dialog_pay, dialog_cancel, lightning_wallet)
     }

@@ -6,13 +6,14 @@ import immortan.crypto.Tools.none
 import immortan.utils.InputParser
 import com.ornach.nobobutton.NoboButton
 import com.lightning.walletapp.BaseActivity.StringOps
-import immortan.{LNParams, PaymentSplit}
+import immortan.{LNParams, SplitParams}
 
 
-class QRSplitActivity extends QRActivity with ExternalDataChecker { me =>
+class QRSplitActivity extends QRActivity with ExternalDataChecker with HasTypicalChainFee { me =>
   lazy private[this] val splitQrCaption = findViewById(R.id.splitQrCaption).asInstanceOf[TextView]
-  lazy private[this] val splitQrMore = findViewById(R.id.splitQrMore).asInstanceOf[NoboButton]
+  lazy private[this] val splitQrPay = findViewById(R.id.splitQrPay).asInstanceOf[NoboButton]
   lazy private[this] val qrViewHolder = new QRViewHolder(me findViewById R.id.splitQr)
+  lazy private[this] val dialogPay = getString(R.string.dialog_pay)
 
   def INIT(state: Bundle): Unit =
     if (WalletApp.isAlive && LNParams.isOperational) {
@@ -24,11 +25,18 @@ class QRSplitActivity extends QRActivity with ExternalDataChecker { me =>
       me exitTo ClassNames.mainActivityClass
     }
 
-  def showSplitInvoice(ps: PaymentSplit): Unit = {
-    val nextSplitLink = ps.prExt.withNewSplit(newSplit = ps.cmd.split.myPart)
-    val leftHuman = LNParams.denomination.parsedWithSign(ps.prExt.splitLeftover - ps.cmd.split.myPart, Colors.totalZero)
-    val mySplitHuman = LNParams.denomination.parsedWithSign(ps.cmd.split.myPart, Colors.totalZero)
-    splitQrMore.setText(s"${me getString R.string.dialog_pay} $mySplitHuman".html)
+  def showSplitInvoice(sp: SplitParams): Unit = {
+    val nextSplitLink = sp.prExt.withNewSplit(sp.cmd.split.myPart)
+    val leftHuman = LNParams.denomination.parsedWithSign(sp.prExt.splitLeftover - sp.cmd.split.myPart, Colors.totalZero)
+    val mySplitHuman = LNParams.denomination.parsedWithSign(sp.cmd.split.myPart, Colors.totalZero)
+    splitQrPay.setText(s"$dialogPay $mySplitHuman".html)
+
+    splitQrPay setOnClickListener onButtonTap {
+      // It is assumed that many users start sending their splits at about the same time
+      replaceOutgoingPayment(sp.prExt, sp.description, sp.action, sp.cmd.split.myPart)
+      LNParams.cm.opm process sp.cmd
+      finish
+    }
 
     runInFutureProcessOnUI(QRActivity.get(nextSplitLink.toUpperCase, qrSize), onFail) { bitmap =>
       def shareSplitLink: Unit = runInFutureProcessOnUI(shareData(bitmap, nextSplitLink), onFail)(none)
@@ -41,8 +49,7 @@ class QRSplitActivity extends QRActivity with ExternalDataChecker { me =>
   }
 
   override def checkExternalData(whenNone: Runnable): Unit = InputParser.checkAndMaybeErase {
-    case ps: PaymentSplit if ps.prExt.splitLeftover - ps.cmd.split.myPart < LNParams.minPayment => finish
-    case ps: PaymentSplit if ps.prExt.pr.amount.nonEmpty => showSplitInvoice(ps)
+    case splitParams: SplitParams => showSplitInvoice(splitParams)
     case _ => finish
   }
 
