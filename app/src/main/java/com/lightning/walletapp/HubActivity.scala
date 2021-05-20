@@ -5,11 +5,11 @@ import immortan.utils._
 import android.widget._
 import fr.acinq.eclair._
 import immortan.crypto.Tools._
+
 import scala.concurrent.duration._
 import com.softwaremill.quicklens._
 import com.lightning.walletapp.Colors._
 import com.lightning.walletapp.R.string._
-
 import android.os.{Bundle, Handler}
 import fr.acinq.bitcoin.{Satoshi, SatoshiLong}
 import android.view.{MenuItem, View, ViewGroup}
@@ -20,6 +20,7 @@ import fr.acinq.eclair.blockchain.fee.{FeeratePerKw, FeeratePerVByte}
 import fr.acinq.eclair.blockchain.electrum.ElectrumWallet.WalletReady
 import com.lightning.walletapp.BaseActivity.StringOps
 import org.ndeftools.util.activity.NfcReaderActivity
+
 import concurrent.ExecutionContext.Implicits.global
 import com.github.mmin18.widget.RealtimeBlurView
 import androidx.recyclerview.widget.RecyclerView
@@ -32,6 +33,8 @@ import fr.acinq.eclair.wire.PaymentTagTlv
 import android.database.ContentObserver
 import org.ndeftools.Message
 import java.util.TimerTask
+
+import com.google.android.material.snackbar.Snackbar
 
 
 class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataChecker with ChoiceReceiver { me =>
@@ -390,14 +393,14 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
     super.onDestroy
   }
 
-  override def onBackPressed: Unit = {
-    val isSearching = walletCards.searchWrap.getVisibility == View.VISIBLE
-    if (isSearching) cancelSearch(null) else super.onBackPressed
-  }
+  override def onBackPressed: Unit =
+    if (walletCards.searchWrap.getVisibility == View.VISIBLE) cancelSearch(null)
+    else if (currentSnackbar.isDefined) removeCurrentSnack.run
+    else super.onBackPressed
 
   override def checkExternalData(whenNone: Runnable): Unit = InputParser.checkAndMaybeErase {
+    case bitcoinUri: BitcoinUri if bitcoinUri.isValid => bringSendBitcoinPopup(bitcoinUri)
     case _: RemoteNodeInfo => me goTo ClassNames.remotePeerActivityClass
-    case uri: BitcoinUri if uri.isValid => bringSendBitcoinPopup(uri)
 
     case prExt: PaymentRequestExt =>
       lnSendGuard(prExt, contentWindow) {
@@ -464,12 +467,25 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
 
     case lnUrl: LNUrl =>
       lnUrl.fastWithdrawAttempt.toOption match {
-        case Some(withdraw) => bringLnUrlWithdrawPopup(withdraw)
+        case Some(withdraw) => bringWithdrawPopup(withdraw)
         case None if lnUrl.isAuth => showAuthForm(lnUrl)
-        case None =>
+        case None => resolveLnurl(lnUrl)
       }
 
-    case _ => whenNone.run
+    case _ =>
+      whenNone.run
+  }
+
+  def resolveLnurl(lnUrl: LNUrl): Unit = {
+    val resolve: PartialFunction[LNUrlData, Unit] = {
+      case withdraw: WithdrawRequest => UITask(me bringWithdrawPopup withdraw).run
+      case _ => UITask(WalletApp.app quickToast error_nothing_useful).run
+    }
+
+    val msg = getString(dialog_lnurl_processing).format(lnUrl.uri.getHost).html
+    val subscription = lnUrl.level1DataResponse.doOnTerminate(removeCurrentSnack.run).subscribe(resolve, onFail)
+    def cancel(currentSnackBar: Snackbar): Unit = runAnd(subscription.unsubscribe)(currentSnackBar.dismiss)
+    snack(contentWindow, msg, dialog_cancel, cancel)
   }
 
   def showAuthForm(lnUrl: LNUrl): Unit = {
@@ -530,7 +546,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
 
       streamSubscription = txEvents.merge(paymentEvents).merge(relayEvents).doOnNext(_ => updAllInfos).merge(stateEvents).subscribe(_ => UITask(updatePaymentList).run).toSome
       statusSubscription = Rx.uniqueFirstAndLastWithinWindow(ChannelMaster.statusUpdateStream, window).merge(stateEvents).subscribe(_ => UITask(walletCards.updateView).run).toSome
-      successSubscription = ChannelMaster.preimageRevealStream.merge(ChannelMaster.preimageObtainStream).throttleFirst(window).subscribe(_ => UITask(vibrateAndRemoveSnack).run).toSome
+      successSubscription = ChannelMaster.preimageRevealStream.merge(ChannelMaster.preimageObtainStream).throttleFirst(window).subscribe(_ => removeSnackAndVibrate).toSome
     } else {
       WalletApp.freePossiblyUsedResouces
       me exitTo ClassNames.mainActivityClass
@@ -667,32 +683,31 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
     feeView.update(feeOpt = None, showIssue = false).run
   }
 
-  def bringLnUrlWithdrawPopup(withdraw: WithdrawRequest): Unit = lnReceiveGuard(contentWindow) {
-    new OffChainReceiver(maxReceivable = withdraw.maxWithdrawable.msat, minReceivable = withdraw.minCanReceive, lnBalance) {
+  def bringWithdrawPopup(data: WithdrawRequest): Unit = lnReceiveGuard(contentWindow) {
+    new OffChainReceiver(maxReceivable = data.maxWithdrawable.msat, minReceivable = data.minCanReceive, lnBalance) {
       override def getManager: RateManager = new RateManager(body, getString(dialog_add_ln_memo).toSome, dialog_visibility_private, LNParams.fiatRatesInfo.rates, WalletApp.fiatCode)
-      override def getDescription(input: Option[String] = None): PaymentDescription = PlainMetaDescription(split = None, label = input, invoiceText = new String, meta = withdraw.descriptionOrEmpty)
-      override def getTitleText: CharSequence = getString(dialog_lnurl_withdraw).format(withdraw.callbackUri.getHost, withdraw.brDescription)
+      override def getDescription(input: Option[String] = None): PaymentDescription = PlainMetaDescription(split = None, label = input, invoiceText = new String, meta = data.descriptionOrEmpty)
+      override def getTitleText: CharSequence = getString(dialog_lnurl_withdraw).format(data.callbackUri.getHost, data.brDescription)
 
       override def processInvoice(prExt: PaymentRequestExt): Unit = {
         val amountHuman = LNParams.denomination.parsedWithSign(prExt.pr.amount.get, Colors.cardZero)
-        val message = getString(dialog_lnurl_withdrawing).format(amountHuman, withdraw.callbackUri.getHost)
+        val message = getString(dialog_lnurl_withdrawing).format(amountHuman, data.callbackUri.getHost)
         // Note: there is no logic here to remove a snack on success, it should be done on receiving of payment
-        def removeSnackAndFail(error: Throwable): Unit = runAnd(me removeCurrentSnack none)(me onFail error)
-        withdraw.requestWithdraw(prExt).foreach(none, removeSnackAndFail)
+        data.requestWithdraw(prExt).doOnError(_ => removeCurrentSnack.run).foreach(none, onFail)
         snack(contentWindow, message.html, dialog_ok, _.dismiss)
       }
     }
   }
 
   def updatePaymentList: Unit = {
-    paymentsAdapter.notifyDataSetChanged
     setVis(allInfos.nonEmpty, walletCards.listCaption)
+    paymentsAdapter.notifyDataSetChanged
   }
 
-  def vibrateAndRemoveSnack: Unit = {
+  def removeSnackAndVibrate: Unit = {
     // Haptic feedback on successfully sent and received payments
     // Also removes snackbar (if present) for lnurl-withdraw/pay
-    removeCurrentSnack(none)
+    removeCurrentSnack.run
     Vibrator.vibrate
   }
 }

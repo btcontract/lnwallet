@@ -101,9 +101,6 @@ trait BaseActivity extends AppCompatActivity { me =>
     timer.cancel
   }
 
-  override def onBackPressed: Unit =
-    removeCurrentSnack(super.onBackPressed)
-
   def INIT(state: Bundle): Unit
 
   // Helpers
@@ -121,11 +118,13 @@ trait BaseActivity extends AppCompatActivity { me =>
 
   // Snackbar
 
-  var currentSnackbar = Option.empty[Snackbar]
+  var currentSnackbar: Option[Snackbar] = Option.empty
 
-  def removeCurrentSnack(onNoBar: => Unit): Unit = currentSnackbar match {
-    case Some(snackBar) => runAnd { snackBar.dismiss } { currentSnackbar = None }
-    case None => onNoBar
+  def removeCurrentSnack: TimerTask = UITask {
+    currentSnackbar.foreach { snackBar =>
+      currentSnackbar = None
+      snackBar.dismiss
+    }
   }
 
   def snack(parent: View, msg: CharSequence, actionRes: Int, fun: Snackbar => Unit): Unit = try {
