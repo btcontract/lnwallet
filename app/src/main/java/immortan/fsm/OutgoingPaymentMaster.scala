@@ -386,7 +386,7 @@ class OutgoingPaymentSender(val fullTag: FullPaymentTag, val listener: OutgoingP
                 case Some(edge) if edge.updExt.update.shortChannelId != failure.update.shortChannelId =>
                   // This is fine: remote node has used a different channel than the one we have initially requested
                   // But remote node may send such errors infinitely so increment this specific type of failure
-                  // This most likely means an originally requested channel has also been tried and failed
+                  // Still fail an originally selected channel since it has most likely been tried too
                   opm doProcess ChannelFailed(edge.toDescAndCapacity, increment = 1)
                   opm doProcess NodeFailed(originNodeId, increment = 1)
 
@@ -514,8 +514,8 @@ class OutgoingPaymentSender(val fullTag: FullPaymentTag, val listener: OutgoingP
   }
 
   def abortMaybeNotify(data1: OutgoingPaymentSenderData): Unit = {
-    val hasLeftoversInChannels = opm.cm.all.values.flatMap(Channel.chanAndCommitsOpt).flatMap(_.commits.allOutgoing).exists(_.fullTag == fullTag)
-    if (data1.inFlightParts.isEmpty && !hasLeftoversInChannels) listener.wholePaymentFailed(data1)
+    val noLeftoversInChannels = !opm.cm.allInChannelOutgoing.contains(fullTag)
+    if (data1.inFlightParts.isEmpty && noLeftoversInChannels) listener.wholePaymentFailed(data1)
     become(data1, ABORTED)
   }
 }

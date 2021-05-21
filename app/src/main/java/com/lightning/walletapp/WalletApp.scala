@@ -46,7 +46,8 @@ object WalletApp {
 
   val backupSaveWorker: ThrottledWork[String, Any] = new ThrottledWork[String, Any] {
     def process(cmd: String, result: Any): Unit = if (makeChanBackup && LocalBackup.isExternalStorageWritable) {
-      try LocalBackup.encryptAndWritePlainBackup(app, dbFileNameEssential, LNParams.chainHash, LNParams.secret.seed) catch none
+      try LocalBackup.encryptAndWritePlainBackup(app, dbFileNameEssential, LNParams.chainHash, LNParams.secret.seed)
+      catch none
     }
 
     // File saving gets delayed in case of frequent rapid updates
@@ -167,9 +168,8 @@ object WalletApp {
     }
 
     FiatRates.listeners += new FiatRatesListener {
-      def onFiatRates(newRates: FiatRatesInfo): Unit = {
+      def onFiatRates(newRates: FiatRatesInfo): Unit =
         extDataBag.putFiatRatesInfo(newRates)
-      }
     }
 
     LNParams.chainWallet.eventsCatcher ! new WalletEventsListener {
@@ -209,7 +209,7 @@ object WalletApp {
 
     // Get up channels and payment FSMs
     LNParams.cm.all = Channel.load(listeners = Set(LNParams.cm), chanBag)
-    // This inital update which will create all in/routed/out FSMs
+    // This inital update will create all in/routed/out FSMs
     LNParams.cm.stateUpdated(rejects = Nil)
   }
 

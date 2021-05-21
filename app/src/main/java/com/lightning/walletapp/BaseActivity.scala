@@ -146,8 +146,8 @@ trait BaseActivity extends AppCompatActivity { me =>
     def onClick(view: View): Unit = fun
   }
 
-  def onTextChange(fun: CharSequence => Unit): TextWatcher = new TextWatcher {
-    override def onTextChanged(c: CharSequence, x: Int, y: Int, z: Int): Unit = fun(c)
+  def onTextChange(fun: String => Unit): TextWatcher = new TextWatcher {
+    override def onTextChanged(c: CharSequence, x: Int, y: Int, z: Int): Unit = fun(c.toString)
     override def beforeTextChanged(s: CharSequence, x: Int, y: Int, z: Int): Unit = none
     override def afterTextChanged(e: Editable): Unit = none
   }

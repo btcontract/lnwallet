@@ -491,18 +491,13 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
       FiatRates.listeners += fiatRatesListener
       Tovuti.from(me).monitor(netListener)
 
-      walletCards.searchField addTextChangedListener onTextChange { query =>
-        searchWorker addWork query.toString
-      }
-
       bottomActionBar post UITask {
         bottomBlurringArea.setHeightTo(bottomActionBar)
         itemsList.setPadding(0, 0, 0, bottomActionBar.getHeight)
       }
 
-      runInFutureProcessOnUI(loadRecentInfos, none) { _ =>
-        updatePaymentList
-      }
+      walletCards.searchField addTextChangedListener onTextChange(searchWorker.addWork)
+      runInFutureProcessOnUI(loadRecentInfos, none) { _ => updatePaymentList }
 
       itemsList.addHeaderView(walletCards.view)
       itemsList.setAdapter(paymentsAdapter)
@@ -522,6 +517,8 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
       streamSubscription = txEvents.merge(paymentEvents).merge(relayEvents).doOnNext(_ => updAllInfos).merge(stateEvents).subscribe(_ => UITask(updatePaymentList).run).toSome
       statusSubscription = Rx.uniqueFirstAndLastWithinWindow(ChannelMaster.statusUpdateStream, window).merge(stateEvents).subscribe(_ => UITask(walletCards.updateView).run).toSome
       successSubscription = ChannelMaster.hashRevealStream.merge(ChannelMaster.hashObtainStream).throttleFirst(window).subscribe(_ => removeSnackAndVibrate).toSome
+      // Run this check after establishing subscriptions since it will trigger an event stream
+      LNParams.cm.markAsFailed(paymentInfos, LNParams.cm.allInChannelOutgoing)
     } else {
       WalletApp.freePossiblyUsedResouces
       me exitTo ClassNames.mainActivityClass

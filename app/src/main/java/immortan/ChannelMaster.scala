@@ -181,6 +181,13 @@ class ChannelMaster(val payBag: PaymentBag, val chanBag: ChannelBag, val dataBag
       CommsTower.listenNative(Set(socketChannelListener), cnc.commits.remoteInfo)
     }
 
+  // Marks as failed those payments which did not make it into channels before an app has been restarted
+  def markAsFailed(paymentInfos: Iterable[PaymentInfo], inFlightOutgoing: Map[FullPaymentTag, OutgoingAdds] = Map.empty): Unit = paymentInfos
+    .collect { case outgoingPayInfo if !outgoingPayInfo.isIncoming && outgoingPayInfo.status == PaymentStatus.PENDING => outgoingPayInfo.fullTag }
+    .collect { case fullTag if fullTag.tag == PaymentTagTlv.LOCALLY_SENT && !inFlightOutgoing.contains(fullTag) => fullTag.paymentHash }
+    .foreach(LNParams.cm.payBag.updAbortedOutgoing)
+
+  def allInChannelOutgoing: Map[FullPaymentTag, OutgoingAdds] = all.values.flatMap(Channel.chanAndCommitsOpt).flatMap(_.commits.allOutgoing).groupBy(_.fullTag)
   def closingsPublished: Iterable[ForceCloseCommitPublished] = all.values.map(_.data).collect { case closing: DATA_CLOSING => closing.forceCloseCommitPublished }.flatten
   def pendingRefundsAmount(publishes: Iterable[ForceCloseCommitPublished] = Nil): Satoshi = publishes.flatMap(_.delayedRefundsLeft).map(_.txOut.head.amount).sum
 
@@ -240,13 +247,10 @@ class ChannelMaster(val payBag: PaymentBag, val chanBag: ChannelBag, val dataBag
   }
 
   override def stateUpdated(rejects: Seq[RemoteReject] = Nil): Unit = {
-    val allChansAndCommits = all.values.flatMap(Channel.chanAndCommitsOpt)
-    val allOuts = allChansAndCommits.flatMap(_.commits.allOutgoing).groupBy(_.fullTag)
-    val allIns = allChansAndCommits.flatMap(_.commits.crossSignedIncoming).map(initResolveMemo.get)
-
+    val allIns = all.values.flatMap(Channel.chanAndCommitsOpt).flatMap(_.commits.crossSignedIncoming).map(initResolveMemo.get)
     allIns.foreach { case finalResolve: FinalResolution => sendTo(finalResolve, finalResolve.theirAdd.channelId) case _ => }
     val reasonableIncoming = allIns.collect { case resolution: ReasonableResolution => resolution }.groupBy(_.fullTag)
-    val inFlightBag = InFlightPayments(allOuts, reasonableIncoming)
+    val inFlightBag = InFlightPayments(allInChannelOutgoing, reasonableIncoming)
 
     inFlightBag.allTags.collect {
       case fullTag if PaymentTagTlv.TRAMPLOINE_ROUTED == fullTag.tag && !inProcessors.contains(fullTag) => inProcessors += new TrampolinePaymentRelayer(fullTag, me).tuple
