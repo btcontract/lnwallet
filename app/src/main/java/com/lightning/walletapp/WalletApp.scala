@@ -7,8 +7,8 @@ import fr.acinq.eclair._
 import scala.concurrent.duration._
 import com.lightning.walletapp.sqlite._
 import com.lightning.walletapp.R.string._
-import fr.acinq.bitcoin.{Block, Satoshi, SatoshiLong}
 import immortan.crypto.Tools.{Fiat2Btc, none, runAnd}
+import fr.acinq.bitcoin.{Block, ByteVector32, Satoshi, SatoshiLong}
 import fr.acinq.eclair.channel.{CMD_CHECK_FEERATE, PersistentChannelData}
 import android.app.{Application, NotificationChannel, NotificationManager}
 import fr.acinq.eclair.blockchain.electrum.{CheckPoint, ElectrumClientPool}
@@ -25,17 +25,20 @@ import androidx.multidex.MultiDex
 import rx.lang.scala.Observable
 import android.widget.Toast
 import android.os.Build
-import android.net.Uri
 import java.util.Date
 import scala.util.Try
 
 
 object WalletApp {
-  var txDataBag: SQLiteTxExtended = _
+  var txDataBag: SQLiteTx = _
   var extDataBag: SQLiteDataExtended = _
   var lastChainBalance: LastChainBalance = _
   var usedAddons: UsedAddons = _
   var app: WalletApp = _
+
+  // When sending a tx locally we know recipent address and user provided memo
+  // store this info here to use it when chain wallet receives a sent tx
+  var txDescriptions: Map[ByteVector32, TxDescription] = Map.empty
 
   final val dbFileNameMisc = "misc.db"
   final val dbFileNameGraph = "graph.db"
@@ -92,8 +95,8 @@ object WalletApp {
     val miscInterface = new DBInterfaceSQLiteAndroidMisc(app, dbFileNameMisc)
 
     miscInterface txWrap {
+      txDataBag = new SQLiteTx(miscInterface)
       extDataBag = new SQLiteDataExtended(miscInterface)
-      txDataBag = new SQLiteTxExtended(app, miscInterface)
       lastChainBalance = extDataBag.tryGetLastChainBalance getOrElse LastChainBalance(0L.sat, 0L.sat, 0L)
       usedAddons = extDataBag.tryGetAddons getOrElse UsedAddons(addons = List.empty)
     }
@@ -106,7 +109,7 @@ object WalletApp {
 
     val normalBag = new SQLiteNetwork(graphInterface, NormalChannelUpdateTable, NormalChannelAnnouncementTable, NormalExcludedChannelTable)
     val hostedBag = new SQLiteNetwork(graphInterface, HostedChannelUpdateTable, HostedChannelAnnouncementTable, HostedExcludedChannelTable)
-    val payBag = new SQLitePaymentExtended(app, extDataBag.db, essentialInterface)
+    val payBag = new SQLitePayment(extDataBag.db, essentialInterface)
 
     val chanBag = new SQLiteChannel(essentialInterface) {
       override def put(data: PersistentChannelData): PersistentChannelData = {
@@ -190,7 +193,7 @@ object WalletApp {
 
         val fee = event.feeOpt.getOrElse(0L.sat)
         val defSentTxDescription = TxDescription.define(LNParams.cm.all.values, Nil, event.tx)
-        val sentTxDescription = txDataBag.descriptions.getOrElse(event.tx.txid, defSentTxDescription)
+        val sentTxDescription = txDescriptions.getOrElse(event.tx.txid, defSentTxDescription)
 
         if (event.sent == event.received + fee) replaceChainTx(event.received, event.sent - fee, sentTxDescription, isIncoming = 0L)
         else if (event.sent > event.received) replaceChainTx(received = 0L.sat, event.sent - event.received - fee, sentTxDescription, isIncoming = 0L)
@@ -300,15 +303,12 @@ class WalletApp extends Application { me =>
   def quickToast(code: Int): Unit = quickToast(me getString code)
   def quickToast(msg: CharSequence): Unit = Toast.makeText(me, msg, Toast.LENGTH_LONG).show
   def plurOrZero(opts: Array[String] = Array.empty)(num: Long): String = if (num > 0) plur(opts, num).format(num) else opts(0)
+  def clipboardManager: ClipboardManager = getSystemService(Context.CLIPBOARD_SERVICE).asInstanceOf[ClipboardManager]
+  def getBufferUnsafe: String = clipboardManager.getPrimaryClip.getItemAt(0).getText.toString
 
   def copy(text: String): Unit = {
     val bufferContent = ClipData.newPlainText("wallet", text)
     clipboardManager.setPrimaryClip(bufferContent)
     quickToast(copied_to_clipboard)
   }
-
-  def getBufferUnsafe: String = clipboardManager.getPrimaryClip.getItemAt(0).getText.toString
-  def clipboardManager: ClipboardManager = getSystemService(Context.CLIPBOARD_SERVICE).asInstanceOf[ClipboardManager]
-  def sqlPath(targetTable: String): Uri = Uri.parse(s"sqlite://com.lightning.walletapp/table/$targetTable")
-  def sqlNotify(targetTable: String): Unit = getContentResolver.notifyChange(sqlPath(targetTable), null)
 }

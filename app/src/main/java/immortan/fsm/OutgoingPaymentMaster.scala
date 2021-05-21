@@ -160,8 +160,9 @@ class OutgoingPaymentMaster(val cm: ChannelMaster) extends StateMachine[Outgoing
       data.payments.values.foreach(_ doProcess bag)
 
     case (RemoveSenderFSM(fullTag), EXPECTING_PAYMENTS | WAITING_FOR_ROUTE) if data.payments.contains(fullTag) =>
+      // First we get their fail, then stateUpdateStream fires, then we fire it here again if FSM is to be removed
       become(data.copy(payments = data.payments - fullTag), state)
-      ChannelMaster.notifyStateUpdated
+      ChannelMaster.next(ChannelMaster.stateUpdateStream)
 
     case (CreateSenderFSM(fullTag, listener), EXPECTING_PAYMENTS | WAITING_FOR_ROUTE) if !data.payments.contains(fullTag) =>
       val data1 = data.payments.updated(value = new OutgoingPaymentSender(fullTag, listener, me), key = fullTag)
@@ -277,10 +278,12 @@ class OutgoingPaymentSender(val fullTag: FullPaymentTag, val listener: OutgoingP
   become(OutgoingPaymentSenderData(SendMultiPart(fullTag, Right(LNParams.minInvoiceExpiryDelta), SplitInfo(0L.msat, 0L.msat), LNParams.routerConf, invalidPubKey), Map.empty), INIT)
 
   def doProcess(msg: Any): Unit = (msg, state) match {
-    case (CMDException(_, cmd: CMD_ADD_HTLC), ABORTED) => me abortMaybeNotify data.withoutPartId(cmd.partId)
-    case (remoteReject: RemoteReject, ABORTED) => me abortMaybeNotify data.withoutPartId(remoteReject.ourAdd.partId)
-    case (remoteReject: RemoteReject, INIT) => me abortMaybeNotify data.withLocalFailure(NOT_RETRYING_NO_DETAILS, remoteReject.ourAdd.amountMsat)
+    case (reject: RemoteReject, ABORTED) => me abortMaybeNotify data.withoutPartId(reject.ourAdd.partId)
+    case (reject: RemoteReject, INIT) => me abortMaybeNotify data.withLocalFailure(NOT_RETRYING_NO_DETAILS, reject.ourAdd.amountMsat)
+    case (reject: RemoteReject, SUCCEEDED) if reject.ourAdd.paymentHash == fullTag.paymentHash => become(data.withoutPartId(reject.ourAdd.partId), SUCCEEDED)
+    case (fulfill: RemoteFulfill, SUCCEEDED) if fulfill.ourAdd.paymentHash == fullTag.paymentHash => become(data.withoutPartId(fulfill.ourAdd.partId), SUCCEEDED)
     case (bag: InFlightPayments, SUCCEEDED) if data.inFlightParts.isEmpty && !bag.out.contains(fullTag) => listener.wholePaymentSucceeded(data)
+    case (CMDException(_, cmd: CMD_ADD_HTLC), ABORTED) => me abortMaybeNotify data.withoutPartId(cmd.partId)
 
     case (cmd: SendMultiPart, INIT | ABORTED) =>
       val chans = opm.rightNowSendable(cmd.allowedChans, cmd.totalFeeReserve)
@@ -296,10 +299,6 @@ class OutgoingPaymentSender(val fullTag: FullPaymentTag, val listener: OutgoingP
       val data1 = data.withoutPartId(fulfill.ourAdd.partId)
       listener.gotFirstPreimage(data, fulfill)
       become(data1, SUCCEEDED)
-
-    case (fulfill: RemoteFulfill, SUCCEEDED) if fulfill.ourAdd.paymentHash == fullTag.paymentHash =>
-      // Remove in-flight parts so they don't interfere with future channel capacity calculations
-      become(data.withoutPartId(fulfill.ourAdd.partId), SUCCEEDED)
 
     case (CMDChanGotOnline, PENDING) =>
       data.parts.values.collectFirst { case wait: WaitForChanOnline =>

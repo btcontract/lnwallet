@@ -68,7 +68,7 @@ object MnemonicCode {
     require(check == checksumbits, "invalid checksum")
   }
 
-  def validate(mnemonics: String): Unit = validate(mnemonics.split(" "))
+  def validate(mnemonics: String): Unit = validate(mnemonics.split(" ").toSeq)
 
   /**
     * BIP39 seed derivation
@@ -84,5 +84,5 @@ object MnemonicCode {
     ByteVector.view(keyParams.getKey)
   }
 
-  def toSeed(mnemonics: String, passphrase: String): ByteVector = toSeed(mnemonics.split(" "), passphrase)
+  def toSeed(mnemonics: String, passphrase: String): ByteVector = toSeed(mnemonics.split(" ").toSeq, passphrase)
 }

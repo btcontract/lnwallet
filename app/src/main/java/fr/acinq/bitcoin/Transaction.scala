@@ -14,7 +14,7 @@ object OutPoint extends BtcSerializer[OutPoint] {
 
   override def read(input: InputStream, protocolVersion: Long): OutPoint = OutPoint(hash(input), uint32(input))
 
-  override def write(input: OutPoint, out: OutputStream, protocolVersion: Long) = {
+  override def write(input: OutPoint, out: OutputStream, protocolVersion: Long): Unit = {
     out.write(input.hash.toArray)
     writeUInt32(input.index.toInt, out)
   }
@@ -51,12 +51,12 @@ object TxIn extends BtcSerializer[TxIn] {
 
   /* Below flags apply in the context of BIP 68*/
   /* If this flag set, CTxIn::nSequence is NOT interpreted as a relative lock-time. */
-  val SEQUENCE_LOCKTIME_DISABLE_FLAG = (1L << 31)
+  val SEQUENCE_LOCKTIME_DISABLE_FLAG = 1L << 31
 
   /* If CTxIn::nSequence encodes a relative lock-time and this flag
    * is set, the relative lock-time has units of 512 seconds,
    * otherwise it specifies blocks with a granularity of 1. */
-  val SEQUENCE_LOCKTIME_TYPE_FLAG = (1L << 22)
+  val SEQUENCE_LOCKTIME_TYPE_FLAG = 1L << 22
 
   /* If CTxIn::nSequence encodes a relative lock-time, this mask is
    * applied to extract that lock-time from the sequence field. */
@@ -73,7 +73,7 @@ object TxIn extends BtcSerializer[TxIn] {
 
   override def read(input: InputStream, protocolVersion: Long): TxIn = TxIn(outPoint = OutPoint.read(input), signatureScript = script(input), sequence = uint32(input))
 
-  override def write(input: TxIn, out: OutputStream, protocolVersion: Long) = {
+  override def write(input: TxIn, out: OutputStream, protocolVersion: Long): Unit = {
     OutPoint.write(input.outPoint, out)
     writeScript(input.signatureScript.toArray, out)
     writeUInt32(input.sequence.toInt, out)
@@ -113,7 +113,7 @@ object TxOut extends BtcSerializer[TxOut] {
 
   override def read(input: InputStream, protocolVersion: Long): TxOut = TxOut(Satoshi(uint64(input)), script(input))
 
-  override def write(input: TxOut, out: OutputStream, protocolVersion: Long) = {
+  override def write(input: TxOut, out: OutputStream, protocolVersion: Long): Unit = {
     writeUInt64(input.amount.toLong, out)
     writeScript(input.publicKeyScript.toArray, out)
   }
@@ -188,14 +188,14 @@ object Transaction extends BtcSerializer[Transaction] {
       case 1 =>
         val witnesses = new ArrayBuffer[ScriptWitness]()
         for (_ <- tx1.txIn.indices) witnesses += ScriptWitness.read(input, protocolVersion)
-        tx1.updateWitnesses(witnesses).copy(lockTime = uint32(input))
+        tx1.updateWitnesses(witnesses.toSeq).copy(lockTime = uint32(input))
       case _ => throw new RuntimeException(s"Unknown transaction optional data $flags")
     }
 
     tx2
   }
 
-  override def write(tx: Transaction, out: OutputStream, protocolVersion: Long) = {
+  override def write(tx: Transaction, out: OutputStream, protocolVersion: Long): Unit = {
     if (serializeTxWitness(protocolVersion) && tx.hasWitness) {
       writeUInt32(tx.version.toInt, out)
       writeUInt8(0x00, out)
@@ -392,7 +392,7 @@ object Transaction extends BtcSerializer[Transaction] {
     //if (signatureVersion == SigVersion.SIGVERSION_WITNESS_V0) require(privateKey.compressed, "private key must be compressed in segwit")
     val hash = hashForSigning(tx, inputIndex, previousOutputScript, sighashType, amount, signatureVersion)
     val sig = Crypto.sign(hash, privateKey)
-    Crypto.compact2der(sig) :+ (sighashType.toByte)
+    Crypto.compact2der(sig) :+ sighashType.toByte
   }
 
   /**

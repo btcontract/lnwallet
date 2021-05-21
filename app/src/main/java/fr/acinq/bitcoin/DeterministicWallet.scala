@@ -1,6 +1,6 @@
 package fr.acinq.bitcoin
 
-import java.io.{ByteArrayInputStream, ByteArrayOutputStream}
+import java.io.{ByteArrayInputStream, ByteArrayOutputStream, OutputStream}
 import java.math.BigInteger
 import java.nio.ByteOrder
 
@@ -9,8 +9,8 @@ import fr.acinq.bitcoin.Protocol._
 import scodec.bits.ByteVector
 
 /**
-  * see https://github.com/bitcoin/bips/blob/master/bip-0032.mediawiki
-  */
+ * see https://github.com/bitcoin/bips/blob/master/bip-0032.mediawiki
+ */
 object DeterministicWallet {
 
   case class KeyPath(path: Seq[Long]) {
@@ -25,19 +25,19 @@ object DeterministicWallet {
     val Root = KeyPath(Nil)
 
     /**
-      *
-      * @param path key path. A list of integers separated by a `/`. May start with "/" or "m/". A single quote appended
-      *             at the end means use the hardened version of the ley index (example: m/44'/0'/0'/0)
-      * @return a KeyPath instance
-      */
+     *
+     * @param path key path. A list of integers separated by a `/`. May start with "/" or "m/". A single quote appended
+     *             at the end means use the hardened version of the ley index (example: m/44'/0'/0'/0)
+     * @return a KeyPath instance
+     */
     def apply(path: String): KeyPath = {
       def toNumber(value: String): Long = if (value.last == '\'') hardened(value.dropRight(1).toLong) else value.toLong
 
       val path1 = path.stripPrefix("m").stripPrefix("/")
-      if (path1.isEmpty) KeyPath.Root else new KeyPath(path1.split('/').map(toNumber))
+      if (path1.isEmpty) KeyPath.Root else new KeyPath(path1.split('/').map(toNumber).toSeq)
     }
 
-    def childNumberToString(childNumber: Long) = if (isHardened(childNumber)) ((childNumber - hardenedKeyIndex).toString + "'") else childNumber.toString
+    def childNumberToString(childNumber: Long) = if (isHardened(childNumber)) (childNumber - hardenedKeyIndex).toString + "'" else childNumber.toString
   }
 
   implicit def keypath2longseq(input: KeyPath): Seq[Long] = input.path
@@ -52,9 +52,9 @@ object DeterministicWallet {
 
   case class ExtendedPrivateKey(secretkeybytes: ByteVector32, chaincode: ByteVector32, depth: Int, path: KeyPath, parent: Long) {
 
-    lazy val privateKey: PrivateKey = PrivateKey(secretkeybytes)
+    def privateKey: PrivateKey = PrivateKey(secretkeybytes)
 
-    lazy val publicKey: PublicKey = privateKey.publicKey
+    def publicKey: PublicKey = privateKey.publicKey
   }
 
   object ExtendedPrivateKey {
@@ -105,20 +105,24 @@ object DeterministicWallet {
 
   def encode(input: ExtendedPublicKey, prefix: Int): String = {
     val out = new ByteArrayOutputStream()
-    writeUInt8(input.depth, out)
-    writeUInt32(input.parent.toInt, out, ByteOrder.BIG_ENDIAN)
-    writeUInt32(input.path.lastChildNumber.toInt, out, ByteOrder.BIG_ENDIAN)
-    out.write(input.chaincode.toArray)
-    out.write(input.publickeybytes.toArray)
+    write(input, out)
     val buffer = ByteVector.view(out.toByteArray)
     Base58Check.encode(prefix, buffer)
   }
 
+  def write(input: ExtendedPublicKey, output: OutputStream): Unit = {
+    writeUInt8(input.depth, output)
+    writeUInt32(input.parent.toInt, output, ByteOrder.BIG_ENDIAN)
+    writeUInt32(input.path.lastChildNumber.toInt, output, ByteOrder.BIG_ENDIAN)
+    writeBytes(input.chaincode.toArray, output)
+    writeBytes(input.publickeybytes.toArray, output)
+  }
+
   /**
-    *
-    * @param seed random seed
-    * @return a "master" private key
-    */
+   *
+   * @param seed random seed
+   * @return a "master" private key
+   */
   def generate(seed: ByteVector): ExtendedPrivateKey = {
     val I = Crypto.hmac512(ByteVector.view("Bitcoin seed".getBytes("UTF-8")), seed)
     val IL = ByteVector32(I.take(32))
@@ -127,34 +131,34 @@ object DeterministicWallet {
   }
 
   /**
-    *
-    * @param input extended private key
-    * @return the public key for this private key
-    */
+   *
+   * @param input extended private key
+   * @return the public key for this private key
+   */
   def publicKey(input: ExtendedPrivateKey): ExtendedPublicKey = {
     ExtendedPublicKey(input.publicKey.value, input.chaincode, depth = input.depth, path = input.path, parent = input.parent)
   }
 
   /**
-    *
-    * @param input extended public key
-    * @return the fingerprint for this public key
-    */
+   *
+   * @param input extended public key
+   * @return the fingerprint for this public key
+   */
   def fingerprint(input: ExtendedPublicKey): Long = uint32(new ByteArrayInputStream(Crypto.hash160(input.publickeybytes).take(4).reverse.toArray))
 
   /**
-    *
-    * @param input extended private key
-    * @return the fingerprint for this private key (which is based on the corresponding public key)
-    */
+   *
+   * @param input extended private key
+   * @return the fingerprint for this private key (which is based on the corresponding public key)
+   */
   def fingerprint(input: ExtendedPrivateKey): Long = fingerprint(publicKey(input))
 
   /**
-    *
-    * @param parent extended private key
-    * @param index  index of the child key
-    * @return the derived private key at the specified index
-    */
+   *
+   * @param parent extended private key
+   * @param index  index of the child key
+   * @return the derived private key at the specified index
+   */
   def derivePrivateKey(parent: ExtendedPrivateKey, index: Long): ExtendedPrivateKey = {
     val I = if (isHardened(index)) {
       val buffer = 0.toByte +: parent.secretkeybytes
@@ -179,11 +183,11 @@ object DeterministicWallet {
   }
 
   /**
-    *
-    * @param parent extended public key
-    * @param index  index of the child key
-    * @return the derived public key at the specified index
-    */
+   *
+   * @param parent extended public key
+   * @param index  index of the child key
+   * @return the derived public key at the specified index
+   */
   def derivePublicKey(parent: ExtendedPublicKey, index: Long): ExtendedPublicKey = {
     require(!isHardened(index), "Cannot derive public keys from public hardened keys")
 

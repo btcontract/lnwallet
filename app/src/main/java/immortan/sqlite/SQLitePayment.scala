@@ -38,20 +38,27 @@ class SQLitePayment(db: DBInterface, preimageDb: DBInterface) extends PaymentBag
 
   def setPreimage(paymentHash: ByteVector32, preimage: ByteVector32): Unit = preimageDb.change(PreimageTable.newSql, paymentHash.toHex, preimage.toHex)
 
-  def updAbortedOutgoing(paymentHash: ByteVector32): Unit = db.change(PaymentTable.updStatusSql, PaymentStatus.ABORTED, paymentHash.toHex)
+  def updAbortedOutgoing(paymentHash: ByteVector32): Unit = {
+    db.change(PaymentTable.updStatusSql, PaymentStatus.ABORTED, paymentHash.toHex)
+    ChannelMaster.next(ChannelMaster.paymentDbStream)
+  }
 
   def updOkOutgoing(fulfill: RemoteFulfill, fee: MilliSatoshi): Unit = {
     db.change(PaymentTable.updOkOutgoingSql, fulfill.preimage.toHex, fee.toLong: JLong, fulfill.ourAdd.paymentHash.toHex)
-    ChannelMaster.preimageObtainStream.onNext(fulfill.ourAdd.paymentHash)
+    ChannelMaster.hashObtainStream.onNext(fulfill.ourAdd.paymentHash)
+    ChannelMaster.next(ChannelMaster.paymentDbStream)
   }
 
   def updOkIncoming(receivedAmount: MilliSatoshi, paymentHash: ByteVector32): Unit = {
     db.change(PaymentTable.updOkIncomingSql, receivedAmount.toLong: JLong, System.currentTimeMillis: JLong, paymentHash.toHex)
-    ChannelMaster.preimageRevealStream.onNext(paymentHash)
+    ChannelMaster.hashRevealStream.onNext(paymentHash)
+    ChannelMaster.next(ChannelMaster.paymentDbStream)
   }
 
-  def addRelayedPreimageInfo(fullTag: FullPaymentTag, preimage: ByteVector32, relayed: MilliSatoshi, earned: MilliSatoshi): Unit =
+  def addRelayedPreimageInfo(fullTag: FullPaymentTag, preimage: ByteVector32, relayed: MilliSatoshi, earned: MilliSatoshi): Unit = {
     db.change(RelayTable.newSql, fullTag.paymentHash.toHex, fullTag.paymentSecret.toHex, preimage.toHex, System.currentTimeMillis: JLong, relayed.toLong: JLong, earned.toLong: JLong)
+    ChannelMaster.next(ChannelMaster.relayDbStream)
+  }
 
   def replaceOutgoingPayment(prex: PaymentRequestExt, description: PaymentDescription, action: Option[PaymentAction],
                              finalAmount: MilliSatoshi, balanceSnap: MilliSatoshi, fiatRateSnap: Fiat2Btc, chainFee: MilliSatoshi): Unit =
@@ -61,6 +68,9 @@ class SQLitePayment(db: DBInterface, preimageDb: DBInterface) extends PaymentBag
         action.map(_.toJson.compactPrint).getOrElse(PaymentInfo.NO_ACTION), prex.pr.paymentHash.toHex, prex.pr.paymentSecret.get.toHex, 0L: JLong /* RECEIVED = 0 MSAT */,
         finalAmount.toLong: JLong /* SENT IS KNOWN */, 0L: JLong /* FEE IS UNCERTAIN YET */, balanceSnap.toLong: JLong, fiatRateSnap.toJson.compactPrint,
         chainFee.toLong: JLong, 0: java.lang.Integer /* INCOMING = 0 */)
+
+      // Implementation will use this to update interface
+      ChannelMaster.next(ChannelMaster.paymentDbStream)
     }
 
   def replaceIncomingPayment(prex: PaymentRequestExt, preimage: ByteVector32, description: PaymentDescription,
@@ -71,6 +81,9 @@ class SQLitePayment(db: DBInterface, preimageDb: DBInterface) extends PaymentBag
         prex.pr.paymentHash.toHex, prex.pr.paymentSecret.get.toHex, prex.pr.amount.getOrElse(0L.msat).toLong: JLong /* MUST COME FROM PR! NO EXACT AMOUNT IF RECEIVED = 0 */,
         0L: JLong /* SENT = 0 MSAT, NOTHING TO SEND */, 0L: JLong /* NO FEE FOR INCOMING PAYMENT */, balanceSnap.toLong: JLong, fiatRateSnap.toJson.compactPrint,
         chainFee.toLong: JLong, 1: java.lang.Integer /* INCOMING = 1 */)
+
+      // Implementation will use this to update interface
+      ChannelMaster.next(ChannelMaster.paymentDbStream)
     }
 
   def paymentSummary: Try[PaymentSummary] = db.select(PaymentTable.selectSummarySql).headTry { rc =>

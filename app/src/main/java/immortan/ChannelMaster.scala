@@ -31,9 +31,30 @@ object ChannelMaster {
   type ReasonableTrampolines = Iterable[ReasonableTrampoline]
   type ReasonableLocals = Iterable[ReasonableLocal]
 
+
+  final val updateCounter = new AtomicLong(0)
+
+  final val stateUpdateStream: Subject[Long] = Subject[Long]
+
+  final val statusUpdateStream: Subject[Long] = Subject[Long]
+
+  final val paymentDbStream: Subject[Long] = Subject[Long]
+
+  final val relayDbStream: Subject[Long] = Subject[Long]
+
+  final val txDbStream: Subject[Long] = Subject[Long]
+
+  def next(stream: Subject[Long] = null): Unit = stream.onNext(updateCounter.incrementAndGet)
+
+
+  final val hashRevealStream: Subject[ByteVector32] = Subject[ByteVector32]
+
+  final val hashObtainStream: Subject[ByteVector32] = Subject[ByteVector32]
+
+
   var NO_CHANNEL: StateMachine[ChannelData] with CanBeRepliedTo =
-    // It's possible that user removes an HC from system at runtime
-    // or peer sends a message targeted to non-exiting local channel
+  // It's possible that user removes an HC from system at runtime
+  // or peer sends a message targeted to non-exiting local channel
     new StateMachine[ChannelData] with CanBeRepliedTo {
       def process(change: Any): Unit = doProcess(change)
       def doProcess(change: Any): Unit = none
@@ -42,20 +63,6 @@ object ChannelMaster {
   final val NO_PREIMAGE = ByteVector32.One
 
   final val NO_SECRET = ByteVector32.Zeroes
-
-  final val updateCounter = new AtomicLong(0)
-
-  final val stateUpdateStream: Subject[Long] = Subject[Long]
-
-  final val statusUpdateStream: Subject[Long] = Subject[Long]
-
-  def notifyStateUpdated: Unit = stateUpdateStream.onNext(updateCounter.incrementAndGet)
-
-  def notifyStatusUpdated: Unit = statusUpdateStream.onNext(updateCounter.incrementAndGet)
-
-  final val preimageRevealStream: Subject[ByteVector32] = Subject[ByteVector32]
-
-  final val preimageObtainStream: Subject[ByteVector32] = Subject[ByteVector32]
 
   def initResolve(ext: UpdateAddHtlcExt): IncomingResolution = IncomingPacket.decrypt(ext.theirAdd, ext.remoteInfo.nodeSpecificPrivKey) match {
     case _ if LNParams.isChainDisconnectTooLong => CMD_FAIL_HTLC(Right(TemporaryNodeFailure), ext.remoteInfo.nodeSpecificPrivKey, ext.theirAdd)
@@ -164,7 +171,7 @@ class ChannelMaster(val payBag: PaymentBag, val chanBag: ChannelBag, val dataBag
     // Note that this removes all listeners this channel previously had
     all += Tuple2(cs.channelId, freshChannel)
     freshChannel.listeners = Set(me)
-    notifyStatusUpdated
+    next(statusUpdateStream)
     initConnect
   }
 
@@ -223,13 +230,13 @@ class ChannelMaster(val payBag: PaymentBag, val chanBag: ChannelBag, val dataBag
   override def onBecome: PartialFunction[Transition, Unit] = {
     case (_, _, _, WAIT_FUNDING_DONE | SLEEPING | SUSPENDED, OPEN) =>
       opm process OutgoingPaymentMaster.CMDChanGotOnline
-      notifyStatusUpdated
+      next(statusUpdateStream)
 
     case (_, _, _, OPEN, SLEEPING | SUSPENDED | CLOSING) =>
-      notifyStatusUpdated
+      next(statusUpdateStream)
 
     case (_: ChannelNormal, _, _, SLEEPING, CLOSING) =>
-      notifyStatusUpdated
+      next(statusUpdateStream)
   }
 
   override def stateUpdated(rejects: Seq[RemoteReject] = Nil): Unit = {
@@ -251,12 +258,12 @@ class ChannelMaster(val payBag: PaymentBag, val chanBag: ChannelBag, val dataBag
     // this change is used by existing FSMs to properly finalize themselves
     for (incomingFSM <- inProcessors.values) incomingFSM doProcess inFlightBag
     // Send another part only after current failure has been cross-signed
-    for (ourRejectOfTheirAdd <- rejects) opm process ourRejectOfTheirAdd
     // Sign all fails and fulfills that could have been sent above
+    for (theirReject <- rejects) opm process theirReject
     for (chan <- all.values) chan process CMD_SIGN
     // Maybe remove successful outgoing FSMs
     opm process inFlightBag
-    notifyStateUpdated
+    next(stateUpdateStream)
   }
 
   // Mainly to prolong FSM timeouts once another add is seen (but not yet committed)

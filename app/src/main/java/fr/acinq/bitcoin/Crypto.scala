@@ -14,7 +14,6 @@ import org.bouncycastle.crypto.signers.{ECDSASigner, HMacDSAKCalculator}
 import org.bouncycastle.math.ec.ECPoint
 import scodec.bits.ByteVector
 
-
 object Crypto {
   val params = SECNamedCurves.getByName("secp256k1")
   val curve = new ECDomainParameters(params.getCurve, params.getG, params.getN, params.getH)

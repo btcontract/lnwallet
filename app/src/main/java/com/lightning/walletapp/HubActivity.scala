@@ -5,22 +5,19 @@ import immortan.utils._
 import android.widget._
 import fr.acinq.eclair._
 import immortan.crypto.Tools._
-
 import scala.concurrent.duration._
 import com.softwaremill.quicklens._
 import com.lightning.walletapp.Colors._
 import com.lightning.walletapp.R.string._
-import android.os.{Bundle, Handler}
 import fr.acinq.bitcoin.{Satoshi, SatoshiLong}
 import android.view.{MenuItem, View, ViewGroup}
-import rx.lang.scala.{Observable, Subject, Subscription}
+import rx.lang.scala.{Observable, Subscription}
 import com.androidstudy.networkmanager.{Monitor, Tovuti}
-import immortan.sqlite.{PaymentTable, RelayTable, Table, TxTable}
 import fr.acinq.eclair.blockchain.fee.{FeeratePerKw, FeeratePerVByte}
 import fr.acinq.eclair.blockchain.electrum.ElectrumWallet.WalletReady
 import com.lightning.walletapp.BaseActivity.StringOps
+import com.google.android.material.snackbar.Snackbar
 import org.ndeftools.util.activity.NfcReaderActivity
-
 import concurrent.ExecutionContext.Implicits.global
 import com.github.mmin18.widget.RealtimeBlurView
 import androidx.recyclerview.widget.RecyclerView
@@ -30,11 +27,10 @@ import fr.acinq.eclair.blockchain.TxAndFee
 import com.indicator.ChannelIndicatorLine
 import androidx.appcompat.app.AlertDialog
 import fr.acinq.eclair.wire.PaymentTagTlv
-import android.database.ContentObserver
+import immortan.sqlite.Table
 import org.ndeftools.Message
 import java.util.TimerTask
-
-import com.google.android.material.snackbar.Snackbar
+import android.os.Bundle
 
 
 class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataChecker with ChoiceReceiver { me =>
@@ -313,22 +309,6 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
   private var statusSubscription = Option.empty[Subscription]
   private var successSubscription = Option.empty[Subscription]
 
-  private val paymentEventStream = Subject[Long]
-  private val relayEventStream = Subject[Long]
-  private val txEventStream = Subject[Long]
-
-  private val paymentObserver = new ContentObserver(new Handler) {
-    override def onChange(self: Boolean): Unit = paymentEventStream.onNext(ChannelMaster.updateCounter.incrementAndGet)
-  }
-
-  private val relayObserver = new ContentObserver(new Handler) {
-    override def onChange(self: Boolean): Unit = relayEventStream.onNext(ChannelMaster.updateCounter.incrementAndGet)
-  }
-
-  private val txObserver = new ContentObserver(new Handler) {
-    override def onChange(self: Boolean): Unit = txEventStream.onNext(ChannelMaster.updateCounter.incrementAndGet)
-  }
-
   private val netListener = new Monitor.ConnectivityListener {
     override def onConnectivityChanged(ct: Int, isConnected: Boolean, isFast: Boolean): Unit = UITask {
       // This will make channels SLEEPING right away instead of a bit later when we receive no Pong
@@ -348,7 +328,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
         if newDepth != transactionInfo.depth || newDoubleSpent != transactionInfo.isDoubleSpent
         _ = WalletApp.txDataBag.updStatus(transactionInfo.txid, newDepth, newDoubleSpent)
         // Trigger preimage revealed using a txid to throttle multiple vibrations
-      } ChannelMaster.preimageRevealStream.onNext(transactionInfo.txid)
+      } ChannelMaster.hashRevealStream.onNext(transactionInfo.txid)
     }
   }
 
@@ -383,9 +363,6 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
     statusSubscription.foreach(_.unsubscribe)
     streamSubscription.foreach(_.unsubscribe)
     successSubscription.foreach(_.unsubscribe)
-    getContentResolver.unregisterContentObserver(paymentObserver)
-    getContentResolver.unregisterContentObserver(relayObserver)
-    getContentResolver.unregisterContentObserver(txObserver)
 
     LNParams.chainWallet.eventsCatcher ! WalletEventsCatcher.Remove(chainListener)
     FiatRates.listeners -= fiatRatesListener
@@ -419,12 +396,13 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
             }
 
             override def getAlertDialog: AlertDialog = {
-              val leftToPayHuman = LNParams.denomination.parsedWithSign(prExt.splitLeftover, Colors.cardZero)
+              val leftHuman = LNParams.denomination.parsedWithSign(prExt.splitLeftover, Colors.cardZero)
               val totalHuman = LNParams.denomination.parsedWithSign(origAmount, Colors.cardZero)
-              val left = getString(dialog_split_ln_left).format(s"&#160;$leftToPayHuman")
               val total = getString(dialog_split_ln_total).format(s"&#160;$totalHuman")
+              val left = getString(dialog_split_ln_left).format(s"&#160;$leftHuman")
+              val details = s"${prExt.brDescription}<br><br>$total<br>$left"
 
-              val title = updateView2Color(new String, getString(dialog_split_ln).format(s"${prExt.brDescription}<br><br>$total<br>$left"), R.color.cardLightning)
+              val title = updateView2Color(new String, getString(dialog_split_ln).format(details), R.color.cardLightning)
               mkCheckFormNeutral(send, none, neutral, titleBodyAsViewBuilder(title, manager.content), dialog_pay, dialog_cancel, dialog_split)
             }
 
@@ -509,9 +487,6 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
   def INIT(state: Bundle): Unit =
     if (WalletApp.isAlive && LNParams.isOperational) {
       setContentView(com.lightning.walletapp.R.layout.activity_hub)
-      getContentResolver.registerContentObserver(WalletApp.app.sqlPath(PaymentTable.table), true, paymentObserver)
-      getContentResolver.registerContentObserver(WalletApp.app.sqlPath(RelayTable.table), true, relayObserver)
-      getContentResolver.registerContentObserver(WalletApp.app.sqlPath(TxTable.table), true, txObserver)
       LNParams.chainWallet.eventsCatcher ! chainListener
       FiatRates.listeners += fiatRatesListener
       Tovuti.from(me).monitor(netListener)
@@ -540,13 +515,13 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
       val window = 500.millis
       // Throttle all types of burst updates, but make sure the last one is always called
       val stateEvents = Rx.uniqueFirstAndLastWithinWindow(ChannelMaster.stateUpdateStream, window)
-      val txEvents = Rx.uniqueFirstAndLastWithinWindow(txEventStream, window).doOnNext(_ => reloadTxInfos)
-      val paymentEvents = Rx.uniqueFirstAndLastWithinWindow(paymentEventStream, window).doOnNext(_ => reloadPaymentInfos)
-      val relayEvents = Rx.uniqueFirstAndLastWithinWindow(relayEventStream, window).doOnNext(_ => reloadRelayedPreimageInfos)
+      val txEvents = Rx.uniqueFirstAndLastWithinWindow(ChannelMaster.txDbStream, window).doOnNext(_ => reloadTxInfos)
+      val paymentEvents = Rx.uniqueFirstAndLastWithinWindow(ChannelMaster.paymentDbStream, window).doOnNext(_ => reloadPaymentInfos)
+      val relayEvents = Rx.uniqueFirstAndLastWithinWindow(ChannelMaster.relayDbStream, window).doOnNext(_ => reloadRelayedPreimageInfos)
 
       streamSubscription = txEvents.merge(paymentEvents).merge(relayEvents).doOnNext(_ => updAllInfos).merge(stateEvents).subscribe(_ => UITask(updatePaymentList).run).toSome
       statusSubscription = Rx.uniqueFirstAndLastWithinWindow(ChannelMaster.statusUpdateStream, window).merge(stateEvents).subscribe(_ => UITask(walletCards.updateView).run).toSome
-      successSubscription = ChannelMaster.preimageRevealStream.merge(ChannelMaster.preimageObtainStream).throttleFirst(window).subscribe(_ => removeSnackAndVibrate).toSome
+      successSubscription = ChannelMaster.hashRevealStream.merge(ChannelMaster.hashObtainStream).throttleFirst(window).subscribe(_ => removeSnackAndVibrate).toSome
     } else {
       WalletApp.freePossiblyUsedResouces
       me exitTo ClassNames.mainActivityClass
@@ -627,7 +602,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
         txAndFee <- LNParams.chainWallet.wallet.sendPayment(manager.resultSat, uri.address, feeView.rate)
         // Record this description before attempting to send, we won't be able to know a memo otherwise
         knownDescription = PlainTxDescription(uri.address :: Nil, manager.resultExtraInput)
-        _ = WalletApp.txDataBag.descriptions += (txAndFee.tx.txid -> knownDescription)
+        _ = WalletApp.txDescriptions += Tuple2(txAndFee.tx.txid, knownDescription)
         isDefinitelyCommitted <- LNParams.chainWallet.wallet.commit(txAndFee.tx)
         if !isDefinitelyCommitted
       } warnSendingFailed.run

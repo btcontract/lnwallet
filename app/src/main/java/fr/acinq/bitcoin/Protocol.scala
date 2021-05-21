@@ -9,8 +9,8 @@ import scodec.bits._
 import scala.collection.mutable.ArrayBuffer
 
 /**
-  * see https://en.bitcoin.it/wiki/Protocol_specification
-  */
+ * see https://en.bitcoin.it/wiki/Protocol_specification
+ */
 
 case class ByteVector32(bytes: ByteVector) {
   require(bytes.size == 32, s"size must be 32 bytes, is ${bytes.size} bytes")
@@ -45,8 +45,8 @@ object ByteVector64 {
 
 object Protocol {
   /**
-    * basic serialization functions
-    */
+   * basic serialization functions
+   */
 
   val PROTOCOL_VERSION = 70015
 
@@ -83,6 +83,10 @@ object Protocol {
   def uint32(input: Array[Byte], order: ByteOrder): Long = {
     val buffer = ByteBuffer.wrap(input).order(order)
     buffer.getInt() & 0xFFFFFFFFL
+  }
+
+  def uint32(input: ByteVector, order: ByteOrder): Long = {
+    input.toLong(signed = false, ByteOrdering.fromJava(order))
   }
 
   def writeUInt32(input: Long, out: OutputStream, order: ByteOrder = ByteOrder.LITTLE_ENDIAN): Unit = out.write(writeUInt32(input, order).toArray)
@@ -156,12 +160,14 @@ object Protocol {
 
   def writeBytes(input: Array[Byte], out: OutputStream): Unit = out.write(input)
 
+  def writeBytes(input: ByteVector, out: OutputStream): Unit = out.write(input.toArray)
+
   def varstring(input: InputStream): String = {
     val length = varint(input)
     new String(bytes(input, length).toArray, "UTF-8")
   }
 
-  def writeVarstring(input: String, out: OutputStream) = {
+  def writeVarstring(input: String, out: OutputStream): Unit = {
     writeVarint(input.length, out)
     writeBytes(input.getBytes("UTF-8"), out)
   }
@@ -198,7 +204,7 @@ object Protocol {
     for (_ <- 1L to count) {
       items += reader(input, protocolVersion)
     }
-    items
+    items.toSeq
   }
 
   def readCollection[T](input: InputStream, reader: (InputStream, Long) => T, protocolVersion: Long): Seq[T] = readCollection(input, reader, None, protocolVersion)
@@ -218,21 +224,21 @@ import fr.acinq.bitcoin.Protocol._
 
 trait BtcSerializer[T] {
   /**
-    * write a message to a stream
-    *
-    * @param t   message
-    * @param out output stream
-    */
+   * write a message to a stream
+   *
+   * @param t   message
+   * @param out output stream
+   */
   def write(t: T, out: OutputStream, protocolVersion: Long): Unit
 
   def write(t: T, out: OutputStream): Unit = write(t, out, PROTOCOL_VERSION)
 
   /**
-    * write a message to a byte array
-    *
-    * @param t message
-    * @return a serialized message
-    */
+   * write a message to a byte array
+   *
+   * @param t message
+   * @return a serialized message
+   */
   def write(t: T, protocolVersion: Long): ByteVector = {
     val out = new ByteArrayOutputStream()
     write(t, out, protocolVersion)
@@ -242,31 +248,31 @@ trait BtcSerializer[T] {
   def write(t: T): ByteVector = write(t, PROTOCOL_VERSION)
 
   /**
-    * read a message from a stream
-    *
-    * @param in input stream
-    * @return a deserialized message
-    */
+   * read a message from a stream
+   *
+   * @param in input stream
+   * @return a deserialized message
+   */
   def read(in: InputStream, protocolVersion: Long): T
 
   def read(in: InputStream): T = read(in, PROTOCOL_VERSION)
 
   /**
-    * read a message from a byte array
-    *
-    * @param in serialized message
-    * @return a deserialized message
-    */
+   * read a message from a byte array
+   *
+   * @param in serialized message
+   * @return a deserialized message
+   */
   def read(in: Array[Byte], protocolVersion: Long): T = read(new ByteArrayInputStream(in), protocolVersion)
 
   def read(in: Array[Byte]): T = read(in, PROTOCOL_VERSION)
 
   /**
-    * read a message from a hex string
-    *
-    * @param in message binary data in hex format
-    * @return a deserialized message of type T
-    */
+   * read a message from a hex string
+   *
+   * @param in message binary data in hex format
+   * @return a deserialized message of type T
+   */
   def read(in: String, protocolVersion: Long): T = read(ByteVector.fromValidHex(in).toArray, protocolVersion)
 
   def read(in: String): T = read(in, PROTOCOL_VERSION)
@@ -301,7 +307,7 @@ object Message extends BtcSerializer[Message] {
     Message(magic, command, payload)
   }
 
-  override def write(input: Message, out: OutputStream, protocolVersion: Long) = {
+  override def write(input: Message, out: OutputStream, protocolVersion: Long): Unit = {
     writeUInt32(input.magic.toInt, out)
     val buffer = new Array[Byte](12)
     input.command.getBytes("ISO-8859-1").copyToArray(buffer)
@@ -314,12 +320,12 @@ object Message extends BtcSerializer[Message] {
 }
 
 /**
-  * Bitcoin message exchanged by nodes over the network
-  *
-  * @param magic   Magic value indicating message origin network, and used to seek to next message when stream state is unknown
-  * @param command ASCII string identifying the packet content, NULL padded (non-NULL padding results in packet rejected)
-  * @param payload The actual data
-  */
+ * Bitcoin message exchanged by nodes over the network
+ *
+ * @param magic   Magic value indicating message origin network, and used to seek to next message when stream state is unknown
+ * @param command ASCII string identifying the packet content, NULL padded (non-NULL padding results in packet rejected)
+ * @param payload The actual data
+ */
 case class Message(magic: Long, command: String, payload: ByteVector) extends BtcSerializable[Message] {
   require(command.length <= 12)
 
@@ -337,7 +343,7 @@ object NetworkAddressWithTimestamp extends BtcSerializer[NetworkAddressWithTimes
     NetworkAddressWithTimestamp(time, services, address, port)
   }
 
-  override def write(input: NetworkAddressWithTimestamp, out: OutputStream, protocolVersion: Long) = {
+  override def write(input: NetworkAddressWithTimestamp, out: OutputStream, protocolVersion: Long): Unit = {
     writeUInt32(input.time.toInt, out)
     writeUInt64(input.services, out)
     input.address match {
@@ -363,7 +369,7 @@ object NetworkAddress extends BtcSerializer[NetworkAddress] {
     NetworkAddress(services, address, port)
   }
 
-  override def write(input: NetworkAddress, out: OutputStream, protocolVersion: Long) = {
+  override def write(input: NetworkAddress, out: OutputStream, protocolVersion: Long): Unit = {
     writeUInt64(input.services, out)
     input.address match {
       case _: Inet4Address => writeBytes(hex"00000000000000000000ffff".toArray, out)
@@ -394,7 +400,7 @@ object Version extends BtcSerializer[Version] {
     Version(version, services, timestamp, addr_recv, addr_from, nonce, user_agent, start_height, relay)
   }
 
-  override def write(input: Version, out: OutputStream, protocolVersion: Long) = {
+  override def write(input: Version, out: OutputStream, protocolVersion: Long): Unit = {
     writeUInt32(input.version.toInt, out)
     writeUInt64(input.services, out)
     writeUInt64(input.timestamp, out)
@@ -409,19 +415,19 @@ object Version extends BtcSerializer[Version] {
 }
 
 /**
-  *
-  * @param version      Identifies protocol version being used by the node
-  * @param services     bitfield of features to be enabled for this connection
-  * @param timestamp    standard UNIX timestamp in seconds
-  * @param addr_recv    The network address of the node receiving this message
-  * @param addr_from    The network address of the node emitting this message
-  * @param nonce        Node random nonce, randomly generated every time a version packet is sent. This nonce is used to detect
-  *                     connections to self.
-  * @param user_agent   User Agent
-  * @param start_height The last block received by the emitting node
-  * @param relay        Whether the remote peer should announce relayed transactions or not, see BIP 0037,
-  *                     since version >= 70001
-  */
+ *
+ * @param version      Identifies protocol version being used by the node
+ * @param services     bitfield of features to be enabled for this connection
+ * @param timestamp    standard UNIX timestamp in seconds
+ * @param addr_recv    The network address of the node receiving this message
+ * @param addr_from    The network address of the node emitting this message
+ * @param nonce        Node random nonce, randomly generated every time a version packet is sent. This nonce is used to detect
+ *                     connections to self.
+ * @param user_agent   User Agent
+ * @param start_height The last block received by the emitting node
+ * @param relay        Whether the remote peer should announce relayed transactions or not, see BIP 0037,
+ *                     since version >= 70001
+ */
 case class Version(version: Long, services: Long, timestamp: Long, addr_recv: NetworkAddress, addr_from: NetworkAddress, nonce: Long, user_agent: String, start_height: Long, relay: Boolean) extends BtcSerializable[Version] {
   override def serializer: BtcSerializer[Version] = Version
 }
