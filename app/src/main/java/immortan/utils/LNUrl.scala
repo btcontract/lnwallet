@@ -8,8 +8,7 @@ import immortan.utils.PayRequest.{AdditionalRoute, PayMetaData}
 import fr.acinq.eclair.router.{Announcements, RouteCalculation}
 import immortan.{LNParams, PaymentAction, RemoteNodeInfo}
 import fr.acinq.eclair.wire.{ChannelUpdate, NodeAddress}
-import fr.acinq.bitcoin.{Bech32, Crypto}
-
+import fr.acinq.bitcoin.{Bech32, ByteVector32, Crypto}
 import fr.acinq.eclair.router.Graph.GraphStructure
 import com.github.kevinsawicki.http.HttpRequest
 import fr.acinq.eclair.payment.PaymentRequest
@@ -69,7 +68,7 @@ trait LNUrlData {
   def level2DataResponse(bld: Uri.Builder): Observable[String] = Rx.ioQueue.map { _ =>
     val requestWithCacheProtection = bld.appendQueryParameter(randomBytes(4).toHex, new String)
     val response = HttpRequest.get(requestWithCacheProtection.build.toString, false).header("Connection", "close")
-    LNUrl.guardResponse(response.body)
+    LNUrl guardResponse response.body
   }
 }
 
@@ -134,13 +133,6 @@ object PayRequest {
   } yield channelUpdate extraHop startNodeId
 }
 
-case class PayLinkInfo(image64: String, lnurl: LNUrl, text: String, lastMsat: MilliSatoshi, hash: String, lastDate: Long) {
-
-  def imageBytesTry: Try[Bytes] = Try(org.bouncycastle.util.encoders.Base64 decode image64)
-
-  lazy val paymentHash: ByteVector = ByteVector.fromValidHex(hash)
-}
-
 case class PayRequest(callback: String, maxSendable: Long, minSendable: Long, metadata: String, commentAllowed: Option[Int] = None) extends LNUrlData { me =>
 
   def requestFinal(amount: MilliSatoshi): Observable[String] = level2DataResponse {
@@ -149,21 +141,19 @@ case class PayRequest(callback: String, maxSendable: Long, minSendable: Long, me
 
   override def checkAgainstParent(lnUrl: LNUrl): Boolean = lnUrl.uri.getHost == callbackUri.getHost
 
-  def metaDataHash: ByteVector = Crypto.sha256(ByteVector view metadata.getBytes)
+  def metaDataHash: ByteVector32 = Crypto.sha256(ByteVector view metadata.getBytes)
 
   private val decodedMetadata = to[PayMetaData](metadata)
 
   val callbackUri: Uri = LNUrl.checkHost(callback)
 
-  val minCanSend: MilliSatoshi = minSendable.msat.max(LNParams.minPayment)
-
   val metaDataTexts: List[String] = decodedMetadata.collect { case List("text/plain", txt) => txt }
 
   require(metaDataTexts.size == 1, "There must be exactly one text/plain entry in metadata")
 
-  require(minCanSend <= maxSendable.msat, s"max=$maxSendable while min=$minCanSend")
+  require(minSendable <= maxSendable, s"max=$maxSendable while min=$minSendable")
 
-  val metaDataTextPlain: String = metaDataTexts.head
+  val metaDataTextPlain: String = metaDataTexts.head take 72
 }
 
 case class PayRequestFinal(successAction: Option[PaymentAction], routes: List[AdditionalRoute], pr: String) extends LNUrlData {

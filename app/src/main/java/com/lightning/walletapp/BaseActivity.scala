@@ -404,7 +404,7 @@ trait BaseActivity extends AppCompatActivity { me =>
   abstract class OffChainSender(val maxSendable: MilliSatoshi, val minSendable: MilliSatoshi) extends HasTypicalChainFee {
     val body: android.view.ViewGroup = getLayoutInflater.inflate(R.layout.frag_input_off_chain, null).asInstanceOf[android.view.ViewGroup]
     val manager = new RateManager(body, getString(dialog_add_ln_memo).toSome, dialog_visibility_private, LNParams.fiatRatesInfo.rates, WalletApp.fiatCode)
-    val alert: AlertDialog = getAlertDialog
+    val alert: AlertDialog
 
     val canSendHuman: String = LNParams.denomination.parsedWithSign(maxSendable, Colors.cardZero)
     val canSendFiatHuman: String = WalletApp.currentMsatInFiatHuman(maxSendable)
@@ -422,45 +422,44 @@ trait BaseActivity extends AppCompatActivity { me =>
 
     def neutral(alert: AlertDialog): Unit
     def send(alert: AlertDialog): Unit
-    def getAlertDialog: AlertDialog
     def isNeutralEnabled: Boolean
     def isPayEnabled: Boolean
 
-    def makeSendCmd(prExt: PaymentRequestExt, paySum: MilliSatoshi): SendMultiPart = {
+    def makeSendCmd(prExt: PaymentRequestExt, toSend: MilliSatoshi): SendMultiPart = {
       val extraEdges = RouteCalculation.makeExtraEdges(prExt.pr.routingInfo, prExt.pr.nodeId)
       // Supply relative expiry in case if we initiate a payment when chain tip is not yet known
       val cltvExpiry = Right(prExt.pr.minFinalCltvExpiryDelta getOrElse LNParams.minInvoiceExpiryDelta)
       val fullTag = FullPaymentTag(prExt.pr.paymentHash, prExt.pr.paymentSecret.get, PaymentTagTlv.LOCALLY_SENT)
       // An assumption here is that maxSendable is at most ChannelMaster.maxSendable so max off-chain fee ratio is already counted in so we can send amount + fee
-      val feeReserve = paySum * LNParams.offChainFeeRatio match { case pct if pct > typicalChainTxFee && WalletApp.capLNFeeToChain => typicalChainTxFee case pct => pct }
-      SendMultiPart(fullTag, cltvExpiry, SplitInfo(paySum, paySum), LNParams.routerConf, prExt.pr.nodeId, feeReserve, LNParams.cm.all.values.toSeq, fullTag.paymentSecret, extraEdges)
+      val feeReserve = toSend * LNParams.offChainFeeRatio match { case percent if percent > typicalChainTxFee && WalletApp.capLNFeeToChain => typicalChainTxFee case percent => percent }
+      SendMultiPart(fullTag, cltvExpiry, SplitInfo(totalSum = 0L.msat, toSend), LNParams.routerConf, prExt.pr.nodeId, feeReserve, LNParams.cm.all.values.toSeq, fullTag.paymentSecret, extraEdges)
     }
 
     def baseSendNow(prExt: PaymentRequestExt, alert: AlertDialog): Unit = {
-      val desc = PlainDescription(None, manager.resultExtraInput, prExt.descriptionOrEmpty)
-      val cmd: SendMultiPart = makeSendCmd(prExt, paySum = manager.resultMsat)
-      replaceOutgoingPayment(prExt, desc, None, cmd.split.myPart)
+      val cmd = makeSendCmd(prExt, toSend = manager.resultMsat).modify(_.split.totalSum).setTo(manager.resultMsat)
+      val description = PlainDescription(split = None, label = manager.resultExtraInput, invoiceText = prExt.descriptionOrEmpty)
+      replaceOutgoingPayment(prExt, description, action = None, cmd.split.myPart)
       LNParams.cm.opm process cmd
       alert.dismiss
     }
 
     def proceedSplit(prExt: PaymentRequestExt, origAmount: MilliSatoshi, alert: AlertDialog): Unit = {
-      val cmd = makeSendCmd(prExt, paySum = manager.resultMsat).modify(_.split.totalSum).setTo(origAmount)
-      val desc = PlainDescription(cmd.split.toSome, manager.resultExtraInput, prExt.descriptionOrEmpty)
-      InputParser.value = SplitParams(prExt, None, desc, cmd, typicalChainTxFee)
+      val cmd = makeSendCmd(prExt, toSend = manager.resultMsat).modify(_.split.totalSum).setTo(origAmount)
+      val description = PlainDescription(cmd.split.toSome, label = manager.resultExtraInput, invoiceText = prExt.descriptionOrEmpty)
+      InputParser.value = SplitParams(prExt, action = None, description, cmd, typicalChainTxFee)
       me goTo ClassNames.qrSplitActivityClass
       alert.dismiss
     }
   }
 
-  abstract class OffChainReceiver(maxReceivable: MilliSatoshi, minReceivable: MilliSatoshi, lnBalance: MilliSatoshi) extends HasTypicalChainFee {
+  abstract class OffChainReceiver(initMaxReceivable: MilliSatoshi, initMinReceivable: MilliSatoshi, lnBalance: MilliSatoshi) extends HasTypicalChainFee {
     val body: ViewGroup = getLayoutInflater.inflate(R.layout.frag_input_off_chain, null).asInstanceOf[ViewGroup]
     // Currently a single relatively smallest channel is used to improve privacy and maximize delivery chances
     val commits: Commitments = LNParams.cm.maxReceivable(LNParams.cm.allSortedReceivable).head.commits
     val manager: RateManager = getManager
 
-    val finalMaxReceivable: MilliSatoshi = maxReceivable.min(commits.availableForReceive)
-    val finalMinReceivable: MilliSatoshi = minReceivable.max(LNParams.minPayment)
+    val finalMaxReceivable: MilliSatoshi = initMaxReceivable.min(commits.availableForReceive)
+    val finalMinReceivable: MilliSatoshi = initMinReceivable.max(LNParams.minPayment)
 
     val canReceiveHuman: String = LNParams.denomination.parsedWithSign(finalMaxReceivable, Colors.cardZero)
     val canReceiveFiatHuman: String = WalletApp.currentMsatInFiatHuman(finalMaxReceivable)
@@ -468,8 +467,8 @@ trait BaseActivity extends AppCompatActivity { me =>
     def receive(alert: AlertDialog): Unit = {
       val preimage: ByteVector32 = randomBytes32
       val hash: ByteVector32 = Crypto.sha256(preimage)
+      val description: PaymentDescription = getDescription
       val invoiceKey = LNParams.secret.keys.fakeInvoiceKey(hash)
-      val description = getDescription(manager.resultExtraInput)
       val hop = List(commits.updateOpt.map(_ extraHop commits.remoteInfo.nodeId).toList)
       val prExt = PaymentRequestExt from PaymentRequest(LNParams.chainHash, Some(manager.resultMsat), hash, invoiceKey, description.invoiceText, LNParams.incomingFinalCltvExpiry, hop)
       LNParams.cm.payBag.replaceIncomingPayment(prExt, preimage, description, balanceSnap = lnBalance, fiatRateSnap = LNParams.fiatRatesInfo.rates, typicalChainTxFee)
@@ -492,7 +491,7 @@ trait BaseActivity extends AppCompatActivity { me =>
 
     def getManager: RateManager
     def getTitleText: CharSequence
-    def getDescription(input: Option[String] = None): PaymentDescription
+    def getDescription: PaymentDescription
     def processInvoice(prExt: PaymentRequestExt): Unit
   }
 }

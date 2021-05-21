@@ -63,6 +63,7 @@
     <string name="dialog_add_description">Add description&#8230;</string>
     <string name="dialog_add_btc_memo">Add transaction memo&#8230;</string>
     <string name="dialog_add_ln_memo">Add payment memo&#8230;</string>
+    <string name="dialog_add_comment">Add comment&#8230;</string>
 
     <string name="dialog_receive_btc"><![CDATA[Receive to <b>Bitcoin</b> Address]]></string>
     <string name="dialog_receive_ln"><![CDATA[Receive to <b>Lightning</b> Invoice]]></string>
@@ -212,6 +213,7 @@
 
     <string name="dialog_lnurl_processing"><![CDATA[Processing&#8230;<br><br><b>%1$s</b>]]></string>
     <string name="dialog_lnurl_withdrawing"><![CDATA[Withdrawing %1$s<br><br><b>%2$s</b>]]></string>
+    <string name="dialog_lnurl_splitting"><![CDATA[Requesting invoice&#8230;<br><br><b>%1$s</b>]]></string>
     <string name="dialog_lnurl_sending"><![CDATA[Sending %1$s<br><br><b>%2$s</b>]]></string>
 
     <!-- /lnurl -->

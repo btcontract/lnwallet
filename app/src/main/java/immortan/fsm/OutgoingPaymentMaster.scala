@@ -62,7 +62,6 @@ case class RemoveSenderFSM(fullTag: FullPaymentTag)
 
 case class SplitInfo(totalSum: MilliSatoshi, myPart: MilliSatoshi) {
   val sentRatio: Long = ratio(totalSum, myPart)
-  require(totalSum >= myPart)
 }
 
 // For locally initiated payments outerPaymentSecret and fullTag.paymentSecret are same
