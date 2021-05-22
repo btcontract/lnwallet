@@ -21,8 +21,8 @@ class LnUrlAuthSpec {
     val refLinkingKeyFormat = ByteVector.fromValidHex("4116700cd356bcc94f2de10b328a41e2e2932152ec7ba720e6d12b4f54eee134")
     assert(linkingKey.value.bytes == refLinkingKeyFormat)
 
-    val k1 = ByteVector32.fromValidHex("7f9d3443b2ece9485a7a8d98df6a79fd269ce938880266769bfb4ba511ff8761")
+    val refK1 = ByteVector32.fromValidHex("7f9d3443b2ece9485a7a8d98df6a79fd269ce938880266769bfb4ba511ff8761")
     val refDerSignature = ByteVector.fromValidHex("304402205757f98d52e0d3b72d4be1a46d7d62c0f7d8caf0987707352089d8ec29b8f238022019c7f508c1606234d7688116a14d812bc5e8d699c93f5b7cfa1de17b1ef523e1")
-    assert(Crypto.compact2der(Crypto.sign(k1, linkingKey)) == refDerSignature)
+    assert(Crypto.compact2der(Crypto.sign(refK1, linkingKey)) == refDerSignature)
   }
 }
