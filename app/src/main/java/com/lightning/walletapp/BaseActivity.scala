@@ -48,6 +48,7 @@ import immortan.LNParams.feeRatesInfo
 import rx.lang.scala.Subscription
 import scala.concurrent.Future
 import android.os.Bundle
+import android.net.Uri
 
 
 object BaseActivity {
@@ -110,6 +111,10 @@ trait BaseActivity extends AppCompatActivity { me =>
     val whiteContrast = ColorUtils.calculateContrast(WHITE, color)
     val blackContrast = ColorUtils.calculateContrast(BLACK, color)
     if (whiteContrast > blackContrast * 3.75) BLACK else WHITE
+  }
+
+  def browse(url: String): Unit = startActivity {
+    new Intent(Intent.ACTION_VIEW, Uri parse url)
   }
 
   def share(text: String): Unit = startActivity {
@@ -204,8 +209,7 @@ trait BaseActivity extends AppCompatActivity { me =>
   }
 
   def titleBodyAsViewBuilder(title: View, body: View): AlertDialog.Builder = new AlertDialog.Builder(me).setCustomTitle(title).setView(body)
-  def titleBodyAsViewWithNegBuilder(neg: Int, title: View, body: View): AlertDialog.Builder = titleBodyAsViewBuilder(title, body).setNegativeButton(neg, null)
-  def onFail(error: CharSequence): Unit = UITask(me showForm titleBodyAsViewWithNegBuilder(dialog_ok, null, error).create).run
+  def onFail(error: CharSequence): Unit = UITask(me showForm titleBodyAsViewBuilder(null, error).setPositiveButton(dialog_ok, null).create).run
   def onFail(error: Throwable): Unit = onFail(error.toString)
 
   def getPositiveButton(alert: AlertDialog): Button = alert.getButton(DialogInterface.BUTTON_POSITIVE)

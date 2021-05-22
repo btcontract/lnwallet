@@ -53,6 +53,7 @@
     <string name="dialog_receive">Receive</string>
     <string name="dialog_split">Split</string>
     <string name="dialog_share">Share</string>
+    <string name="dialog_open">Open</string>
     <string name="dialog_send">Send</string>
     <string name="dialog_copy">Copy</string>
     <string name="dialog_max">Max</string>
@@ -208,12 +209,14 @@
 
     <!-- lnurl -->
 
+    <string name="dialog_lnurl_decrypt_fail">Failed to decrypt a message, please contact vendor to sort this out.</string>
     <string name="dialog_lnurl_withdraw"><![CDATA[<b>Lightning</b> withdraw link<br><br><b>%1$s</b>%2$s]]></string>
     <string name="dialog_lnurl_pay"><![CDATA[<b>Lightning</b> payment link<br><br><b>%1$s</b>%2$s]]></string>
 
     <string name="dialog_lnurl_processing"><![CDATA[Processing&#8230;<br><br><b>%1$s</b>]]></string>
     <string name="dialog_lnurl_splitting"><![CDATA[Requesting invoice&#8230;<br><br><b>%1$s</b>]]></string>
     <string name="dialog_lnurl_sending"><![CDATA[Sending %1$s<br><br><b>%2$s</b>]]></string>
+    <string name="dialog_lnurl_from_vendor"><![CDATA[Response from vendor%1$s]]></string>
 
     <!-- /lnurl -->
 

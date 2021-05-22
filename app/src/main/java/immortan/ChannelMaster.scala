@@ -49,7 +49,7 @@ object ChannelMaster {
 
   final val hashRevealStream: Subject[ByteVector32] = Subject[ByteVector32]
 
-  final val hashObtainStream: Subject[ByteVector32] = Subject[ByteVector32]
+  final val remoteFulfillStream: Subject[RemoteFulfill] = Subject[RemoteFulfill]
 
 
   var NO_CHANNEL: StateMachine[ChannelData] with CanBeRepliedTo =

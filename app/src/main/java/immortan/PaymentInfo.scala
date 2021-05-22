@@ -2,15 +2,14 @@ package immortan
 
 import immortan.utils.ImplicitJsonFormats._
 import fr.acinq.eclair.channel.{DATA_CLOSING, DATA_NEGOTIATING, HasNormalCommitments}
+import immortan.crypto.Tools.{Bytes, Fiat2Btc, Any2Some, SEPARATOR, ratio}
 import immortan.fsm.{IncomingPaymentProcessor, SendMultiPart, SplitInfo}
-import immortan.crypto.Tools.{Bytes, Fiat2Btc, SEPARATOR, ratio}
 import fr.acinq.bitcoin.{ByteVector32, Satoshi, Transaction}
 import fr.acinq.eclair.wire.{FullPaymentTag, PaymentTagTlv}
-import immortan.utils.{LNUrl, PaymentRequestExt}
 import fr.acinq.bitcoin.Crypto.PublicKey
+import immortan.utils.PaymentRequestExt
 import fr.acinq.eclair.MilliSatoshi
 import scodec.bits.ByteVector
-import immortan.utils.uri.Uri
 import java.util.Date
 
 
@@ -38,13 +37,11 @@ case class PaymentInfo(prString: String, preimage: ByteVector32, status: String,
                        chainFee: MilliSatoshi, incoming: Long) extends TransactionDetails {
 
   val isIncoming: Boolean = 1 == incoming
-  val tag: Int = if (isIncoming) PaymentTagTlv.FINAL_INCOMING else PaymentTagTlv.LOCALLY_SENT
-  val fullTag: FullPaymentTag = FullPaymentTag(paymentHash, paymentSecret, tag)
-
-  lazy val prExt: PaymentRequestExt = PaymentRequestExt.fromRaw(prString)
+  val fullTag: FullPaymentTag = FullPaymentTag(paymentHash, paymentSecret, if (isIncoming) PaymentTagTlv.FINAL_INCOMING else PaymentTagTlv.LOCALLY_SENT)
+  lazy val action: Option[PaymentAction] = if (actionString == PaymentInfo.NO_ACTION) None else to[PaymentAction](actionString).toSome
   lazy val description: PaymentDescription = to[PaymentDescription](descriptionString)
+  lazy val prExt: PaymentRequestExt = PaymentRequestExt.fromRaw(prString)
   lazy val fiatRateSnapshot: Fiat2Btc = to[Fiat2Btc](fiatRatesString)
-  lazy val action: PaymentAction = to[PaymentAction](actionString)
 
   def receivedRatio(fsm: IncomingPaymentProcessor): Long =
     ratio(received, fsm.lastAmountIn)
@@ -64,7 +61,6 @@ case class MessageAction(domain: Option[String], message: String) extends Paymen
 case class UrlAction(domain: Option[String], description: String, url: String) extends PaymentAction {
   val finalMessage = s"<br>${description take 144}<br><br><font color=#0000FF><tt>$url</tt></font><br>"
   require(domain.forall(url.contains), "Payment action domain mismatch")
-  val uri: Uri = LNUrl.checkHost(url)
 }
 
 case class AESAction(domain: Option[String], description: String, ciphertext: String, iv: String) extends PaymentAction {

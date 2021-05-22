@@ -10,15 +10,18 @@ import com.softwaremill.quicklens._
 import com.lightning.walletapp.Colors._
 import com.lightning.walletapp.R.string._
 import immortan.utils.ImplicitJsonFormats._
-import fr.acinq.bitcoin.{Satoshi, SatoshiLong}
+
+import scala.util.{Success, Try}
 import android.view.{MenuItem, View, ViewGroup}
 import rx.lang.scala.{Observable, Subscription}
 import com.androidstudy.networkmanager.{Monitor, Tovuti}
+import fr.acinq.bitcoin.{ByteVector32, Satoshi, SatoshiLong}
 import fr.acinq.eclair.blockchain.fee.{FeeratePerKw, FeeratePerVByte}
 import fr.acinq.eclair.blockchain.electrum.ElectrumWallet.WalletReady
 import com.lightning.walletapp.BaseActivity.StringOps
 import org.ndeftools.util.activity.NfcReaderActivity
 import concurrent.ExecutionContext.Implicits.global
+import fr.acinq.eclair.transactions.RemoteFulfill
 import com.github.mmin18.widget.RealtimeBlurView
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.slider.Slider
@@ -308,6 +311,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
   private var streamSubscription = Option.empty[Subscription]
   private var statusSubscription = Option.empty[Subscription]
   private var successSubscription = Option.empty[Subscription]
+  private var preimageSubscription = Option.empty[Subscription]
 
   private val netListener = new Monitor.ConnectivityListener {
     override def onConnectivityChanged(ct: Int, isConnected: Boolean, isFast: Boolean): Unit = UITask {
@@ -363,6 +367,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
     statusSubscription.foreach(_.unsubscribe)
     streamSubscription.foreach(_.unsubscribe)
     successSubscription.foreach(_.unsubscribe)
+    preimageSubscription.foreach(_.unsubscribe)
 
     LNParams.chainWallet.eventsCatcher ! WalletEventsCatcher.Remove(chainListener)
     FiatRates.listeners -= fiatRatesListener
@@ -507,7 +512,8 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
 
       streamSubscription = txEvents.merge(paymentEvents).merge(relayEvents).doOnNext(_ => updAllInfos).merge(stateEvents).subscribe(_ => UITask(updatePaymentList).run).toSome
       statusSubscription = Rx.uniqueFirstAndLastWithinWindow(ChannelMaster.statusUpdateStream, window).merge(stateEvents).subscribe(_ => UITask(walletCards.updateView).run).toSome
-      successSubscription = ChannelMaster.hashRevealStream.merge(ChannelMaster.hashObtainStream).throttleFirst(window).subscribe(_ => Vibrator.vibrate).toSome
+      successSubscription = ChannelMaster.hashRevealStream.merge(ChannelMaster.remoteFulfillStream).throttleFirst(window).subscribe(_ => Vibrator.vibrate).toSome
+      preimageSubscription = ChannelMaster.remoteFulfillStream.subscribe(resolveAction, none).toSome
       // Run this check after establishing subscriptions since it will trigger an event stream
       LNParams.cm.markAsFailed(paymentInfos, LNParams.cm.allInChannelOutgoing)
     } else {
@@ -727,5 +733,37 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
   def updatePaymentList: Unit = {
     setVis(allInfos.nonEmpty, walletCards.listCaption)
     paymentsAdapter.notifyDataSetChanged
+  }
+
+  // Payment actions
+
+  def resolveAction(fulfill: RemoteFulfill): Unit =
+    paymentInfos.find(_.paymentHash == fulfill.ourAdd.paymentHash).flatMap(_.action).foreach { action =>
+      def executeAction: Unit = showPaymentAction(action, fulfill.preimage)
+      UITask(executeAction).run
+    }
+
+  def showPaymentAction(action: PaymentAction, preimage: ByteVector32): Unit = action match {
+    case data: MessageAction => mkCheckFormNeutral(_.dismiss, none, _ => share(data.message), actionPopup(data.finalMessage.html, data), dialog_ok, dialog_cancel, dialog_share)
+    case data: UrlAction => mkCheckFormNeutral(_ => browse(data.url), none, _ => share(data.url), actionPopup(data.finalMessage.html, data), dialog_open, dialog_cancel, dialog_share)
+    case data: AESAction =>
+      aesActionPopup(preimage, data) match {
+        case Success(sad) => mkCheckFormNeutral(_.dismiss, none, _ => share(sad.secret), actionPopup(sad.msg, data), dialog_ok, dialog_cancel, dialog_share)
+        case _ => mkCheckForm(_.dismiss, none, actionPopup(getString(dialog_lnurl_decrypt_fail), data), dialog_ok, -1)
+      }
+  }
+
+  def actionPopup(msg: CharSequence, action: PaymentAction): AlertDialog.Builder = {
+    val fromVendor = action.domain.map(site => s"<br><br><b>$site</b>").getOrElse(new String)
+    val title = getString(dialog_lnurl_from_vendor).format(fromVendor).html
+    new AlertDialog.Builder(me).setCustomTitle(title).setMessage(msg)
+  }
+
+  case class SecretAndDescription(secret: String, msg: CharSequence)
+
+  private def aesActionPopup(preimage: ByteVector32, aes: AESAction) = Try {
+    val secret = new String(AES.decode(data = aes.ciphertextBytes, key = preimage.toArray, initVector = aes.ivBytes).toArray, "UTF-8")
+    val msg = if (secret.length > 36) s"${aes.finalMessage}<br><br><tt>$secret</tt><br>" else s"${aes.finalMessage}<br><br><tt><big>$secret</big></tt><br>"
+    SecretAndDescription(secret, msg.html)
   }
 }
