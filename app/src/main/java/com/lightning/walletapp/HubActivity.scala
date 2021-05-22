@@ -507,7 +507,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
 
       streamSubscription = txEvents.merge(paymentEvents).merge(relayEvents).doOnNext(_ => updAllInfos).merge(stateEvents).subscribe(_ => UITask(updatePaymentList).run).toSome
       statusSubscription = Rx.uniqueFirstAndLastWithinWindow(ChannelMaster.statusUpdateStream, window).merge(stateEvents).subscribe(_ => UITask(walletCards.updateView).run).toSome
-      successSubscription = ChannelMaster.hashRevealStream.merge(ChannelMaster.hashObtainStream).throttleFirst(window).subscribe(_ => removeSnackAndVibrate).toSome
+      successSubscription = ChannelMaster.hashRevealStream.merge(ChannelMaster.hashObtainStream).throttleFirst(window).subscribe(_ => Vibrator.vibrate).toSome
       // Run this check after establishing subscriptions since it will trigger an event stream
       LNParams.cm.markAsFailed(paymentInfos, LNParams.cm.allInChannelOutgoing)
     } else {
@@ -650,12 +650,8 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
     new OffChainReceiver(initMaxReceivable = Long.MaxValue.msat, initMinReceivable = 0L.msat, lnBalance) {
       override def getManager: RateManager = new RateManager(body, getString(dialog_add_description).toSome, dialog_visibility_public, LNParams.fiatRatesInfo.rates, WalletApp.fiatCode)
       override def getDescription: PaymentDescription = PlainDescription(split = None, label = None, invoiceText = manager.resultExtraInput getOrElse new String)
+      override def processInvoice(prExt: PaymentRequestExt): Unit = runAnd(InputParser.value = prExt)(me goTo ClassNames.qrInvoiceActivityClass)
       override def getTitleText: CharSequence = getString(dialog_receive_ln).html
-
-      override def processInvoice(prExt: PaymentRequestExt): Unit = {
-        me goTo ClassNames.qrInvoiceActivityClass
-        InputParser.value = prExt
-      }
     }
   }
 
@@ -664,14 +660,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
       override def getManager: RateManager = new RateManager(body, getString(dialog_add_ln_memo).toSome, dialog_visibility_private, LNParams.fiatRatesInfo.rates, WalletApp.fiatCode)
       override def getDescription: PaymentDescription = PlainMetaDescription(split = None, label = manager.resultExtraInput, invoiceText = new String, meta = data.descriptionOrEmpty)
       override def getTitleText: CharSequence = getString(dialog_lnurl_withdraw).format(data.callbackUri.getHost, data.brDescription)
-
-      override def processInvoice(prExt: PaymentRequestExt): Unit = {
-        val amountHuman = LNParams.denomination.parsedWithSign(prExt.pr.amount.get, Colors.cardZero)
-        val message = getString(dialog_lnurl_withdrawing).format(amountHuman, data.callbackUri.getHost)
-        // Note: there is no logic here to remove a snack on success, it should be done on receiving of payment
-        data.requestWithdraw(prExt).doOnError(_ => removeCurrentSnack.run).foreach(none, onFail)
-        snack(contentWindow, message.html, dialog_ok, _.dismiss)
-      }
+      override def processInvoice(prExt: PaymentRequestExt): Unit = data.requestWithdraw(prExt).foreach(none, onFail)
     }
   }
 
@@ -692,7 +681,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
           }
         }
 
-        val obs = getFinal(manager.resultMsat).doOnTerminate(removeCurrentSnack.run)
+        val obs = getFinal(minSendable).doOnTerminate(removeCurrentSnack.run)
         val msg = getString(dialog_lnurl_splitting).format(data.callbackUri.getHost).html
         cancellingSnack(contentWindow, obs.subscribe(pf => proceed(pf).run, onFail), msg)
       }
@@ -725,7 +714,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
           val payRequestFinal = to[PayRequestFinal](rawResponse)
           val descriptionHash = payRequestFinal.prExt.pr.description.right
           require(descriptionHash.toOption.contains(data.metaDataHash), s"Metadata hash mismatch, original=${data.metaDataHash}, provided=$descriptionHash")
-          require(payRequestFinal.prExt.pr.amount.contains(amount), s"Payment amount mismatch, provided=${payRequestFinal.prExt.pr.amount}, requested=$amount")
+          require(payRequestFinal.prExt.pr.amount.contains(amount), s"Payment amount mismatch, requested=$amount, provided=${payRequestFinal.prExt.pr.amount}")
           for (additionalEdge <- payRequestFinal.additionalRoutes) LNParams.cm.pf process additionalEdge
           payRequestFinal.modify(_.successAction.each.domain).setTo(data.callbackUri.getHost.toSome)
         }
@@ -738,12 +727,5 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
   def updatePaymentList: Unit = {
     setVis(allInfos.nonEmpty, walletCards.listCaption)
     paymentsAdapter.notifyDataSetChanged
-  }
-
-  def removeSnackAndVibrate: Unit = {
-    // Haptic feedback on successfully sent and received payments
-    // Also removes snackbar (if present) for lnurl-withdraw/pay
-    removeCurrentSnack.run
-    Vibrator.vibrate
   }
 }
