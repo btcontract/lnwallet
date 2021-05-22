@@ -308,9 +308,9 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
 
   // LISTENERS
 
-  private var streamSubscription = Option.empty[Subscription]
+  private var stateSubscription = Option.empty[Subscription]
   private var statusSubscription = Option.empty[Subscription]
-  private var successSubscription = Option.empty[Subscription]
+  private var paymentSubscription = Option.empty[Subscription]
   private var preimageSubscription = Option.empty[Subscription]
 
   private val netListener = new Monitor.ConnectivityListener {
@@ -364,9 +364,9 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
   }
 
   override def onDestroy: Unit = {
+    stateSubscription.foreach(_.unsubscribe)
     statusSubscription.foreach(_.unsubscribe)
-    streamSubscription.foreach(_.unsubscribe)
-    successSubscription.foreach(_.unsubscribe)
+    paymentSubscription.foreach(_.unsubscribe)
     preimageSubscription.foreach(_.unsubscribe)
 
     LNParams.chainWallet.eventsCatcher ! WalletEventsCatcher.Remove(chainListener)
@@ -510,9 +510,9 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
       val paymentEvents = Rx.uniqueFirstAndLastWithinWindow(ChannelMaster.paymentDbStream, window).doOnNext(_ => reloadPaymentInfos)
       val relayEvents = Rx.uniqueFirstAndLastWithinWindow(ChannelMaster.relayDbStream, window).doOnNext(_ => reloadRelayedPreimageInfos)
 
-      streamSubscription = txEvents.merge(paymentEvents).merge(relayEvents).doOnNext(_ => updAllInfos).merge(stateEvents).subscribe(_ => UITask(updatePaymentList).run).toSome
+      stateSubscription = txEvents.merge(paymentEvents).merge(relayEvents).doOnNext(_ => updAllInfos).merge(stateEvents).subscribe(_ => UITask(updatePaymentList).run).toSome
       statusSubscription = Rx.uniqueFirstAndLastWithinWindow(ChannelMaster.statusUpdateStream, window).merge(stateEvents).subscribe(_ => UITask(walletCards.updateView).run).toSome
-      successSubscription = ChannelMaster.hashRevealStream.merge(ChannelMaster.remoteFulfillStream).throttleFirst(window).subscribe(_ => Vibrator.vibrate).toSome
+      paymentSubscription = ChannelMaster.hashRevealStream.merge(ChannelMaster.remoteFulfillStream).throttleFirst(window).subscribe(_ => Vibrator.vibrate).toSome
       preimageSubscription = ChannelMaster.remoteFulfillStream.subscribe(resolveAction, none).toSome
       // Run this check after establishing subscriptions since it will trigger an event stream
       LNParams.cm.markAsFailed(paymentInfos, LNParams.cm.allInChannelOutgoing)
@@ -747,7 +747,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
     case data: MessageAction => mkCheckFormNeutral(_.dismiss, none, _ => share(data.message), actionPopup(data.finalMessage.html, data), dialog_ok, dialog_cancel, dialog_share)
     case data: UrlAction => mkCheckFormNeutral(_ => browse(data.url), none, _ => share(data.url), actionPopup(data.finalMessage.html, data), dialog_open, dialog_cancel, dialog_share)
     case data: AESAction =>
-      aesActionPopup(preimage, data) match {
+      decodeAesAction(preimage, data) match {
         case Success(sad) => mkCheckFormNeutral(_.dismiss, none, _ => share(sad.secret), actionPopup(sad.msg, data), dialog_ok, dialog_cancel, dialog_share)
         case _ => mkCheckForm(_.dismiss, none, actionPopup(getString(dialog_lnurl_decrypt_fail), data), dialog_ok, -1)
       }
@@ -761,7 +761,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
 
   case class SecretAndDescription(secret: String, msg: CharSequence)
 
-  private def aesActionPopup(preimage: ByteVector32, aes: AESAction) = Try {
+  private def decodeAesAction(preimage: ByteVector32, aes: AESAction) = Try {
     val secret = new String(AES.decode(data = aes.ciphertextBytes, key = preimage.toArray, initVector = aes.ivBytes).toArray, "UTF-8")
     val msg = if (secret.length > 36) s"${aes.finalMessage}<br><br><tt>$secret</tt><br>" else s"${aes.finalMessage}<br><br><tt><big>$secret</big></tt><br>"
     SecretAndDescription(secret, msg.html)
