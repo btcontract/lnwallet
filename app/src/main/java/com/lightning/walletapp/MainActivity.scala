@@ -147,8 +147,8 @@ class MainActivity extends NfcReaderActivity with BaseActivity { me =>
 
     def makeAttempt: Unit = {
       orbotHelper.addStatusCallback(initCallback)
-      try timer.schedule(initCallback.onStatusTimeout, 20000) catch none
-      try timer.schedule(mainOrbotCheck setVisibility View.VISIBLE, 2000) catch none
+      try timer.schedule(UITask(initCallback.onStatusTimeout), 2000) catch none
+      try timer.schedule(UITask(mainOrbotCheck setVisibility View.VISIBLE), 2000) catch none
       if (!orbotHelper.init) initCallback.onNotYetInstalled
     }
   }

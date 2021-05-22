@@ -18,7 +18,6 @@ import androidx.appcompat.app.AlertDialog
 import com.ornach.nobobutton.NoboButton
 import rx.lang.scala.Observable
 import fr.acinq.bitcoin.Satoshi
-import java.util.TimerTask
 import android.os.Bundle
 
 
@@ -157,10 +156,10 @@ class RemotePeerActivity extends BaseActivity with ExternalDataChecker { me =>
     }
 
     lazy val feeView = new FeeView(body) {
-      override def update(feeOpt: Option[MilliSatoshi], showIssue: Boolean): TimerTask = {
-        manager.updateButton(getPositiveButton(alert), feeOpt.isDefined).run
+      override def update(feeOpt: Option[MilliSatoshi], showIssue: Boolean): Unit = UITask {
+        manager.updateButton(getPositiveButton(alert), feeOpt.isDefined)
         super.update(feeOpt, showIssue)
-      }
+      }.run
 
       rate = {
         val target = LNParams.feeRatesInfo.onChainFeeConf.feeTargets.fundingBlockTarget
@@ -173,8 +172,8 @@ class RemotePeerActivity extends BaseActivity with ExternalDataChecker { me =>
 
     lazy val worker = new ThrottledWork[Satoshi, MakeFundingTxResponse] {
       def work(amount: Satoshi): Observable[MakeFundingTxResponse] = Rx fromFutureOnIo NCFunderOpenHandler.makeFunding(LNParams.chainWallet, amount, feeView.rate)
-      def process(amount: Satoshi, res: MakeFundingTxResponse): Unit = feeView.update(feeOpt = Some(res.fee.toMilliSatoshi), showIssue = false).run
-      def error(exc: Throwable): Unit = feeView.update(feeOpt = None, showIssue = manager.resultSat >= LNParams.minFundingSatoshis).run
+      def process(amount: Satoshi, res: MakeFundingTxResponse): Unit = feeView.update(feeOpt = Some(res.fee.toMilliSatoshi), showIssue = false)
+      def error(exc: Throwable): Unit = feeView.update(feeOpt = None, showIssue = manager.resultSat >= LNParams.minFundingSatoshis)
     }
 
     manager.inputAmount addTextChangedListener onTextChange { _ =>
@@ -183,7 +182,7 @@ class RemotePeerActivity extends BaseActivity with ExternalDataChecker { me =>
 
     manager.hintDenom.setText(getString(dialog_can_send).format(canSend).html)
     manager.hintFiatDenom.setText(getString(dialog_can_send).format(canSendFiat).html)
-    feeView.update(feeOpt = None, showIssue = false).run
+    feeView.update(feeOpt = None, showIssue = false)
   }
 
   def sharePeerSpecificNodeId(view: View): Unit = {

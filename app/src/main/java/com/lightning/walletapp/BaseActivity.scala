@@ -45,6 +45,7 @@ import android.view.View.OnClickListener
 import androidx.core.graphics.ColorUtils
 import androidx.core.app.ActivityCompat
 import immortan.LNParams.feeRatesInfo
+import rx.lang.scala.Subscription
 import scala.concurrent.Future
 import android.os.Bundle
 
@@ -140,6 +141,11 @@ trait BaseActivity extends AppCompatActivity { me =>
     currentSnackbar = Some(bottomSnackbar)
   } catch none
 
+  def cancellingSnack(parent: View, subscription: Subscription, msg: CharSequence): Unit = {
+    def cancel(snack: Snackbar): Unit = runAnd(subscription.unsubscribe)(snack.dismiss)
+    snack(parent, msg, dialog_cancel, cancel)
+  }
+
   // Listener helpers
 
   def onButtonTap(fun: => Unit): OnClickListener = new OnClickListener {
@@ -164,7 +170,7 @@ trait BaseActivity extends AppCompatActivity { me =>
     if (view.getVisibility != nextMode) view.setVisibility(nextMode)
   }
 
-  implicit def UITask(fun: => Any): TimerTask = {
+  def UITask(fun: => Any): TimerTask = {
     val runnableExec = new Runnable { override def run: Unit = fun }
     new TimerTask { def run: Unit = me runOnUiThread runnableExec }
   }
@@ -281,7 +287,7 @@ trait BaseActivity extends AppCompatActivity { me =>
     val extraInputLayout: TextInputLayout = content.findViewById(R.id.extraInputLayout).asInstanceOf[TextInputLayout]
     val extraInput: EditText = content.findViewById(R.id.extraInput).asInstanceOf[EditText]
 
-    def updateButton(button: Button, isEnabled: Boolean): TimerTask = UITask {
+    def updateButton(button: Button, isEnabled: Boolean): Unit = {
       val alpha = if (isEnabled) 1F else 0.3F
       button.setEnabled(isEnabled)
       button.setAlpha(alpha)
@@ -340,7 +346,7 @@ trait BaseActivity extends AppCompatActivity { me =>
     val customFeerateOption: TextView = content.findViewById(R.id.customFeerateOption).asInstanceOf[TextView]
     var rate: FeeratePerKw = _
 
-    def update(feeOpt: Option[MilliSatoshi], showIssue: Boolean): TimerTask = UITask {
+    def update(feeOpt: Option[MilliSatoshi], showIssue: Boolean): Unit = {
       feeRate setText getString(dialog_fee_sat_vbyte).format(rate.toLong / 1000).html
       setVis(feeOpt.isDefined, bitcoinFee)
       setVis(feeOpt.isDefined, fiatFee)
@@ -413,8 +419,8 @@ trait BaseActivity extends AppCompatActivity { me =>
     manager.hintDenom.setText(getString(dialog_can_send).format(canSendHuman).html)
 
     manager.inputAmount addTextChangedListener onTextChange { _ =>
-      manager.updateButton(getPositiveButton(alert), isPayEnabled).run
-      manager.updateButton(getNeutralButton(alert), isNeutralEnabled).run
+      manager.updateButton(getNeutralButton(alert), isNeutralEnabled)
+      manager.updateButton(getPositiveButton(alert), isPayEnabled)
     }
 
     // Load graph while user is looking at payment form
@@ -482,11 +488,11 @@ trait BaseActivity extends AppCompatActivity { me =>
 
     manager.hintFiatDenom.setText(getString(dialog_can_receive).format(canReceiveFiatHuman).html)
     manager.hintDenom.setText(getString(dialog_can_receive).format(canReceiveHuman).html)
-    manager.updateButton(getPositiveButton(alert), isEnabled = false).run
+    manager.updateButton(getPositiveButton(alert), isEnabled = false)
 
     manager.inputAmount addTextChangedListener onTextChange { _ =>
       val withinBounds = finalMinReceivable <= manager.resultMsat && finalMaxReceivable >= manager.resultMsat
-      manager.updateButton(button = getPositiveButton(alert), isEnabled = withinBounds).run
+      manager.updateButton(button = getPositiveButton(alert), isEnabled = withinBounds)
     }
 
     def getManager: RateManager

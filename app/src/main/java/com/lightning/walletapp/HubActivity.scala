@@ -17,7 +17,6 @@ import com.androidstudy.networkmanager.{Monitor, Tovuti}
 import fr.acinq.eclair.blockchain.fee.{FeeratePerKw, FeeratePerVByte}
 import fr.acinq.eclair.blockchain.electrum.ElectrumWallet.WalletReady
 import com.lightning.walletapp.BaseActivity.StringOps
-import com.google.android.material.snackbar.Snackbar
 import org.ndeftools.util.activity.NfcReaderActivity
 import concurrent.ExecutionContext.Implicits.global
 import com.github.mmin18.widget.RealtimeBlurView
@@ -440,7 +439,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
             }
 
             // Do not prefill since amount is unknown, disable pay button
-            manager.updateButton(getPositiveButton(alert), isEnabled = false).run
+            manager.updateButton(getPositiveButton(alert), isEnabled = false)
           }
       }
 
@@ -463,9 +462,8 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
     }
 
     val msg = getString(dialog_lnurl_processing).format(lnUrl.uri.getHost).html
-    val subscription = lnUrl.level1DataResponse.doOnTerminate(removeCurrentSnack.run).subscribe(resolve, onFail)
-    def cancel(snackBar: Snackbar): Unit = runAnd(subscription.unsubscribe)(snackBar.dismiss)
-    snack(contentWindow, msg, dialog_cancel, cancel)
+    val obs = lnUrl.level1DataResponse.doOnTerminate(removeCurrentSnack.run)
+    cancellingSnack(contentWindow, obs.subscribe(resolve, onFail), msg)
   }
 
   def showAuthForm(lnUrl: LNUrl): Unit = {
@@ -608,10 +606,10 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
     }
 
     lazy val feeView = new FeeView(body) {
-      override def update(feeOpt: Option[MilliSatoshi], showIssue: Boolean): TimerTask = {
-        manager.updateButton(getPositiveButton(alert), feeOpt.isDefined).run
+      override def update(feeOpt: Option[MilliSatoshi], showIssue: Boolean): Unit = UITask {
+        manager.updateButton(getPositiveButton(alert), feeOpt.isDefined)
         super.update(feeOpt, showIssue)
-      }
+      }.run
 
       rate = {
         val target = LNParams.feeRatesInfo.onChainFeeConf.feeTargets.mutualCloseBlockTarget
@@ -621,8 +619,8 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
 
     lazy val worker = new ThrottledWork[Satoshi, TxAndFee] {
       def work(amount: Satoshi): Observable[TxAndFee] = Rx fromFutureOnIo LNParams.chainWallet.wallet.sendPayment(amount, uri.address, feeView.rate)
-      def process(amount: Satoshi, txAndFee: TxAndFee): Unit = feeView.update(feeOpt = Some(txAndFee.fee.toMilliSatoshi), showIssue = false).run
-      def error(exc: Throwable): Unit = feeView.update(feeOpt = None, showIssue = manager.resultSat >= LNParams.minDustLimit).run
+      def process(amount: Satoshi, txAndFee: TxAndFee): Unit = feeView.update(feeOpt = Some(txAndFee.fee.toMilliSatoshi), showIssue = false)
+      def error(exc: Throwable): Unit = feeView.update(feeOpt = None, showIssue = manager.resultSat >= LNParams.minDustLimit)
     }
 
     feeView.customFeerate addOnChangeListener new Slider.OnChangeListener {
@@ -637,15 +635,15 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
       worker addWork manager.resultSat
     }
 
+    manager.hintDenom.setText(getString(dialog_can_send).format(canSend).html)
+    manager.hintFiatDenom.setText(getString(dialog_can_send).format(canSendFiat).html)
+    feeView.update(feeOpt = None, showIssue = false)
+
     uri.amount.foreach { asked =>
       manager.updateText(value = asked)
       manager.inputAmount.setEnabled(false)
       manager.fiatInputAmount.setEnabled(false)
     }
-
-    manager.hintDenom.setText(getString(dialog_can_send).format(canSend).html)
-    manager.hintFiatDenom.setText(getString(dialog_can_send).format(canSendFiat).html)
-    feeView.update(feeOpt = None, showIssue = false).run
   }
 
   def bringReceivePopup: Unit = lnReceiveGuard(contentWindow) {
@@ -684,23 +682,36 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
       override def isPayEnabled: Boolean = manager.resultMsat >= minSendable && manager.resultMsat <= maxSendable
 
       override def neutral(alert: AlertDialog): Unit = {
-        def proceed(pf: PayRequestFinal): Unit = lnSendGuard(pf.prExt, contentWindow) { _ =>
-          val cmd = makeSendCmd(pf.prExt, toSend = manager.resultMsat).modify(_.split.totalSum).setTo(minSendable)
-          val description = PlainMetaDescription(cmd.split.toSome, label = None, invoiceText = new String, meta = data.metaDataTextPlain)
-          InputParser.value = SplitParams(pf.prExt, pf.successAction, description, cmd, typicalChainTxFee)
-          me goTo ClassNames.qrSplitActivityClass
-          alert.dismiss
+        def proceed(pf: PayRequestFinal): TimerTask = UITask {
+          lnSendGuard(pf.prExt, container = contentWindow) { _ =>
+            val cmd = makeSendCmd(pf.prExt, toSend = manager.resultMsat).modify(_.split.totalSum).setTo(minSendable)
+            val description = PlainMetaDescription(cmd.split.toSome, label = None, invoiceText = new String, meta = data.metaDataTextPlain)
+            InputParser.value = SplitParams(pf.prExt, pf.successAction, description, cmd, typicalChainTxFee)
+            me goTo ClassNames.qrSplitActivityClass
+            alert.dismiss
+          }
         }
+
+        val obs = getFinal(manager.resultMsat).doOnTerminate(removeCurrentSnack.run)
+        val msg = getString(dialog_lnurl_splitting).format(data.callbackUri.getHost).html
+        cancellingSnack(contentWindow, obs.subscribe(pf => proceed(pf).run, onFail), msg)
       }
 
       override def send(alert: AlertDialog): Unit = {
-        def proceed(pf: PayRequestFinal): Unit = lnSendGuard(pf.prExt, contentWindow) { _ =>
-          val cmd = makeSendCmd(pf.prExt, toSend = manager.resultMsat).modify(_.split.totalSum).setTo(manager.resultMsat)
-          val description = PlainMetaDescription(split = None, label = None, invoiceText = new String, meta = data.metaDataTextPlain)
-          replaceOutgoingPayment(pf.prExt, description, pf.successAction, cmd.split.myPart)
-          LNParams.cm.opm process cmd
-          alert.dismiss
+        def proceed(pf: PayRequestFinal): TimerTask = UITask {
+          lnSendGuard(pf.prExt, container = contentWindow) { _ =>
+            val cmd = makeSendCmd(pf.prExt, toSend = manager.resultMsat).modify(_.split.totalSum).setTo(manager.resultMsat)
+            val description = PlainMetaDescription(split = None, label = None, invoiceText = new String, meta = data.metaDataTextPlain)
+            replaceOutgoingPayment(pf.prExt, description, pf.successAction, cmd.split.myPart)
+            LNParams.cm.opm process cmd
+            alert.dismiss
+          }
         }
+
+        val obs = getFinal(manager.resultMsat).doOnTerminate(removeCurrentSnack.run)
+        val amountHuman = LNParams.denomination.parsedWithSign(manager.resultMsat, cardZero).html
+        val msg = getString(dialog_lnurl_sending).format(amountHuman, data.callbackUri.getHost).html
+        cancellingSnack(contentWindow, obs.subscribe(pf => proceed(pf).run, onFail), msg)
       }
 
       override val alert: AlertDialog = {
@@ -721,7 +732,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
 
       // Either prefill if amount is fixed or disable PAY buttom
       if (data.minSendable == data.maxSendable) manager.updateText(minSendable)
-      else manager.updateButton(getPositiveButton(alert), isEnabled = false).run
+      else manager.updateButton(getPositiveButton(alert), isEnabled = false)
     }
 
   def updatePaymentList: Unit = {
