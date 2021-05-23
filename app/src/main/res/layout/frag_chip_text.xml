@@ -1,0 +1,4 @@
+<TextView
+    style="@style/ChipTextGrayMargin"
+    android:id="@+id/ChannelRangeQueriesExtended"
+    xmlns:android="http://schemas.android.com/apk/res/android"/>

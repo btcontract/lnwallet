@@ -401,14 +401,14 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
             }
 
             override val alert: AlertDialog = {
+              val title = new TitleView(getString(dialog_split_ln) format prExt.brDescription)
               val leftHuman = LNParams.denomination.parsedWithSign(prExt.splitLeftover, Colors.cardZero)
               val totalHuman = LNParams.denomination.parsedWithSign(origAmount, Colors.cardZero)
-              val total = getString(dialog_split_ln_total).format(s"&#160;$totalHuman")
-              val left = getString(dialog_split_ln_left).format(s"&#160;$leftHuman")
-              val details = s"${prExt.brDescription}<br><br>$total<br>$left"
+              title.addChipText(getString(dialog_ln_requested) format s"&#160;$totalHuman")
+              title.addChipText(getString(dialog_ln_left) format s"&#160;$leftHuman")
 
-              val title = updateView2Color(new String, getString(dialog_split_ln).format(details), R.color.cardLightning)
-              mkCheckFormNeutral(send, none, neutral, titleBodyAsViewBuilder(title, manager.content), dialog_pay, dialog_cancel, dialog_split)
+              val builder = titleBodyAsViewBuilder(title.asColoredView(R.color.cardLightning), manager.content)
+              mkCheckFormNeutral(send, none, neutral, builder, dialog_pay, dialog_cancel, dialog_split)
             }
 
             // Prefill with what's left to pay
@@ -423,8 +423,12 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
             override def send(alert: AlertDialog): Unit = baseSendNow(prExt, alert)
 
             override val alert: AlertDialog = {
-              val title = updateView2Color(new String, getString(dialog_send_ln).format(prExt.brDescription), R.color.cardLightning)
-              mkCheckFormNeutral(send, none, neutral, titleBodyAsViewBuilder(title, manager.content), dialog_pay, dialog_cancel, dialog_split)
+              val title = new TitleView(getString(dialog_send_ln) format prExt.brDescription)
+              val totalHuman = LNParams.denomination.parsedWithSign(origAmount, Colors.cardZero)
+              title.addChipText(getString(dialog_ln_requested) format s"&#160;$totalHuman")
+
+              val builder = titleBodyAsViewBuilder(title.asColoredView(R.color.cardLightning), manager.content)
+              mkCheckFormNeutral(send, none, neutral, builder, dialog_pay, dialog_cancel, dialog_split)
             }
 
             // Prefill with asked amount
@@ -439,7 +443,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
             override def isNeutralEnabled: Boolean = true
 
             override val alert: AlertDialog = {
-              val title = updateView2Color(new String, getString(dialog_send_ln).format(prExt.brDescription), R.color.cardLightning)
+              val title = getString(dialog_send_ln).format(prExt.brDescription).asColoredView(R.color.cardLightning)
               mkCheckFormNeutral(send, none, neutral, titleBodyAsViewBuilder(title, manager.content), dialog_pay, dialog_cancel, dialog_max)
             }
 
@@ -606,7 +610,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
       val neutralRes = if (uri.amount.isDefined) -1 else dialog_max
       val label = uri.label.map(label => s"<br><br><b>$label</b>").getOrElse(new String)
       val message = uri.message.map(message => s"<br><i>$message<i>").getOrElse(new String)
-      val builder = titleBodyAsViewBuilder(updateView2Color(new String, getString(dialog_send_btc).format(uri.address.shortAddress, label + message), R.color.cardBitcoin), manager.content)
+      val builder = titleBodyAsViewBuilder(getString(dialog_send_btc).format(uri.address.shortAddress, label + message).asColoredView(R.color.cardBitcoin), manager.content)
       if (uri.prExt.isEmpty) mkCheckFormNeutral(attempt, none, _ => manager.updateText(WalletApp.lastChainBalance.totalBalance), builder, dialog_pay, dialog_cancel, neutralRes)
       else mkCheckFormNeutral(attempt, none, switchToLn, builder, dialog_pay, dialog_cancel, lightning_wallet)
     }
@@ -657,7 +661,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
       override def getManager: RateManager = new RateManager(body, getString(dialog_add_description).toSome, dialog_visibility_public, LNParams.fiatRatesInfo.rates, WalletApp.fiatCode)
       override def getDescription: PaymentDescription = PlainDescription(split = None, label = None, invoiceText = manager.resultExtraInput getOrElse new String)
       override def processInvoice(prExt: PaymentRequestExt): Unit = runAnd(InputParser.value = prExt)(me goTo ClassNames.qrInvoiceActivityClass)
-      override def getTitleText: CharSequence = getString(dialog_receive_ln).html
+      override def getTitleText: String = getString(dialog_receive_ln)
     }
   }
 
@@ -665,7 +669,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
     new OffChainReceiver(initMaxReceivable = data.maxWithdrawable.msat, initMinReceivable = data.minCanReceive, lnBalance) {
       override def getManager: RateManager = new RateManager(body, getString(dialog_add_ln_memo).toSome, dialog_visibility_private, LNParams.fiatRatesInfo.rates, WalletApp.fiatCode)
       override def getDescription: PaymentDescription = PlainMetaDescription(split = None, label = manager.resultExtraInput, invoiceText = new String, meta = data.descriptionOrEmpty)
-      override def getTitleText: CharSequence = getString(dialog_lnurl_withdraw).format(data.callbackUri.getHost, data.brDescription)
+      override def getTitleText: String = getString(dialog_lnurl_withdraw).format(data.callbackUri.getHost, data.brDescription)
       override def processInvoice(prExt: PaymentRequestExt): Unit = data.requestWithdraw(prExt).foreach(none, onFail)
     }
   }
@@ -711,7 +715,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
 
       override val alert: AlertDialog = {
         val text = getString(dialog_lnurl_pay).format(data.callbackUri.getHost, s"<br><br>${data.metaDataTextPlain}")
-        val title = titleBodyAsViewBuilder(updateView2Color(new String, text, R.color.cardLightning), manager.content)
+        val title = titleBodyAsViewBuilder(text.asColoredView(R.color.cardLightning), manager.content)
         mkCheckFormNeutral(send, none, neutral, title, dialog_pay, dialog_cancel, dialog_split)
       }
 
@@ -755,7 +759,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
 
   def actionPopup(msg: CharSequence, action: PaymentAction): AlertDialog.Builder = {
     val fromVendor = action.domain.map(site => s"<br><br><b>$site</b>").getOrElse(new String)
-    val title = getString(dialog_lnurl_from_vendor).format(fromVendor).html
+    val title = getString(dialog_lnurl_from_vendor).format(fromVendor).asDefView
     new AlertDialog.Builder(me).setCustomTitle(title).setMessage(msg)
   }
 

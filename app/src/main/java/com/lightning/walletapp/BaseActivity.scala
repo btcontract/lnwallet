@@ -39,6 +39,7 @@ import fr.acinq.eclair.payment.PaymentRequest
 import com.google.zxing.qrcode.QRCodeWriter
 import fr.acinq.eclair.channel.Commitments
 import androidx.appcompat.app.AlertDialog
+import org.apmem.tools.layouts.FlowLayout
 import scala.language.implicitConversions
 import android.content.pm.PackageManager
 import android.view.View.OnClickListener
@@ -188,20 +189,6 @@ trait BaseActivity extends AppCompatActivity { me =>
     list
   }
 
-  implicit def str2View(textFieldData: CharSequence): LinearLayout = {
-    val view = getLayoutInflater.inflate(R.layout.frag_top_tip, null).asInstanceOf[LinearLayout]
-    clickableTextField(view findViewById R.id.titleTip) setText textFieldData
-    view setBackgroundColor 0x22AAAAAA
-    view
-  }
-
-  def updateView2Color(oldView: View, newText: String, colorRes: Int): View = {
-    val titleTip = oldView.findViewById(R.id.titleTip).asInstanceOf[TextView]
-    oldView setBackgroundColor ContextCompat.getColor(me, colorRes)
-    titleTip setText s"<font color=#FFFFFF>$newText</font>".html
-    oldView
-  }
-
   def clickableTextField(view: View): TextView = {
     val field: TextView = view.asInstanceOf[TextView]
     field setMovementMethod LinkMovementMethod.getInstance
@@ -209,7 +196,7 @@ trait BaseActivity extends AppCompatActivity { me =>
   }
 
   def titleBodyAsViewBuilder(title: View, body: View): AlertDialog.Builder = new AlertDialog.Builder(me).setCustomTitle(title).setView(body)
-  def onFail(error: CharSequence): Unit = UITask(me showForm titleBodyAsViewBuilder(null, error).setPositiveButton(dialog_ok, null).create).run
+  def onFail(error: String): Unit = UITask(me showForm titleBodyAsViewBuilder(null, error.asDefView).setPositiveButton(dialog_ok, null).create).run
   def onFail(error: Throwable): Unit = onFail(error.toString)
 
   def getPositiveButton(alert: AlertDialog): Button = alert.getButton(DialogInterface.BUTTON_POSITIVE)
@@ -274,6 +261,32 @@ trait BaseActivity extends AppCompatActivity { me =>
     val allowed = ContextCompat.checkSelfPermission(me, android.Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
     if (allowed) new sheets.ScannerBottomSheet(me, checker).show(getSupportFragmentManager, "scanner-bottom-sheet-fragment")
     else ActivityCompat.requestPermissions(me, Array(android.Manifest.permission.CAMERA), scannerRequestCode)
+  }
+
+  // Rich popup title
+
+  implicit class TitleView(titleText: String) {
+    val view: LinearLayout = getLayoutInflater.inflate(R.layout.frag_top_tip, null).asInstanceOf[LinearLayout]
+    val flow: FlowLayout = view.findViewById(R.id.tipExtraTags).asInstanceOf[FlowLayout]
+    val title: TextView = clickableTextField(view findViewById R.id.tipTitle)
+    title setText titleText.html
+
+    def asDefView: LinearLayout = {
+      view setBackgroundColor 0x22AAAAAA
+      view
+    }
+
+    def asColoredView(colorRes: Int): LinearLayout = {
+      view setBackgroundColor ContextCompat.getColor(me, colorRes)
+      view
+    }
+
+    def addChipText(chipText: String): Unit = {
+      val text = getLayoutInflater.inflate(R.layout.frag_chip_text, flow, false)
+      text.asInstanceOf[TextView].setText(chipText.html)
+      flow.setVisibility(View.VISIBLE)
+      flow.addView(text)
+    }
   }
 
   // Fiat / BTC converter
@@ -486,9 +499,11 @@ trait BaseActivity extends AppCompatActivity { me =>
       alert.dismiss
     }
 
-    val alert: AlertDialog =
-      mkCheckFormNeutral(receive, none, _ => manager.updateText(finalMaxReceivable),
-        titleBodyAsViewBuilder(getTitleText, manager.content), dialog_ok, dialog_cancel, dialog_max)
+    val alert: AlertDialog = {
+      val builder = titleBodyAsViewBuilder(getTitleText.asDefView, manager.content)
+      def setMax(alert1: AlertDialog): Unit = manager.updateText(finalMaxReceivable)
+      mkCheckFormNeutral(receive, none, setMax, builder, dialog_ok, dialog_cancel, dialog_max)
+    }
 
     manager.hintFiatDenom.setText(getString(dialog_can_receive).format(canReceiveFiatHuman).html)
     manager.hintDenom.setText(getString(dialog_can_receive).format(canReceiveHuman).html)
@@ -499,8 +514,8 @@ trait BaseActivity extends AppCompatActivity { me =>
       manager.updateButton(button = getPositiveButton(alert), isEnabled = withinBounds)
     }
 
+    def getTitleText: String
     def getManager: RateManager
-    def getTitleText: CharSequence
     def getDescription: PaymentDescription
     def processInvoice(prExt: PaymentRequestExt): Unit
   }

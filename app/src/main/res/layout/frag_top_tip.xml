@@ -1,10 +1,19 @@
 <LinearLayout
-    style="@style/StandardLinearLayout"
+    style="@style/StandardXYMarginLinearLayout"
+    xmlns:f="http://schemas.android.com/apk/res-auto"
     xmlns:android="http://schemas.android.com/apk/res/android">
 
     <TextView
-        style="@style/XYMarginFillingView"
+        style="@style/FillingView"
         android:textColor="@color/colorAccent"
-        android:id="@+id/titleTip"/>
+        android:id="@+id/tipTitle"/>
+
+    <org.apmem.tools.layouts.FlowLayout
+        android:layout_marginStart="-2sp"
+        android:layout_marginTop="18sp"
+        android:id="@+id/tipExtraTags"
+        style="@style/FillingView"
+        android:visibility="gone"
+        f:layout_newLine="true"/>
 
 </LinearLayout>

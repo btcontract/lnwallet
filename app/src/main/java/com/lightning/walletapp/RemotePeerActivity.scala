@@ -151,8 +151,9 @@ class RemotePeerActivity extends BaseActivity with ExternalDataChecker { me =>
     }
 
     lazy val alert = {
-      val builder = titleBodyAsViewBuilder(updateView2Color(new String, getString(rpa_open_nc), R.color.cardBitcoin), manager.content)
-      mkCheckFormNeutral(attempt, none, _ => manager.updateText(WalletApp.lastChainBalance.totalBalance), builder, dialog_pay, dialog_cancel, dialog_max)
+      def setMax(alert1: AlertDialog): Unit = manager.updateText(WalletApp.lastChainBalance.totalBalance)
+      val builder = titleBodyAsViewBuilder(getString(rpa_open_nc).asColoredView(R.color.cardBitcoin), manager.content)
+      mkCheckFormNeutral(attempt, none, setMax, builder, dialog_pay, dialog_cancel, dialog_max)
     }
 
     lazy val feeView = new FeeView(body) {

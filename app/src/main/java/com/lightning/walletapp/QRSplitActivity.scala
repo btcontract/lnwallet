@@ -40,7 +40,7 @@ class QRSplitActivity extends QRActivity with ExternalDataChecker with HasTypica
 
     runInFutureProcessOnUI(QRActivity.get(nextSplitLink.toUpperCase, qrSize), onFail) { bitmap =>
       def shareSplitLink: Unit = runInFutureProcessOnUI(shareData(bitmap, nextSplitLink), onFail)(none)
-      qrViewHolder.qrLabel setText getString(R.string.dialog_split_ln_left).format(s"<br>$leftHuman").html
+      qrViewHolder.qrLabel setText getString(R.string.dialog_ln_left).format(s"<br>$leftHuman").html
       qrViewHolder.qrCopy setOnClickListener onButtonTap(WalletApp.app copy nextSplitLink)
       qrViewHolder.qrCode setOnClickListener onButtonTap(WalletApp.app copy nextSplitLink)
       qrViewHolder.qrShare setOnClickListener onButtonTap(shareSplitLink)

@@ -1,9 +1,9 @@
 package com.lightning.walletapp
 
 import fr.acinq.eclair._
-import scala.util.{Failure, Success}
+import scala.util.{Failure, Success, Try}
 import scodec.bits.{BitVector, ByteVector}
-import immortan.crypto.Tools.{none, SEPARATOR}
+import immortan.crypto.Tools.{SEPARATOR, none}
 import android.widget.{ArrayAdapter, LinearLayout}
 import immortan.{LNParams, LightningNodeKeys, WalletSecret}
 import com.lightning.walletapp.BaseActivity.StringOps
@@ -78,7 +78,7 @@ class SetupActivity extends BaseActivity { me =>
 
           case Failure(exception) =>
             val msg = getString(R.string.error_could_not_decrypt)
-            onFail(msg.format(exception.getMessage).html)
+            onFail(msg format exception.getMessage)
         }
       }
     }
@@ -108,22 +108,19 @@ class SetupActivity extends BaseActivity { me =>
     recoveryPhrase setAdapter new ArrayAdapter(me, android.R.layout.simple_list_item_1, englishWordList)
     recoveryPhrase setDropDownBackgroundResource R.color.button_material_dark
 
-    def maybeProceed(alert: AlertDialog): Unit = {
-      val mnemonic: String = recoveryPhrase.getText.toString.toLowerCase.trim
-      val pureMnemonic = mnemonic.replaceAll("[^a-zA-Z0-9']+", SEPARATOR).split(SEPARATOR).toList
+    def maybeProceed(alert: AlertDialog): Unit = Try {
+      val mnemonic = recoveryPhrase.getText.toString.toLowerCase.trim
+      val pureMnemonic = mnemonic.replaceAll("[^a-zA-Z0-9']+", SEPARATOR)
+      val mnemonicList = pureMnemonic.split(SEPARATOR).toList
+      MnemonicCode.validate(mnemonicList, englishWordList)
+      onMnemonic(mnemonicList)
       alert.dismiss
-
-      try {
-        MnemonicCode.validate(pureMnemonic, englishWordList)
-        onMnemonic(pureMnemonic)
-      } catch {
-        case _: Throwable =>
-          val message = getString(R.string.error_wrong_phrase)
-          WalletApp.app.quickToast(message.html)
-      }
+    } getOrElse {
+      val message = getString(R.string.error_wrong_phrase).html
+      WalletApp.app.quickToast(message)
     }
 
-    val bld = titleBodyAsViewBuilder(str2View(getString(title).html), mnemonicWrap)
-    mkCheckForm(maybeProceed, none, bld, R.string.dialog_ok, R.string.dialog_cancel)
+    val builder = titleBodyAsViewBuilder(getString(title).asDefView, mnemonicWrap)
+    mkCheckForm(maybeProceed, none, builder, R.string.dialog_ok, R.string.dialog_cancel)
   }
 }
