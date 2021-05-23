@@ -249,10 +249,8 @@ case class OutgoingPaymentSenderData(cmd: SendMultiPart, parts: Map[ByteVector, 
   lazy val closestCltvExpiry: Option[CltvExpiryDelta] = inFlightParts.map(_.route.weight.cltv).toList.sorted.headOption
   lazy val usedFee: MilliSatoshi = inFlightParts.map(_.route.fee).sum
 
-  def usedRoutesAsString(denom: Denomination): String = {
-    // Used routes will be in place only if payment is successful
+  def usedRoutesAsString(denom: Denomination): String =
     inFlightParts.map(_.route asString denom).mkString("\n\n")
-  }
 
   def failuresAsString(denom: Denomination): String = {
     val failByAmount: Map[String, Failures] = failures.groupBy {

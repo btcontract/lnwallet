@@ -676,9 +676,13 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
 
   def bringPayPopup(data: PayRequest): Unit =
     new OffChainSender(maxSendable = LNParams.cm.maxSendable min data.maxSendable.msat, minSendable = LNParams.minPayment max data.minSendable.msat) {
-      override val manager = new RateManager(body, getString(dialog_add_comment).toSome, dialog_visibility_public, LNParams.fiatRatesInfo.rates, WalletApp.fiatCode)
       override def isNeutralEnabled: Boolean = manager.resultMsat >= LNParams.minPayment && manager.resultMsat <= minSendable - LNParams.minPayment
       override def isPayEnabled: Boolean = manager.resultMsat >= minSendable && manager.resultMsat <= maxSendable
+
+      override val manager: RateManager = {
+        val commentStringOpt = if (data.commentAllowed.isDefined) getString(dialog_add_comment).toSome else None
+        new RateManager(body, commentStringOpt, dialog_visibility_public, LNParams.fiatRatesInfo.rates, WalletApp.fiatCode)
+      }
 
       override def neutral(alert: AlertDialog): Unit = {
         def proceed(pf: PayRequestFinal): TimerTask = UITask {
@@ -720,18 +724,17 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
       }
 
       private def getFinal(amount: MilliSatoshi) =
-        data.requestFinal(amount).map { rawResponse =>
-          val payRequestFinal = to[PayRequestFinal](rawResponse)
-          val descriptionHash = payRequestFinal.prExt.pr.description.right
-          require(descriptionHash.toOption.contains(data.metaDataHash), s"Metadata hash mismatch, original=${data.metaDataHash}, provided=$descriptionHash")
+        data.requestFinal(manager.resultExtraInput, amount).map { rawResponse =>
+          val payRequestFinal: PayRequestFinal = to[PayRequestFinal](rawResponse)
+          val descriptionHashOpt: Option[ByteVector32] = payRequestFinal.prExt.pr.description.right.toOption
+          require(descriptionHashOpt.contains(data.metaDataHash), s"Metadata hash mismatch, original=${data.metaDataHash}, provided=$descriptionHashOpt")
           require(payRequestFinal.prExt.pr.amount.contains(amount), s"Payment amount mismatch, requested=$amount, provided=${payRequestFinal.prExt.pr.amount}")
           for (additionalEdge <- payRequestFinal.additionalRoutes) LNParams.cm.pf process additionalEdge
           payRequestFinal.modify(_.successAction.each.domain).setTo(data.callbackUri.getHost.toSome)
         }
 
-      // Either prefill if amount is fixed or disable PAY buttom
-      if (data.minSendable == data.maxSendable) manager.updateText(minSendable)
-      else manager.updateButton(getPositiveButton(alert), isEnabled = false)
+      // Prefill with min possible
+      manager.updateText(minSendable)
     }
 
   def updatePaymentList: Unit = {
