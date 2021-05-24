@@ -20,7 +20,6 @@ object Channel {
   final val WAIT_FOR_INIT = "WAIT-FOR-INIT"
   final val WAIT_FOR_ACCEPT = "WAIT-FOR-ACCEPT"
   final val WAIT_FUNDING_DONE = "WAIT-FUNDING-DONE"
-  final val SUSPENDED = "SUSPENDED"
   final val SLEEPING = "SLEEPING"
   final val CLOSING = "CLOSING"
   final val OPEN = "OPEN"

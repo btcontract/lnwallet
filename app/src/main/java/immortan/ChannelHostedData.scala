@@ -65,11 +65,29 @@ case class HostedCommits(remoteInfo: RemoteNodeInfo, lastCrossSignedState: LastC
 
   def receiveAdd(add: UpdateAddHtlc): HostedCommits = {
     val commits1: HostedCommits = addRemoteProposal(add)
-    if (commits1.nextLocalSpec.incomingAdds.size > lastCrossSignedState.initHostedChannel.maxAcceptedHtlcs) throw new RuntimeException
+    if (commits1.nextLocalSpec.incomingAdds.size > lastCrossSignedState.initHostedChannel.maxAcceptedHtlcs) throw ChannelTransitionFail(channelId)
     // Note: we do not check whether total incoming amount exceeds maxHtlcValueInFlightMsat becase we always accept up to channel capacity
-    if (commits1.nextLocalSpec.toRemote < 0L.msat) throw new RuntimeException
-    if (add.id != nextTotalRemote + 1) throw new RuntimeException
+    if (commits1.nextLocalSpec.toRemote < 0L.msat) throw ChannelTransitionFail(channelId)
+    if (add.id != nextTotalRemote + 1) throw ChannelTransitionFail(channelId)
     commits1
+  }
+
+  // Relaxed constraints for receiveng preimages over HCs: we look at nextLocalSpec, not localSpec
+  def receiveFulfill(fulfill: UpdateFulfillHtlc): (HostedCommits, UpdateAddHtlc) = nextLocalSpec.findOutgoingHtlcById(fulfill.id) match {
+    case Some(ourAdd) if ourAdd.add.paymentHash != fulfill.paymentHash => throw ChannelTransitionFail(channelId)
+    case Some(ourAdd) => (addRemoteProposal(fulfill), ourAdd.add)
+    case None => throw ChannelTransitionFail(channelId)
+  }
+
+  def receiveFail(fail: UpdateFailHtlc): HostedCommits = localSpec.findOutgoingHtlcById(fail.id) match {
+    case None => throw ChannelTransitionFail(channelId)
+    case _ => addRemoteProposal(fail)
+  }
+
+  def receiveFailMalformed(fail: UpdateFailMalformedHtlc): HostedCommits = localSpec.findOutgoingHtlcById(fail.id) match {
+    case _ if fail.failureCode.&(FailureMessageCodecs.BADONION) != 0 => throw ChannelTransitionFail(channelId)
+    case None => throw ChannelTransitionFail(channelId)
+    case _ => addRemoteProposal(fail)
   }
 
   def withResize(resize: ResizeChannel): HostedCommits =

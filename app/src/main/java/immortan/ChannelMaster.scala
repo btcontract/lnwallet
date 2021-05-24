@@ -235,14 +235,20 @@ class ChannelMaster(val payBag: PaymentBag, val chanBag: ChannelBag, val dataBag
   }
 
   override def onBecome: PartialFunction[Transition, Unit] = {
-    case (_, _, _, WAIT_FUNDING_DONE | SLEEPING | SUSPENDED, OPEN) =>
+    case (_, _, _, OPEN, SLEEPING | CLOSING) => next(statusUpdateStream)
+    case (_: ChannelNormal, _, _, SLEEPING, CLOSING) => next(statusUpdateStream)
+
+    case (_, prevHc: HostedCommits, nextHc: HostedCommits, _, _)
+      if prevHc.getError.isEmpty && nextHc.getError.nonEmpty =>
+      next(statusUpdateStream)
+
+    case (_, prevHc: HostedCommits, nextHc: HostedCommits, _, _)
+      if prevHc.getError.nonEmpty && nextHc.getError.isEmpty =>
       opm process OutgoingPaymentMaster.CMDChanGotOnline
       next(statusUpdateStream)
 
-    case (_, _, _, OPEN, SLEEPING | SUSPENDED | CLOSING) =>
-      next(statusUpdateStream)
-
-    case (_: ChannelNormal, _, _, SLEEPING, CLOSING) =>
+    case (_, _, _, WAIT_FUNDING_DONE | SLEEPING, OPEN) =>
+      opm process OutgoingPaymentMaster.CMDChanGotOnline
       next(statusUpdateStream)
   }
 

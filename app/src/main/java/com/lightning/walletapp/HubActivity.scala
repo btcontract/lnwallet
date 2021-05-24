@@ -270,21 +270,21 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
 
     def updateView: Unit = lnBalance match { case currentLnBalance =>
       val walletBalance = currentLnBalance + WalletApp.lastChainBalance.totalBalance
-      val states = LNParams.cm.all.values.map(_.state).take(8)
+      val allChannels = LNParams.cm.all.values.take(8)
 
       TransitionManager.beginDelayedTransition(view)
-      setVis(states.nonEmpty, channelStateIndicators)
+      setVis(allChannels.nonEmpty, channelStateIndicators)
       setVis(WalletApp.lastChainBalance.isTooLongAgo, syncIndicator)
       totalFiatBalance setText WalletApp.currentMsatInFiatHuman(walletBalance).html
       totalBalance setText LNParams.denomination.parsedWithSign(walletBalance, totalZero).html
-      channelIndicator.createIndicators(states.toArray)
+      channelIndicator.createIndicators(allChannels.toArray)
 
       totalLightningBalance setText LNParams.denomination.parsedWithSign(currentLnBalance, lnCardZero).html
       totalBitcoinBalance setText LNParams.denomination.parsedWithSign(WalletApp.lastChainBalance.totalBalance, btcCardZero).html
       setVis(WalletApp.lastChainBalance.totalBalance != 0L.msat, totalBitcoinBalance)
       setVis(WalletApp.lastChainBalance.totalBalance == 0L.msat, receiveBitcoinTip)
-      setVis(states.nonEmpty, totalLightningBalance)
-      setVis(states.isEmpty, addChannelTip)
+      setVis(allChannels.nonEmpty, totalLightningBalance)
+      setVis(allChannels.isEmpty, addChannelTip)
 
       val localInCount = LNParams.cm.inProcessors.count { case (fullTag, _) => fullTag.tag == PaymentTagTlv.FINAL_INCOMING }
       val localOutCount = LNParams.cm.opm.data.payments.count { case (fullTag, _) => fullTag.tag == PaymentTagTlv.LOCALLY_SENT }

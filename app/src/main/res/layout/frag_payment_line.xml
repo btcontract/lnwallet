@@ -211,6 +211,7 @@
                         android:layout_centerVertical="true"
                         android:layout_toEndOf="@+id/labelIcon"
                         android:layout_toStartOf="@id/statusIcon"
+                        android:layout_marginEnd="5dp"
                         android:textStyle="bold"
                         android:ellipsize="end"
                         android:maxLines="1"/>

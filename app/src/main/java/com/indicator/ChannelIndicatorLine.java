@@ -1,5 +1,6 @@
 package com.indicator;
 
+import immortan.Channel;
 import immortan.Channel$;
 import android.content.Context;
 import android.util.DisplayMetrics;
@@ -45,10 +46,10 @@ public class ChannelIndicatorLine extends LinearLayout {
         setGravity(Gravity.START);
     }
 
-    public void createIndicators(String[] states) {
+    public void createIndicators(Channel[] channels) {
         // Diff View
         int childViewCount = getChildCount();
-        int count = states.length;
+        int count = channels.length;
 
         if (count < childViewCount) {
             removeViews(count, childViewCount - count);
@@ -62,22 +63,19 @@ public class ChannelIndicatorLine extends LinearLayout {
         // Bind Style
         for (int i = 0; i < count; i++) {
             View indicator = getChildAt(i);
-            String state = states[i];
+            Channel chan = channels[i];
 
-            if (Channel$.MODULE$.SLEEPING().equals(state)) {
-                indicator.setBackgroundResource(R.drawable.indicator_item_open_sleeping);
+            if (!Channel$.MODULE$.isOperational(chan)) {
+                indicator.setBackgroundResource(R.drawable.indicator_chan_malfunction);
+                indicator.setAlpha(0.6f);
+            } else if (Channel$.MODULE$.isWaiting(chan)) {
+                indicator.setBackgroundResource(R.drawable.indicator_chan_confirming);
+                indicator.setAlpha(0.6f);
+            } else if (Channel$.MODULE$.isOperationalAndSleeping(chan)) {
+                indicator.setBackgroundResource(R.drawable.indicator_chan_normal);
                 indicator.setAlpha(0.25f);
-            } else if (Channel$.MODULE$.WAIT_FUNDING_DONE().equals(state)) {
-                indicator.setBackgroundResource(R.drawable.indicator_item_confirming);
-                indicator.setAlpha(0.6f);
-            } else if (Channel$.MODULE$.CLOSING().equals(state)) {
-                indicator.setBackgroundResource(R.drawable.indicator_item_closing_suspended);
-                indicator.setAlpha(0.6f);
-            } else if (Channel$.MODULE$.SUSPENDED().equals(state)) {
-                indicator.setBackgroundResource(R.drawable.indicator_item_closing_suspended);
-                indicator.setAlpha(0.6f);
             } else {
-                indicator.setBackgroundResource(R.drawable.indicator_item_open_sleeping);
+                indicator.setBackgroundResource(R.drawable.indicator_chan_normal);
                 indicator.setAlpha(0.8f);
             }
         }

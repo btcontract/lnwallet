@@ -3,8 +3,8 @@ package immortan.fsm
 import immortan.{ChannelHosted, ChannelListener, ChannelMaster, CommsTower, ConnectionListener, HostedCommits, RemoteNodeInfo, WaitRemoteHostedReply}
 import fr.acinq.eclair.wire.{ChannelUpdate, HasChannelId, HostedChannelBranding, HostedChannelMessage, Init, LightningMessage, LightningMessageCodecs}
 import fr.acinq.eclair.channel.{CMD_SOCKET_ONLINE, PersistentChannelData}
-import immortan.Channel.{OPEN, SUSPENDED, WAIT_FOR_ACCEPT}
 import immortan.ChannelListener.{Malfunction, Transition}
+import immortan.Channel.{OPEN, WAIT_FOR_ACCEPT}
 import fr.acinq.bitcoin.ByteVector32
 import scodec.bits.ByteVector
 import immortan.crypto.Tools
@@ -38,8 +38,7 @@ abstract class HCOpenHandler(info: RemoteNodeInfo, peerSpecificSecret: ByteVecto
     }
 
     override def onBecome: PartialFunction[Transition, Unit] = {
-      case (_, _, commits: HostedCommits, WAIT_FOR_ACCEPT, OPEN | SUSPENDED) =>
-        // It is up to HC to store itself and communicate successful opening
+      case (_, _, commits: HostedCommits, WAIT_FOR_ACCEPT, OPEN) =>
         cm.implantChannel(commits, freshChannel)
         CommsTower.rmListenerNative(info, me)
         onEstablished(freshChannel)

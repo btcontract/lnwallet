@@ -141,8 +141,7 @@ object ChannelCodecs {
   val waitingForRevocationCodec = {
     ("nextRemoteCommit" | remoteCommitCodec) ::
       ("sent" | lengthDelimited(commitSigCodec)) ::
-      ("sentAfterLocalCommitIndex" | uint64overflow) ::
-      ("reSignAsap" | bool8)
+      ("sentAfterLocalCommitIndex" | uint64overflow)
   }.as[WaitingForRevocation]
 
   val spentMapCodec = mapCodec(outPointCodec, bytes32)

@@ -12,8 +12,8 @@ import fr.acinq.eclair.transactions._
 import akka.actor.{ActorRef, Props}
 import fr.acinq.bitcoin.{ByteVector32, ScriptFlags, Transaction}
 import fr.acinq.eclair.transactions.Transactions.TxOwner
+import fr.acinq.eclair.channel.Helpers.Closing
 import fr.acinq.eclair.payment.OutgoingPacket
-import fr.acinq.eclair.router.Announcements
 import fr.acinq.bitcoin.Crypto.PrivateKey
 import fr.acinq.eclair.crypto.ShaChain
 import scodec.bits.ByteVector
@@ -177,11 +177,13 @@ abstract class ChannelNormal(bag: ChannelBag) extends Channel with Handlers { me
       // MAIN LOOP
 
       case (some: HasNormalCommitments, remoteInfo: RemoteNodeInfo, OPEN | SLEEPING) if some.commitments.remoteInfo.nodeId == remoteInfo.nodeId =>
-        data = me STORE some.modify(_.commitments.remoteInfo).setTo(remoteInfo)
+        val data1 = some.modify(_.commitments.remoteInfo).setTo(remoteInfo)
+        data = STORE(data1)
 
 
-      case (norm: DATA_NORMAL, update: ChannelUpdate, OPEN | SLEEPING) if update.shortChannelId == norm.shortChannelId && Announcements.checkSig(update)(norm.commitments.remoteInfo.nodeId) =>
-        data = me STORE norm.modify(_.commitments.updateOpt).setTo(update.toSome)
+      case (norm: DATA_NORMAL, update: ChannelUpdate, OPEN | SLEEPING) if update.shortChannelId == norm.shortChannelId =>
+        val data1 = norm.modify(_.commitments.updateOpt).setTo(update.toSome)
+        data = STORE(data1)
 
 
       case (norm: DATA_NORMAL, CMD_CHECK_FEERATE, OPEN) =>
@@ -214,23 +216,22 @@ abstract class ChannelNormal(bag: ChannelBag) extends Channel with Handlers { me
         else StoreBecomeSend(norm.copy(localShutdown = shutdown.toSome), state, shutdown)
 
 
-      case (norm: DATA_NORMAL, cmd: CMD_ADD_HTLC, OPEN) if norm.localShutdown.isEmpty && norm.remoteShutdown.isEmpty =>
+      case (norm: DATA_NORMAL, cmd: CMD_ADD_HTLC, _) =>
+        if (SLEEPING == state) throw CMDException(ChannelOffline, cmd)
+        if (OPEN != state) throw CMDException(new RuntimeException, cmd)
+        if (norm.localShutdown.nonEmpty || norm.remoteShutdown.nonEmpty) throw CMDException(new RuntimeException, cmd)
         val (commits1, updateAddHtlcMsg) = norm.commitments.sendAdd(cmd, LNParams.blockCount.get, LNParams.feeRatesInfo.onChainFeeConf)
         BECOME(norm.copy(commitments = commits1), OPEN)
         SEND(updateAddHtlcMsg)
         doProcess(CMD_SIGN)
 
 
-      case (_: DATA_NORMAL, cmd: CMD_ADD_HTLC, SLEEPING) =>
-        // Instruct payment master to not omit this channel yet
-        throw CMDException(ChannelOffline, cmd)
-
-
       case (_, cmd: CMD_ADD_HTLC, _) =>
-        // Instruct payment master to omit this channel
+        // Omit this channel in any other state
         throw CMDException(new RuntimeException, cmd)
 
 
+      // CMD_SIGN will be sent from ChannelMaster strictly after outgoing FSM sends this command
       case (norm: DATA_NORMAL, cmd: CMD_FULFILL_HTLC, OPEN) if !norm.commitments.alreadyReplied(cmd.theirAdd.id) =>
         val msg = UpdateFulfillHtlc(norm.channelId, cmd.theirAdd.id, cmd.preimage)
         val commits1 = norm.commitments.addLocalProposal(msg)
@@ -238,6 +239,7 @@ abstract class ChannelNormal(bag: ChannelBag) extends Channel with Handlers { me
         SEND(msg)
 
 
+      // CMD_SIGN will be sent from ChannelMaster strictly after outgoing FSM sends this command
       case (norm: DATA_NORMAL, cmd: CMD_FAIL_HTLC, OPEN) if !norm.commitments.alreadyReplied(cmd.theirAdd.id) =>
         val msg = OutgoingPacket.buildHtlcFailure(cmd, theirAdd = cmd.theirAdd)
         val commits1 = norm.commitments.addLocalProposal(msg)
@@ -245,6 +247,7 @@ abstract class ChannelNormal(bag: ChannelBag) extends Channel with Handlers { me
         SEND(msg)
 
 
+      // CMD_SIGN will be sent from ChannelMaster strictly after outgoing FSM sends this command
       case (norm: DATA_NORMAL, cmd: CMD_FAIL_MALFORMED_HTLC, OPEN) if !norm.commitments.alreadyReplied(cmd.theirAdd.id) =>
         val msg = UpdateFailMalformedHtlc(norm.channelId, cmd.theirAdd.id, cmd.onionHash, cmd.failureCode)
         val commits1 = norm.commitments.addLocalProposal(msg)
@@ -285,12 +288,12 @@ abstract class ChannelNormal(bag: ChannelBag) extends Channel with Handlers { me
 
 
       case (norm: DATA_NORMAL, fail: UpdateFailHtlc, OPEN) =>
-        val (commits1, _) = norm.commitments.receiveFail(fail)
+        val commits1 = norm.commitments.receiveFail(fail)
         BECOME(norm.copy(commitments = commits1), OPEN)
 
 
       case (norm: DATA_NORMAL, malformed: UpdateFailMalformedHtlc, OPEN) =>
-        val (commits1, _) = norm.commitments.receiveFailMalformed(malformed)
+        val commits1 = norm.commitments.receiveFailMalformed(malformed)
         BECOME(norm.copy(commitments = commits1), OPEN)
 
 
@@ -319,12 +322,19 @@ abstract class ChannelNormal(bag: ChannelBag) extends Channel with Handlers { me
 
 
       case (norm: DATA_NORMAL, remote: Shutdown, OPEN) =>
-        val (data1, replies) = handleRemoteShutdown(norm, remote, LNParams.feeRatesInfo.onChainFeeConf)
-        StoreBecomeSend(data1, OPEN, replies:_*)
+        val isTheirFinalScriptPubkeyValid = Closing.isValidFinalScriptPubkey(remote.scriptPubKey)
+        if (!isTheirFinalScriptPubkeyValid) throw ChannelTransitionFail(norm.commitments.channelId)
+        if (norm.commitments.remoteHasUnsignedOutgoingHtlcs) throw ChannelTransitionFail(norm.commitments.channelId)
+        if (norm.commitments.remoteHasUnsignedOutgoingUpdateFee) throw ChannelTransitionFail(norm.commitments.channelId)
+        if (norm.commitments.localHasUnsignedOutgoingHtlcs) BECOME(norm.copy(remoteShutdown = remote.toSome), OPEN) else {
+          val (data1, replies) = maybeStartNegotiations(norm, remote, LNParams.feeRatesInfo.onChainFeeConf)
+          StoreBecomeSend(data1, OPEN, replies:_*)
+        }
 
       // NEGOTIATIONS
 
-      case (negs: DATA_NEGOTIATING, remote: ClosingSigned, OPEN) => handleNegotiations(negs, remote, LNParams.feeRatesInfo.onChainFeeConf)
+      case (negs: DATA_NEGOTIATING, remote: ClosingSigned, OPEN) =>
+        handleNegotiations(negs, remote, LNParams.feeRatesInfo.onChainFeeConf)
 
       // RESTORING FROM STORED DATA
 
