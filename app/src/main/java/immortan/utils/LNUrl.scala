@@ -112,7 +112,7 @@ case class WithdrawRequest(callback: String, k1: String, maxWithdrawable: Long, 
 
   val minCanReceive: MilliSatoshi = minWithdrawable.map(_.msat).getOrElse(LNParams.minPayment).max(LNParams.minPayment)
 
-  val descriptionOpt: Option[String] = Some(defaultDescription).map(_.trim).map(_ take 72).filter(_.nonEmpty)
+  val descriptionOpt: Option[String] = Some(defaultDescription).map(trimmed).filter(_.nonEmpty)
   val brDescription: String = descriptionOpt.map(desc => s"<br><br>$desc").getOrElse(new String)
   val descriptionOrEmpty: String = descriptionOpt.getOrElse(new String)
 
@@ -152,7 +152,7 @@ case class PayRequest(callback: String, maxSendable: Long, minSendable: Long, me
 
   require(minSendable <= maxSendable, s"max=$maxSendable while min=$minSendable")
 
-  val metaDataTextPlain: String = metaDataTexts.head take 72
+  val metaDataTextPlain: String = trimmed(metaDataTexts.head)
 }
 
 case class PayRequestFinal(successAction: Option[PaymentAction], routes: List[AdditionalRoute], pr: String) extends LNUrlData {

@@ -8,6 +8,7 @@ import fr.acinq.eclair.payment.PaymentRequest
 import scala.util.matching.UnanchoredRegex
 import fr.acinq.bitcoin.Crypto.PublicKey
 import fr.acinq.eclair.wire.NodeAddress
+import immortan.crypto.Tools.trimmed
 import fr.acinq.bitcoin.ScriptElt
 import scodec.bits.ByteVector
 import immortan.utils.uri.Uri
@@ -72,7 +73,7 @@ case class PaymentRequestExt(uri: Try[Uri], pr: PaymentRequest, raw: String) {
   val hasSplitIssue: Boolean = pr.amount.forall(splits.sum + LNParams.minPayment > _) || (pr.amount.isEmpty && splits.nonEmpty)
   val splitLeftover: MilliSatoshi = pr.amount.map(_ - splits.sum).getOrElse(0L.msat)
 
-  val descriptionOpt: Option[String] = pr.description.left.toOption.map(_.trim).map(_ take 72).filter(_.nonEmpty)
+  val descriptionOpt: Option[String] = pr.description.left.toOption.map(trimmed).filter(_.nonEmpty)
   val brDescription: String = descriptionOpt.map(desc => s"<br><br>$desc").getOrElse(new String)
   val descriptionOrEmpty: String = descriptionOpt.getOrElse(new String)
 }
@@ -89,7 +90,7 @@ case class BitcoinUri(uri: Try[Uri], address: String) {
   val isValid: Boolean = Try(pubKeyScript).toOption.exists(_.nonEmpty)
   val amount: Option[MilliSatoshi] = uri.map(_ getQueryParameter "amount").map(BigDecimal.apply).map(Denomination.btcBigDecimal2MSat).toOption
   val prExt: Option[PaymentRequestExt] = uri.map(_ getQueryParameter "lightning").map(PaymentRequestExt.fromRaw).toOption
-  val message: Option[String] = uri.map(_ getQueryParameter "message").map(_.trim).filter(_.nonEmpty).toOption
-  val label: Option[String] = uri.map(_ getQueryParameter "label").map(_.trim).filter(_.nonEmpty).toOption
+  val message: Option[String] = uri.map(_ getQueryParameter "message").map(trimmed).filter(_.nonEmpty).toOption
+  val label: Option[String] = uri.map(_ getQueryParameter "label").map(trimmed).filter(_.nonEmpty).toOption
   def pubKeyScript: Seq[ScriptElt] = addressToPublicKeyScript(address, LNParams.chainHash)
 }

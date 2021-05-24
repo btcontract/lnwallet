@@ -30,6 +30,7 @@ object Tools {
   type Fiat2Btc = Map[String, Double]
   final val SEPARATOR = " "
 
+  def trimmed(text: String): String = text.trim.take(144)
   def none: PartialFunction[Any, Unit] = { case _ => }
   def runAnd[T](result: T)(action: Any): T = result
 
