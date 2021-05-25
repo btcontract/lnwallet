@@ -45,14 +45,14 @@ object RouteCalculation {
   def routeToEdges(extraHops: ExtraHops, targetNodeId: PublicKey): List[GraphEdge] = {
     // BOLT 11: "For each entry, the pubkey is the node ID of the start of the channel", and the last node is the destination
     val protoDescs = (extraHops.map(_.shortChannelId), extraHops.map(_.nodeId), extraHops.map(_.nodeId).drop(1) :+ targetNodeId)
-    (protoDescs.zipped.toList map ChannelDesc.tupled).zip(extraHops map toFakeUpdate).map(GraphEdge.tupled)
+    protoDescs.zipped.toList.map(ChannelDesc.tupled).zip(extraHops map toFakeUpdate).map(GraphEdge.tupled)
   }
 
   def toFakeUpdate(extraHop: ExtraHop): ChannelUpdateExt = {
     // Lets assume this fake channel's capacity is 1000 BTC, it will be corrected by failed-at-amount mechanism
     val update = ChannelUpdate(signature = ByteVector64.Zeroes, chainHash = ByteVector32.Zeroes, extraHop.shortChannelId,
       System.currentTimeMillis.milliseconds.toSeconds, messageFlags = 1, channelFlags = 0, extraHop.cltvExpiryDelta,
-      LNParams.minPayment, extraHop.feeBase, extraHop.feeProportionalMillionths, 1000000000000000L.msat.toSome)
+      LNParams.minPayment, extraHop.feeBase, extraHop.feeProportionalMillionths, 1000000000000000L.msat.asSome)
 
     ChannelUpdateExt.fromUpdate(update)
   }

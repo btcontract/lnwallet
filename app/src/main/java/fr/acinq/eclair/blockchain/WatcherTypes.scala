@@ -47,7 +47,7 @@ final case class WatchConfirmed(replyTo: ActorRef, txId: ByteVector32, publicKey
 
 object WatchConfirmed {
   // if we have the entire transaction, we can get the publicKeyScript from any of the outputs
-  def apply(replyTo: ActorRef, tx: Transaction, minDepth: Long, event: BitcoinEvent): WatchConfirmed =
+  def apply(replyTo: ActorRef, tx: Transaction, event: BitcoinEvent, minDepth: Long): WatchConfirmed =
     WatchConfirmed(replyTo, tx.txid, tx.txOut.map(_.publicKeyScript).headOption.getOrElse(ByteVector.empty), minDepth, event)
 
   def extractPublicKeyScript(witness: ScriptWitness): ByteVector = Try(PublicKey fromBin witness.stack.last) match {

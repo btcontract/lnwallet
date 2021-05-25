@@ -20,13 +20,14 @@ abstract class NCFundeeOpenHandler(info: RemoteNodeInfo, theirOpen: OpenChannel,
 
   private val makeChanListener = new ConnectionListener with ChannelListener { me =>
     override def onDisconnect(worker: CommsTower.Worker): Unit = CommsTower.rmListenerNative(info, me)
+
     override def onMessage(worker: CommsTower.Worker, message: LightningMessage): Unit = message match {
       case msg: HasTemporaryChannelId if msg.temporaryChannelId == theirOpen.temporaryChannelId => freshChannel process msg
       case _ => // Do nothing to avoid conflicts
     }
 
     override def onOperational(worker: CommsTower.Worker, theirInit: Init): Unit = {
-      val localParams = LNParams.makeChannelParams(info, freshChannel.chainWallet, isFunder = false, theirOpen.fundingSatoshis)
+      val localParams = LNParams.makeChannelParams(freshChannel.chainWallet, isFunder = false, theirOpen.fundingSatoshis)
       freshChannel process INPUT_INIT_FUNDEE(info, localParams, theirInit, ChannelVersion.STATIC_REMOTEKEY, theirOpen)
     }
 

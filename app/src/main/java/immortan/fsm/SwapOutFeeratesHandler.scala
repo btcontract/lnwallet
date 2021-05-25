@@ -63,13 +63,13 @@ abstract class SwapOutFeeratesHandler extends StateMachine[FeeratesData] { me =>
       doSearch(force = false)
 
     case (YesSwapOutSupport(worker, msg: SwapOutFeerates), WAITING_FIRST_RESPONSE) =>
-      val results1 = data.results.updated(worker.info, SwapOutResponseExt(msg, worker.info).toSome)
+      val results1 = data.results.updated(worker.info, SwapOutResponseExt(msg, worker.info).asSome)
       become(data.copy(results = results1), WAITING_REST_OF_RESPONSES) // Start waiting for the rest of responses
       Rx.ioQueue.delay(5.seconds).foreach(_ => me doSearch true) // Decrease timeout for the rest of responses
       doSearch(force = false)
 
     case (YesSwapOutSupport(worker, msg: SwapOutFeerates), WAITING_REST_OF_RESPONSES) =>
-      val results1 = data.results.updated(worker.info, SwapOutResponseExt(msg, worker.info).toSome)
+      val results1 = data.results.updated(worker.info, SwapOutResponseExt(msg, worker.info).asSome)
       become(data.copy(results = results1), state)
       doSearch(force = false)
 

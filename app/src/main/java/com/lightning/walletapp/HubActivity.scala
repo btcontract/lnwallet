@@ -382,7 +382,10 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
 
   override def checkExternalData(whenNone: Runnable): Unit = InputParser.checkAndMaybeErase {
     case bitcoinUri: BitcoinUri if bitcoinUri.isValid => bringSendBitcoinPopup(bitcoinUri)
-    case _: RemoteNodeInfo => me goTo ClassNames.remotePeerActivityClass
+
+    case info: RemoteNodeInfo =>
+      LNParams.cm.all.values.foreach(_ process info)
+      me goTo ClassNames.remotePeerActivityClass
 
     case prExt: PaymentRequestExt =>
       lnSendGuard(prExt, contentWindow) {
@@ -394,7 +397,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
 
             override def send(alert: AlertDialog): Unit = {
               val cmd = makeSendCmd(prExt, toSend = manager.resultMsat).modify(_.split.totalSum).setTo(origAmount)
-              val description = PlainDescription(cmd.split.toSome, label = manager.resultExtraInput, invoiceText = prExt.descriptionOrEmpty)
+              val description = PlainDescription(cmd.split.asSome, label = manager.resultExtraInput, invoiceText = prExt.descriptionOrEmpty)
               replaceOutgoingPayment(prExt, description, action = None, cmd.split.myPart)
               LNParams.cm.opm process cmd
               alert.dismiss
@@ -514,10 +517,10 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
       val paymentEvents = Rx.uniqueFirstAndLastWithinWindow(ChannelMaster.paymentDbStream, window).doOnNext(_ => reloadPaymentInfos)
       val relayEvents = Rx.uniqueFirstAndLastWithinWindow(ChannelMaster.relayDbStream, window).doOnNext(_ => reloadRelayedPreimageInfos)
 
-      stateSubscription = txEvents.merge(paymentEvents).merge(relayEvents).doOnNext(_ => updAllInfos).merge(stateEvents).subscribe(_ => UITask(updatePaymentList).run).toSome
-      statusSubscription = Rx.uniqueFirstAndLastWithinWindow(ChannelMaster.statusUpdateStream, window).merge(stateEvents).subscribe(_ => UITask(walletCards.updateView).run).toSome
-      paymentSubscription = ChannelMaster.hashRevealStream.merge(ChannelMaster.remoteFulfillStream).throttleFirst(window).subscribe(_ => Vibrator.vibrate).toSome
-      preimageSubscription = ChannelMaster.remoteFulfillStream.subscribe(resolveAction, none).toSome
+      stateSubscription = txEvents.merge(paymentEvents).merge(relayEvents).doOnNext(_ => updAllInfos).merge(stateEvents).subscribe(_ => UITask(updatePaymentList).run).asSome
+      statusSubscription = Rx.uniqueFirstAndLastWithinWindow(ChannelMaster.statusUpdateStream, window).merge(stateEvents).subscribe(_ => UITask(walletCards.updateView).run).asSome
+      paymentSubscription = ChannelMaster.hashRevealStream.merge(ChannelMaster.remoteFulfillStream).throttleFirst(window).subscribe(_ => Vibrator.vibrate).asSome
+      preimageSubscription = ChannelMaster.remoteFulfillStream.subscribe(resolveAction, none).asSome
       // Run this check after establishing subscriptions since it will trigger an event stream
       LNParams.cm.markAsFailed(paymentInfos, LNParams.cm.allInChannelOutgoing)
     } else {
@@ -576,7 +579,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
 
   def bringSendBitcoinPopup(uri: BitcoinUri): Unit = {
     val body = getLayoutInflater.inflate(R.layout.frag_input_on_chain, null).asInstanceOf[ScrollView]
-    val manager = new RateManager(body, getString(dialog_add_btc_memo).toSome, dialog_visibility_private, LNParams.fiatRatesInfo.rates, WalletApp.fiatCode)
+    val manager = new RateManager(body, getString(dialog_add_btc_memo).asSome, dialog_visibility_private, LNParams.fiatRatesInfo.rates, WalletApp.fiatCode)
     val canSend = LNParams.denomination.parsedWithSign(WalletApp.lastChainBalance.totalBalance, Colors.cardZero)
     val canSendFiat = WalletApp.currentMsatInFiatHuman(WalletApp.lastChainBalance.totalBalance)
 
@@ -658,7 +661,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
 
   def bringReceivePopup: Unit = lnReceiveGuard(contentWindow) {
     new OffChainReceiver(initMaxReceivable = Long.MaxValue.msat, initMinReceivable = 0L.msat, lnBalance) {
-      override def getManager: RateManager = new RateManager(body, getString(dialog_add_description).toSome, dialog_visibility_public, LNParams.fiatRatesInfo.rates, WalletApp.fiatCode)
+      override def getManager: RateManager = new RateManager(body, getString(dialog_add_description).asSome, dialog_visibility_public, LNParams.fiatRatesInfo.rates, WalletApp.fiatCode)
       override def getDescription: PaymentDescription = PlainDescription(split = None, label = None, invoiceText = manager.resultExtraInput getOrElse new String)
       override def processInvoice(prExt: PaymentRequestExt): Unit = runAnd(InputParser.value = prExt)(me goTo ClassNames.qrInvoiceActivityClass)
       override def getTitleText: String = getString(dialog_receive_ln)
@@ -667,7 +670,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
 
   def bringWithdrawPopup(data: WithdrawRequest): Unit = lnReceiveGuard(contentWindow) {
     new OffChainReceiver(initMaxReceivable = data.maxWithdrawable.msat, initMinReceivable = data.minCanReceive, lnBalance) {
-      override def getManager: RateManager = new RateManager(body, getString(dialog_add_ln_memo).toSome, dialog_visibility_private, LNParams.fiatRatesInfo.rates, WalletApp.fiatCode)
+      override def getManager: RateManager = new RateManager(body, getString(dialog_add_ln_memo).asSome, dialog_visibility_private, LNParams.fiatRatesInfo.rates, WalletApp.fiatCode)
       override def getDescription: PaymentDescription = PlainMetaDescription(split = None, label = manager.resultExtraInput, invoiceText = new String, meta = data.descriptionOrEmpty)
       override def getTitleText: String = getString(dialog_lnurl_withdraw).format(data.callbackUri.getHost, data.brDescription)
       override def processInvoice(prExt: PaymentRequestExt): Unit = data.requestWithdraw(prExt).foreach(none, onFail)
@@ -680,7 +683,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
       override def isPayEnabled: Boolean = manager.resultMsat >= minSendable && manager.resultMsat <= maxSendable
 
       override val manager: RateManager = {
-        val commentStringOpt = if (data.commentAllowed.isDefined) getString(dialog_add_comment).toSome else None
+        val commentStringOpt = if (data.commentAllowed.isDefined) getString(dialog_add_comment).asSome else None
         new RateManager(body, commentStringOpt, dialog_visibility_public, LNParams.fiatRatesInfo.rates, WalletApp.fiatCode)
       }
 
@@ -688,7 +691,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
         def proceed(pf: PayRequestFinal): TimerTask = UITask {
           lnSendGuard(pf.prExt, container = contentWindow) { _ =>
             val cmd = makeSendCmd(pf.prExt, toSend = manager.resultMsat).modify(_.split.totalSum).setTo(minSendable)
-            val description = PlainMetaDescription(cmd.split.toSome, label = None, invoiceText = new String, meta = data.metaDataTextPlain)
+            val description = PlainMetaDescription(cmd.split.asSome, label = None, invoiceText = new String, meta = data.metaDataTextPlain)
             InputParser.value = SplitParams(pf.prExt, pf.successAction, description, cmd, typicalChainTxFee)
             me goTo ClassNames.qrSplitActivityClass
             alert.dismiss
@@ -730,7 +733,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
           require(descriptionHashOpt.contains(data.metaDataHash), s"Metadata hash mismatch, original=${data.metaDataHash}, provided=$descriptionHashOpt")
           require(payRequestFinal.prExt.pr.amount.contains(amount), s"Payment amount mismatch, requested=$amount, provided=${payRequestFinal.prExt.pr.amount}")
           for (additionalEdge <- payRequestFinal.additionalRoutes) LNParams.cm.pf process additionalEdge
-          payRequestFinal.modify(_.successAction.each.domain).setTo(data.callbackUri.getHost.toSome)
+          payRequestFinal.modify(_.successAction.each.domain).setTo(data.callbackUri.getHost.asSome)
         }
 
       // Prefill with min possible

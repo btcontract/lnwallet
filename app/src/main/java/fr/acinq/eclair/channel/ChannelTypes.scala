@@ -84,8 +84,8 @@ case class FeerateTooDifferent(channelId: ByteVector32, localFeeratePerKw: Feera
   override def toString: String = s"FeerateTooDifferent, localFeeratePerKw=$localFeeratePerKw, remoteFeeratePerKw=$remoteFeeratePerKw"
 }
 
-case class ChannelReserveTooHigh(channelId: ByteVector32, channelReserve: Satoshi, reserveToFundingRatio: Double, maxReserveToFundingRatio: Double) extends RuntimeException {
-  override def toString: String = s"DustLimitTooSmall, channelReserve=$channelReserve, reserveToFundingRatio=$reserveToFundingRatio, maxReserveToFundingRatio=$maxReserveToFundingRatio"
+case class ChannelReserveTooHigh(channelId: ByteVector32, reserveToFundingRatio: Double, maxReserveToFundingRatio: Double) extends RuntimeException {
+  override def toString: String = s"DustLimitTooSmall, reserveToFundingRatio=$reserveToFundingRatio, maxReserveToFundingRatio=$maxReserveToFundingRatio"
 }
 
 case class ChannelTransitionFail(channelId: ByteVector32) extends RuntimeException {
@@ -299,21 +299,14 @@ final case class RemoteParams(dustLimit: Satoshi, maxHtlcValueInFlightMsat: UInt
                               fundingPubKey: PublicKey, revocationBasepoint: PublicKey, paymentBasepoint: PublicKey, delayedPaymentBasepoint: PublicKey, htlcBasepoint: PublicKey)
 
 case class ChannelVersion(bits: BitVector) {
-  val commitmentFormat: CommitmentFormat = if (hasAnchorOutputs) AnchorOutputsCommitmentFormat else DefaultCommitmentFormat
+  val commitmentFormat: CommitmentFormat = DefaultCommitmentFormat
   def | (other: ChannelVersion): ChannelVersion = ChannelVersion(bits | other.bits)
-  def isSet(bit: Int): Boolean = bits.reverse.get(bit)
-
-  def hasPubkeyKeyPath: Boolean = isSet(ChannelVersion.USE_PUBKEY_KEYPATH_BIT)
-  def hasStaticRemotekey: Boolean = isSet(ChannelVersion.USE_STATIC_REMOTEKEY_BIT)
-  def hasAnchorOutputs: Boolean = isSet(ChannelVersion.USE_ANCHOR_OUTPUTS_BIT)
-  def paysDirectlyToWallet: Boolean = hasStaticRemotekey && !hasAnchorOutputs
 }
 
 object ChannelVersion {
   val LENGTH_BITS: Int = 4 * 8
   private val USE_PUBKEY_KEYPATH_BIT = 0
   private val USE_STATIC_REMOTEKEY_BIT = 1
-  private val USE_ANCHOR_OUTPUTS_BIT = 2
 
   val ZEROES: ChannelVersion = ChannelVersion(bin"00000000000000000000000000000000")
 

@@ -51,7 +51,7 @@ case class LNUrl(request: String) {
     require(uri getQueryParameter "tag" equals "withdrawRequest")
     WithdrawRequest(uri.getQueryParameter("callback"), uri.getQueryParameter("k1"),
       uri.getQueryParameter("maxWithdrawable").toLong, uri.getQueryParameter( "defaultDescription"),
-      uri.getQueryParameter("minWithdrawable").toLong.toSome)
+      uri.getQueryParameter("minWithdrawable").toLong.asSome)
   }
 
   def level1DataResponse: Observable[LNUrlData] = Rx.ioQueue.map { _ =>

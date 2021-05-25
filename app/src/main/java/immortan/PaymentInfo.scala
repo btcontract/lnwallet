@@ -38,7 +38,7 @@ case class PaymentInfo(prString: String, preimage: ByteVector32, status: String,
 
   val isIncoming: Boolean = 1 == incoming
   val fullTag: FullPaymentTag = FullPaymentTag(paymentHash, paymentSecret, if (isIncoming) PaymentTagTlv.FINAL_INCOMING else PaymentTagTlv.LOCALLY_SENT)
-  lazy val action: Option[PaymentAction] = if (actionString == PaymentInfo.NO_ACTION) None else to[PaymentAction](actionString).toSome
+  lazy val action: Option[PaymentAction] = if (actionString == PaymentInfo.NO_ACTION) None else to[PaymentAction](actionString).asSome
   lazy val description: PaymentDescription = to[PaymentDescription](descriptionString)
   lazy val prExt: PaymentRequestExt = PaymentRequestExt.fromRaw(prString)
   lazy val fiatRateSnapshot: Fiat2Btc = to[Fiat2Btc](fiatRatesString)

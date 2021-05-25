@@ -71,7 +71,7 @@ class IncomingPaymentReceiver(val fullTag: FullPaymentTag, cm: ChannelMaster) ex
 
     case (CMDTimeout, null, RECEIVING) =>
       // Too many time has passed since last seen incoming payment
-      become(IncomingAborted(PaymentTimeout.toSome), FINALIZING)
+      become(IncomingAborted(PaymentTimeout.asSome), FINALIZING)
       cm.stateUpdated(Nil)
 
     case (inFlight: InFlightPayments, revealed: IncomingRevealed, FINALIZING) =>
@@ -129,7 +129,7 @@ case class TrampolineAborted(failure: FailureMessage) extends IncomingProcessorD
 
 class TrampolinePaymentRelayer(val fullTag: FullPaymentTag, cm: ChannelMaster) extends IncomingPaymentProcessor with OutgoingPaymentListener { self =>
   // Important: we may have outgoing leftovers on restart, so we always need to create a sender FSM right away, which will be firing events once leftovers get finalized
-  override def gotFirstPreimage(data: OutgoingPaymentSenderData, fulfill: RemoteFulfill): Unit = self doProcess TrampolineRevealed(fulfill.preimage, data.toSome)
+  override def gotFirstPreimage(data: OutgoingPaymentSenderData, fulfill: RemoteFulfill): Unit = self doProcess TrampolineRevealed(fulfill.preimage, data.asSome)
   override def wholePaymentFailed(data: OutgoingPaymentSenderData): Unit = self doProcess data
 
   def first(adds: ReasonableTrampolines): IncomingPacket.NodeRelayPacket = adds.head.packet

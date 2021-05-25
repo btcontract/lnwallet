@@ -426,7 +426,7 @@ trait BaseActivity extends AppCompatActivity { me =>
 
   abstract class OffChainSender(val maxSendable: MilliSatoshi, val minSendable: MilliSatoshi) extends HasTypicalChainFee {
     val body: android.view.ViewGroup = getLayoutInflater.inflate(R.layout.frag_input_off_chain, null).asInstanceOf[android.view.ViewGroup]
-    val manager = new RateManager(body, getString(dialog_add_ln_memo).toSome, dialog_visibility_private, LNParams.fiatRatesInfo.rates, WalletApp.fiatCode)
+    val manager = new RateManager(body, getString(dialog_add_ln_memo).asSome, dialog_visibility_private, LNParams.fiatRatesInfo.rates, WalletApp.fiatCode)
     val alert: AlertDialog
 
     val canSendHuman: String = LNParams.denomination.parsedWithSign(maxSendable, Colors.cardZero)
@@ -468,7 +468,7 @@ trait BaseActivity extends AppCompatActivity { me =>
 
     def proceedSplit(prExt: PaymentRequestExt, origAmount: MilliSatoshi, alert: AlertDialog): Unit = {
       val cmd = makeSendCmd(prExt, toSend = manager.resultMsat).modify(_.split.totalSum).setTo(origAmount)
-      val description = PlainDescription(cmd.split.toSome, label = manager.resultExtraInput, invoiceText = prExt.descriptionOrEmpty)
+      val description = PlainDescription(cmd.split.asSome, label = manager.resultExtraInput, invoiceText = prExt.descriptionOrEmpty)
       InputParser.value = SplitParams(prExt, action = None, description, cmd, typicalChainTxFee)
       me goTo ClassNames.qrSplitActivityClass
       alert.dismiss

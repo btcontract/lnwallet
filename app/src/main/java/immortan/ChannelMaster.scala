@@ -235,8 +235,8 @@ class ChannelMaster(val payBag: PaymentBag, val chanBag: ChannelBag, val dataBag
   }
 
   override def onBecome: PartialFunction[Transition, Unit] = {
+    case (_, _, _, SLEEPING, CLOSING) => next(statusUpdateStream)
     case (_, _, _, OPEN, SLEEPING | CLOSING) => next(statusUpdateStream)
-    case (_: ChannelNormal, _, _, SLEEPING, CLOSING) => next(statusUpdateStream)
 
     case (_, prevHc: HostedCommits, nextHc: HostedCommits, _, _)
       if prevHc.getError.isEmpty && nextHc.getError.nonEmpty =>
@@ -247,8 +247,10 @@ class ChannelMaster(val payBag: PaymentBag, val chanBag: ChannelBag, val dataBag
       opm process OutgoingPaymentMaster.CMDChanGotOnline
       next(statusUpdateStream)
 
-    case (_, _, _, WAIT_FUNDING_DONE | SLEEPING, OPEN) =>
+    case (chan, _, _, WAIT_FUNDING_DONE | SLEEPING, OPEN) =>
       opm process OutgoingPaymentMaster.CMDChanGotOnline
+      // We may get here after getting fresh feerates
+      chan process CMD_CHECK_FEERATE
       next(statusUpdateStream)
   }
 

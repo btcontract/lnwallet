@@ -2,8 +2,11 @@ package immortan
 
 import immortan.crypto.Tools._
 import fr.acinq.eclair.channel._
+import scala.concurrent.duration._
+import akka.actor.{Actor, ActorRef, Props}
 import immortan.crypto.{CanBeRepliedTo, StateMachine}
 import fr.acinq.eclair.transactions.{RemoteFulfill, RemoteReject}
+import fr.acinq.eclair.blockchain.CurrentBlockCount
 import scala.concurrent.ExecutionContextExecutor
 import fr.acinq.eclair.wire.LightningMessage
 import immortan.Channel.channelContext
@@ -13,7 +16,6 @@ import fr.acinq.eclair.MilliSatoshi
 import immortan.crypto.Tools.none
 import scala.concurrent.Future
 import scala.util.Failure
-import akka.actor.Actor
 
 
 object Channel {
@@ -34,8 +36,8 @@ object Channel {
   }.toMap
 
   def chanAndCommitsOpt(chan: Channel): Option[ChanAndCommits] = chan.data match {
-    case data: HasNormalCommitments => ChanAndCommits(chan, data.commitments).toSome
-    case data: HostedCommits => ChanAndCommits(chan, data).toSome
+    case data: HasNormalCommitments => ChanAndCommits(chan, data.commitments).asSome
+    case data: HostedCommits => ChanAndCommits(chan, data).asSome
     case _ => None
   }
 
@@ -99,16 +101,35 @@ trait Channel extends StateMachine[ChannelData] with CanBeRepliedTo { me =>
     }
 
     override def stateUpdated(rejects: Seq[RemoteReject] = Nil): Unit = for (lst <- listeners) lst.stateUpdated(rejects)
-
     override def fulfillReceived(fulfill: RemoteFulfill): Unit = for (lst <- listeners) lst.fulfillReceived(fulfill)
-
     override def addReceived(add: UpdateAddHtlcExt): Unit = for (lst <- listeners) lst.addReceived(add)
   }
 
+  val receiver: ActorRef = LNParams.system actorOf Props(new ActorEventsReceiver)
+
   class ActorEventsReceiver extends Actor {
-    override def receive: Receive = {
-      case msg => me process msg
+    context.system.eventStream.subscribe(channel = classOf[CurrentBlockCount], subscriber = self)
+
+    def main(lastSeenBlockCount: Option[CurrentBlockCount] = None): Receive = {
+      case currentBlockCount: CurrentBlockCount if lastSeenBlockCount.isEmpty =>
+        // Delay block count propagation to give peer a last change to resolve pending HTLC
+        context.system.scheduler.scheduleOnce(10.seconds)(self ! "propagate")(LNParams.ec)
+        context become main(currentBlockCount.asSome)
+
+      case currentBlockCount: CurrentBlockCount if lastSeenBlockCount.isDefined =>
+        // Replace block count with a new one if it happens while delaying propagation
+        context become main(currentBlockCount.asSome)
+
+      case "propagate" if lastSeenBlockCount.isDefined =>
+        // Propagate block count and wait for new one
+        process(lastSeenBlockCount.get)
+        context become main(None)
+
+      case msg =>
+        process(msg)
     }
+
+    override def receive: Receive = main(None)
   }
 }
 

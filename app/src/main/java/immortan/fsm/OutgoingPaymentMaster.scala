@@ -328,7 +328,7 @@ class OutgoingPaymentSender(val fullTag: FullPaymentTag, val listener: OutgoingP
         val finalPayload = Onion.createMultiPartPayload(wait.amount, data.cmd.split.totalSum, chainExpiry, data.cmd.outerPaymentSecret, data.cmd.onionTlvs, data.cmd.userCustomTlvs)
         val (firstAmount, firstExpiry, onion) = OutgoingPacket.buildPacket(Sphinx.PaymentPacket)(wait.onionKey, fullTag.paymentHash, found.route.hops, finalPayload)
         val cmdAdd = CMD_ADD_HTLC(fullTag, firstAmount, firstExpiry, PacketAndSecrets(onion.packet, onion.sharedSecrets), finalPayload)
-        become(data.copy(parts = data.parts + wait.copy(flight = InFlightInfo(cmdAdd, found.route).toSome).tuple), PENDING)
+        become(data.copy(parts = data.parts + wait.copy(flight = InFlightInfo(cmdAdd, found.route).asSome).tuple), PENDING)
         wait.cnc.chan process cmdAdd
       }
 

@@ -30,5 +30,3 @@ case class NewBlock(block: Block) extends BlockchainEvent
 case class NewTransaction(tx: Transaction) extends BlockchainEvent
 
 case class CurrentBlockCount(blockCount: Long) extends BlockchainEvent
-
-case class CurrentFeerates(feeratesPerKw: FeeratesPerKw) extends BlockchainEvent

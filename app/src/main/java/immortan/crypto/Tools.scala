@@ -35,7 +35,8 @@ object Tools {
   def runAnd[T](result: T)(action: Any): T = result
 
   implicit class Any2Some[T](underlying: T) {
-    def toSome: Option[T] = Some(underlying)
+    def asSome: Option[T] = Some(underlying)
+    def asList: List[T] = List(underlying)
   }
 
   def ratio(bigger: MilliSatoshi, lesser: MilliSatoshi): Long =

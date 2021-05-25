@@ -30,7 +30,7 @@ import scala.collection.immutable.Queue
 trait Handlers { me: ChannelNormal =>
   def doPublish(closingTx: Transaction): Unit = {
     val replyEvent: BitcoinEvent = BITCOIN_TX_CONFIRMED(closingTx)
-    chainWallet.watcher ! WatchConfirmed(receiver, closingTx, LNParams.minDepthBlocks, replyEvent)
+    chainWallet.watcher ! WatchConfirmed(receiver, closingTx, replyEvent, LNParams.minDepthBlocks)
     chainWallet.watcher ! PublishAsap(closingTx)
   }
 
@@ -39,7 +39,7 @@ trait Handlers { me: ChannelNormal =>
 
   def watchConfirmedIfNeeded(txes: Iterable[Transaction], irrevocablySpent: Map[OutPoint, ByteVector32] = Map.empty): Unit =
     txes.filterNot(Closing inputsAlreadySpent irrevocablySpent).map(BITCOIN_TX_CONFIRMED).foreach { replyEvent =>
-      chainWallet.watcher ! WatchConfirmed(receiver, replyEvent.tx, LNParams.minDepthBlocks, replyEvent)
+      chainWallet.watcher ! WatchConfirmed(receiver, replyEvent.tx, replyEvent, LNParams.minDepthBlocks)
     }
 
   def watchSpentIfNeeded(parentTx: Transaction, txes: Iterable[Transaction], irrevocablySpent: Map[OutPoint, ByteVector32] = Map.empty): Unit =
@@ -63,60 +63,6 @@ trait Handlers { me: ChannelNormal =>
     publishIfNeeded(rcp.claimMainOutputTx ++ rcp.mainPenaltyTx ++ rcp.htlcPenaltyTxs ++ rcp.claimHtlcDelayedPenaltyTxs, rcp.irrevocablySpent)
     watchSpentIfNeeded(rcp.commitTx, rcp.mainPenaltyTx ++ rcp.htlcPenaltyTxs, rcp.irrevocablySpent)
     watchConfirmedIfNeeded(List(rcp.commitTx) ++ rcp.claimMainOutputTx, rcp.irrevocablySpent)
-  }
-
-  def handleNormalSync(d: DATA_NORMAL, channelReestablish: ChannelReestablish): Unit = {
-    val pleasePublishError = Error(d.channelId, "please publish your local commitment")
-    var sendQueue = Queue.empty[LightningMessage]
-
-    channelReestablish match {
-      case ChannelReestablish(_, _, nextRemoteRevocationNumber, yourLastPerCommitmentSecret, _) if !Helpers.checkLocalCommit(d, nextRemoteRevocationNumber) =>
-        // if next_remote_revocation_number is greater than our local commitment index, it means that either we are using an outdated commitment, or they are lying
-        // but first we need to make sure that the last per_commitment_secret that they claim to have received from us is correct for that next_remote_revocation_number minus 1
-        if (d.commitments.localParams.keys.commitmentSecret(nextRemoteRevocationNumber - 1) == yourLastPerCommitmentSecret) {
-          // their data checks out, we indeed seem to be using an old revoked commitment, and must absolutely *NOT* publish it,
-          // because that would be a cheating attempt and they would punish us by taking all our funds in the channel
-          StoreBecomeSend(DATA_WAIT_FOR_REMOTE_PUBLISH_FUTURE_COMMITMENT(d.commitments, channelReestablish), CLOSING, pleasePublishError)
-        } else {
-          // they lied! the last per_commitment_secret they claimed to have received from us is invalid
-          throw ChannelTransitionFail(d.commitments.channelId)
-        }
-
-      case ChannelReestablish(_, nextLocalCommitmentNumber, _, _, _) if !Helpers.checkRemoteCommit(d, nextLocalCommitmentNumber) =>
-        // if next_local_commit_number is more than one more our remote commitment index, it means that either we are using an outdated commitment, or they are lying
-        // there is no way to make sure that they are saying the truth, the best thing to do is ask them to publish their commitment right now
-        // maybe they will publish their commitment, in that case we need to remember their commitment point in order to be able to claim our outputs
-        // not that if they don't comply, we could publish our own commitment (it is not stale, otherwise we would be in the case above)
-        StoreBecomeSend(DATA_WAIT_FOR_REMOTE_PUBLISH_FUTURE_COMMITMENT(d.commitments, channelReestablish), CLOSING, pleasePublishError)
-
-      case _ =>
-        // normal case, our data is up-to-date
-        if (channelReestablish.nextLocalCommitmentNumber == 1 && d.commitments.localCommit.index == 0) {
-          val nextPerCommitmentPoint = d.commitments.localParams.keys.commitmentPoint(index = 1L)
-          val fundingLocked = FundingLocked(d.commitments.channelId, nextPerCommitmentPoint)
-          sendQueue = sendQueue :+ fundingLocked
-        }
-
-        val (commitments1, sendQueue1) = handleSync(channelReestablish, d)
-        sendQueue = sendQueue ++ sendQueue1
-
-        // BOLT 2: A node if it has sent a previous shutdown MUST retransmit shutdown.
-        d.localShutdown.foreach(localShutdown => sendQueue = sendQueue :+ localShutdown)
-        BECOME(d.copy(commitments = commitments1), OPEN)
-        SEND(sendQueue:_*)
-    }
-  }
-
-  def handleNegotiationsSync(d: DATA_NEGOTIATING, conf: OnChainFeeConf): Unit = {
-    if (d.commitments.localParams.isFunder) {
-      // we could use the last closing_signed we sent, but network fees may have changed while we were offline so it is better to restart from scratch
-      val (closingTx, closingSigned) = Closing.makeFirstClosingTx(d.commitments, d.localShutdown.scriptPubKey, d.remoteShutdown.scriptPubKey, conf.feeEstimator, conf.feeTargets)
-      StoreBecomeSend(d.copy(closingTxProposed = d.closingTxProposed :+ List(ClosingTxProposed(closingTx.tx, closingSigned))), OPEN, d.localShutdown, closingSigned)
-    } else {
-      // we start a new round of negotiation
-      val closingTxProposed1 = if (d.closingTxProposed.last.isEmpty) d.closingTxProposed else d.closingTxProposed :+ Nil
-      StoreBecomeSend(d.copy(closingTxProposed = closingTxProposed1), OPEN, d.localShutdown)
-    }
   }
 
   def handleSync(channelReestablish: ChannelReestablish, d: HasNormalCommitments): (NormalCommits, Queue[LightningMessage]) = {
@@ -169,7 +115,7 @@ trait Handlers { me: ChannelNormal =>
       // there are no pending signed changes, let's go directly to NEGOTIATING
       if (d.commitments.localParams.isFunder) {
         // we are funder, need to initiate the negotiation by sending the first closing_signed
-        val (closingTx, closingSigned) = Closing.makeFirstClosingTx(d.commitments, localShutdown1.scriptPubKey, remote.scriptPubKey, conf.feeEstimator, conf.feeTargets)
+        val (closingTx, closingSigned) = Closing.makeFirstClosingTx(d.commitments, localShutdown1.scriptPubKey, remote.scriptPubKey, conf)
         (DATA_NEGOTIATING(d.commitments, localShutdown1, remote, List(ClosingTxProposed(closingTx.tx, closingSigned) :: Nil), bestUnpublishedClosingTxOpt = None), sendList :+ closingSigned)
       } else {
         // we are fundee, will wait for their closing_signed
@@ -192,7 +138,7 @@ trait Handlers { me: ChannelNormal =>
         // if we have nothing at stake there is no need to negotiate and we accept their fee right away
         m.feeSatoshis
       } else {
-        val first = Closing.firstClosingFee(d.commitments, d.localShutdown.scriptPubKey, d.remoteShutdown.scriptPubKey, conf.feeEstimator, conf.feeTargets)
+        val first = Closing.firstClosingFee(d.commitments, d.localShutdown.scriptPubKey, d.remoteShutdown.scriptPubKey, conf)
         Closing.nextClosingFee(localClosingFee = lastLocalClosingFee.getOrElse(first), remoteClosingFee = m.feeSatoshis)
       }
       val (closingTx, closingSigned) = Closing.makeClosingTx(d.commitments, d.localShutdown.scriptPubKey, d.remoteShutdown.scriptPubKey, nextClosingFee)

@@ -5,7 +5,6 @@ import fr.acinq.eclair.blockchain.fee._
 import immortan.utils.ImplicitJsonFormats._
 import rx.lang.scala.{Observable, Subscription}
 import com.github.kevinsawicki.http.HttpRequest.get
-import fr.acinq.eclair.blockchain.CurrentFeerates
 import immortan.crypto.CanBeShutDown
 import immortan.crypto.Tools.none
 import immortan.LNParams
@@ -53,8 +52,7 @@ object FeeRates extends CanBeShutDown {
 }
 
 case class FeeRatesInfo(perKb: FeeratesPerKB, stamp: Long) {
-  val feeratesPerKw: FeeratesPerKw = FeeratesPerKw(feerates = perKb)
-  val current: CurrentFeerates = CurrentFeerates(feeratesPerKw)
+  val feeratesPerKw: FeeratesPerKw = FeeratesPerKw(perKb)
 
   val feeEstimator: FeeEstimator = new FeeEstimator {
     override def getFeeratePerKw(target: Int): FeeratePerKw =

@@ -162,6 +162,7 @@ object WalletApp {
 
     FeeRates.listeners += new FeeRatesListener {
       def onFeeRates(newRates: FeeRatesInfo): Unit = {
+        // We may get fresh feerates after channels become OPEN
         LNParams.cm.all.values.foreach(_ process CMD_CHECK_FEERATE)
         extDataBag.putFeeRatesInfo(newRates)
       }

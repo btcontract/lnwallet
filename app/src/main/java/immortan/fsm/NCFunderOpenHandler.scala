@@ -20,19 +20,12 @@ object NCFunderOpenHandler {
   val dummyLocal: PublicKey = randomKey.publicKey
   val dummyRemote: PublicKey = randomKey.publicKey
 
-  def makeFunding(chainWallet: WalletExt, fundingAmount: Satoshi, feeratePerKw: FeeratePerKw,
-                  local: PublicKey = dummyLocal, remote: PublicKey = dummyRemote): Future[MakeFundingTxResponse] = {
-
-    val program = Script.write(Script pay2wsh Scripts.multiSig2of2(local, remote).toList)
-    chainWallet.wallet.makeFundingTx(program, fundingAmount, feeratePerKw)
-  }
+  def makeFunding(chainWallet: WalletExt, fundingAmount: Satoshi, feeratePerKw: FeeratePerKw, local: PublicKey = dummyLocal, remote: PublicKey = dummyRemote): Future[MakeFundingTxResponse] =
+    chainWallet.wallet.makeFundingTx(pubkeyScript = Script.write(Script pay2wsh Scripts.multiSig2of2(local, remote).toList), fundingAmount, feeratePerKw)
 }
 
-// Important: this must be initiated when chain tip is actually known
-
-abstract class NCFunderOpenHandler(info: RemoteNodeInfo, fakeFunding: MakeFundingTxResponse,
-                                   fundingFeeratePerKw: FeeratePerKw, cw: WalletExt, cm: ChannelMaster) {
-
+abstract class NCFunderOpenHandler(info: RemoteNodeInfo, fakeFunding: MakeFundingTxResponse, fundingFeeratePerKw: FeeratePerKw, cw: WalletExt, cm: ChannelMaster) {
+  // Important: this must be initiated when chain tip is actually known
   def onEstablished(channel: ChannelNormal): Unit
   def onFailure(err: Throwable): Unit
 
@@ -46,17 +39,19 @@ abstract class NCFunderOpenHandler(info: RemoteNodeInfo, fakeFunding: MakeFundin
   private var assignedChanId = Option.empty[ByteVector32]
   private val makeChanListener = new ConnectionListener with ChannelListener { me =>
     override def onDisconnect(worker: CommsTower.Worker): Unit = CommsTower.rmListenerNative(info, me)
+
     override def onMessage(worker: CommsTower.Worker, message: LightningMessage): Unit = message match {
       case msg: HasTemporaryChannelId if msg.temporaryChannelId == tempChannelId => freshChannel process msg
       case msg: HasChannelId if assignedChanId.contains(msg.channelId) => freshChannel process msg
       case _ => // Do nothing to avoid conflicts
     }
 
-    override def onOperational(worker: CommsTower.Worker, theirInit: Init): Unit =
-      freshChannel process INPUT_INIT_FUNDER(info, tempChannelId, fakeFunding, pushAmount = 0L.msat, fundingFeeratePerKw,
-        initialFeeratePerKw = LNParams.feeRatesInfo.onChainFeeConf.getCommitmentFeerate(ChannelVersion.STATIC_REMOTEKEY, None),
-        localParams = LNParams.makeChannelParams(info, freshChannel.chainWallet, isFunder = true, fakeFunding.fundingAmount),
-        theirInit, channelFlags = 0.toByte, ChannelVersion.STATIC_REMOTEKEY)
+    override def onOperational(worker: CommsTower.Worker, theirInit: Init): Unit = {
+      val localParams = LNParams.makeChannelParams(freshChannel.chainWallet, isFunder = true, fakeFunding.fundingAmount)
+      val initialFeeratePerKw = LNParams.feeRatesInfo.onChainFeeConf.feeEstimator.getFeeratePerKw(LNParams.feeRatesInfo.onChainFeeConf.feeTargets.commitmentBlockTarget)
+      val cmd = INPUT_INIT_FUNDER(info, tempChannelId, fakeFunding, 0L.msat, fundingFeeratePerKw, initialFeeratePerKw, localParams, theirInit, 0.toByte, ChannelVersion.STATIC_REMOTEKEY)
+      freshChannel process cmd
+    }
 
     override def onBecome: PartialFunction[Transition, Unit] = {
       case (_, _: DATA_WAIT_FOR_ACCEPT_CHANNEL, data: DATA_WAIT_FOR_FUNDING_INTERNAL, WAIT_FOR_ACCEPT, WAIT_FOR_ACCEPT) =>

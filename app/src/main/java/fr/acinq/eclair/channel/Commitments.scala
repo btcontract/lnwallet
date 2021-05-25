@@ -190,9 +190,9 @@ case class NormalCommits(channelVersion: ChannelVersion, remoteInfo: RemoteNodeI
     // we allowed mismatches between our feerates and our remote's as long as commitments didn't contain any HTLC at risk
     // we need to verify that we're not disagreeing on feerates anymore before offering new HTLCs
     // NB: there may be a pending update_fee that hasn't been applied yet that needs to be taken into account
-    val localFeeratePerKw = feeConf.getCommitmentFeerate(channelVersion, None)
+    val localFeeratePerKw = feeConf.feeEstimator.getFeeratePerKw(feeConf.feeTargets.commitmentBlockTarget)
     val remoteFeeratePerKw = localCommit.spec.feeratePerKw +: remoteChanges.all.collect { case f: UpdateFee => f.feeratePerKw }
-    val isFeeDiffTooHigh = feeConf.feerateTolerance.isFeeDiffTooHigh(channelVersion, localFeeratePerKw, _: FeeratePerKw)
+    val isFeeDiffTooHigh = feeConf.feerateTolerance.isFeeDiffTooHigh(localFeeratePerKw, _: FeeratePerKw)
     // If we have a feerate mismatch we simulate channel being offline so it can't be used for payments
     if (remoteFeeratePerKw exists isFeeDiffTooHigh) throw CMDException(ChannelOffline, cmd)
 
@@ -230,9 +230,9 @@ case class NormalCommits(channelVersion: ChannelVersion, remoteInfo: RemoteNodeI
     // we allowed mismatches between our feerates and our remote's as long as commitments didn't contain any HTLC at risk
     // we need to verify that we're not disagreeing on feerates anymore before offering new HTLCs
     // NB: there may be a pending update_fee that hasn't been applied yet that needs to be taken into account
-    val localFeeratePerKw = feeConf.getCommitmentFeerate(channelVersion, None)
+    val localFeeratePerKw = feeConf.feeEstimator.getFeeratePerKw(feeConf.feeTargets.commitmentBlockTarget)
     val remoteFeeratePerKw = localCommit.spec.feeratePerKw +: remoteChanges.all.collect { case f: UpdateFee => f.feeratePerKw }
-    val isFeeDiffTooHigh = feeConf.feerateTolerance.isFeeDiffTooHigh(channelVersion, localFeeratePerKw, _: FeeratePerKw)
+    val isFeeDiffTooHigh = feeConf.feerateTolerance.isFeeDiffTooHigh(localFeeratePerKw, _: FeeratePerKw)
     if (remoteFeeratePerKw exists isFeeDiffTooHigh) throw ChannelTransitionFail(channelId)
 
     // let's compute the current commitment *as seen by us* including this change
@@ -281,7 +281,7 @@ case class NormalCommits(channelVersion: ChannelVersion, remoteInfo: RemoteNodeI
 
   def receiveFee(fee: UpdateFee, feeConf: OnChainFeeConf): NormalCommits = {
     val localFeeratePerKw = feeConf.feeEstimator.getFeeratePerKw(target = feeConf.feeTargets.commitmentBlockTarget)
-    if (Helpers.isFeeDiffTooHigh(localFeeratePerKw, fee.feeratePerKw, feeConf.feerateTolerance) && hasPendingOrProposedHtlcs) throw ChannelTransitionFail(channelId)
+    if (feeConf.feerateTolerance.isFeeDiffTooHigh(localFeeratePerKw, fee.feeratePerKw) && hasPendingOrProposedHtlcs) throw ChannelTransitionFail(channelId)
     if (fee.feeratePerKw < FeeratePerKw.MinimumFeeratePerKw) throw ChannelTransitionFail(channelId)
     if (localParams.isFunder) throw ChannelTransitionFail(channelId)
 
