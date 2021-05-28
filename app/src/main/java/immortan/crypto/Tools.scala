@@ -35,6 +35,8 @@ object Tools {
   def runAnd[T](result: T)(action: Any): T = result
 
   implicit class Any2Some[T](underlying: T) {
+    def asLeft: Left[T, Nothing] = Left(underlying)
+    def asRight: Right[Nothing, T] = Right(underlying)
     def asSome: Option[T] = Some(underlying)
     def asList: List[T] = List(underlying)
   }
@@ -106,18 +108,17 @@ object StateMachine {
 }
 
 abstract class StateMachine[T] { me =>
-  def become(freshData: T, freshState: String): StateMachine[T] = {
+  def become(freshData: T, freshState: Int): StateMachine[T] = {
     // Update state, data and return itself for easy chaining operations
     state = freshState
     data = freshData
-    this
+    me
   }
 
   def doProcess(change: Any): Unit
-  var state: String = _
-  var data: T = _
-
   var secondsLeft: Long = INTERVAL
+  var state: Int = -1
+  var data: T = _
 
   lazy val delayedCMDWorker: ThrottledWork[String, Long] = new ThrottledWork[String, Long] {
     def work(cmd: String): Observable[Long] = Observable.interval(1.second).doOnSubscribe { secondsLeft = INTERVAL }

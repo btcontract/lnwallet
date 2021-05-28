@@ -11,7 +11,7 @@ import fr.acinq.eclair.MilliSatoshi
 import scala.util.Try
 
 
-case class TxSummary(fees: MilliSatoshi, received: MilliSatoshi, sent: MilliSatoshi, count: Long)
+case class TxSummary(fees: Satoshi, received: Satoshi, sent: Satoshi, count: Long)
 
 class SQLiteTx(val db: DBInterface) {
   def listRecentTxs(limit: Int): RichCursor = db.select(TxTable.selectRecentSql, limit.toString)
@@ -26,7 +26,7 @@ class SQLiteTx(val db: DBInterface) {
   }
 
   def txSummary: Try[TxSummary] = db.select(TxTable.selectSummarySql).headTry { rc =>
-    TxSummary(fees = MilliSatoshi(rc long 0), received = MilliSatoshi(rc long 1), sent = MilliSatoshi(rc long 2), count = rc long 3)
+    TxSummary(fees = Satoshi(rc long 0), received = Satoshi(rc long 1), sent = Satoshi(rc long 2), count = rc long 3)
   }
 
   def replaceTx(tx: Transaction, depth: Long, received: Satoshi, sent: Satoshi, feeOpt: Option[Satoshi],

@@ -13,11 +13,11 @@ import immortan.utils.Rx
 
 
 object SwapInAddressHandler {
-  final val WAITING_FIRST_RESPONSE = "address-state-waiting-first-response"
-  final val WAITING_REST_OF_RESPONSES = "address-state-waiting-rest-of-responses"
-  final val FINALIZED = "address-state-finalized"
-  final val CMDCancel = "address-cmd-cancel"
+  final val WAITING_FIRST_RESPONSE = 0
+  final val WAITING_REST_OF_RESPONSES = 1
+  final val FINALIZED = 2
 
+  final val CMDCancel = "address-cmd-cancel"
   case class NoSwapInSupport(worker: CommsTower.Worker)
   case class YesSwapInSupport(worker: CommsTower.Worker, msg: SwapIn)
   case class SwapInResponseExt(msg: SwapInResponse, remoteInfo: RemoteNodeInfo)
@@ -70,7 +70,7 @@ abstract class SwapInAddressHandler extends StateMachine[AddressData] { me =>
       for (cnc <- data.cmdStart.capableCncs) CommsTower.rmListenerNative(cnc.commits.remoteInfo, swapInListener)
       become(data, FINALIZED)
 
-    case (cmd: CMDStart, null) =>
+    case (cmd: CMDStart, -1) =>
       become(AddressData(results = cmd.capableCncs.map(_.commits.remoteInfo -> None).toMap, cmd), WAITING_FIRST_RESPONSE)
       for (cnc <- cmd.capableCncs) CommsTower.listenNative(Set(swapInListener), cnc.commits.remoteInfo)
       Rx.ioQueue.delay(30.seconds).foreach(_ => me doSearch true)

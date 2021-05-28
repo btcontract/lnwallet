@@ -1,5 +1,8 @@
 package immortan.sqlite
 
+import immortan.PaymentStatus.{SUCCEEDED, PENDING, ABORTED}
+import java.util.concurrent.atomic.AtomicInteger
+
 
 trait Table {
   def createStatements: Seq[String]
@@ -12,7 +15,7 @@ trait Table {
 }
 
 object Table {
-  val DEFAULT_LIMIT = new java.util.concurrent.atomic.AtomicInteger(10)
+  val DEFAULT_LIMIT = new AtomicInteger(10)
 }
 
 // Database #1, essential data, exportable to backup
@@ -179,17 +182,12 @@ object RelayTable extends Table {
 }
 
 object PaymentTable extends Table {
-  private val ESCAPED_SUCCEEDED = "'" + immortan.PaymentStatus.SUCCEEDED + "'"
-  private val ESCAPED_ABORTED = "'" + immortan.PaymentStatus.ABORTED + "'"
-  private val ESCAPED_PENDING = "'" + immortan.PaymentStatus.PENDING + "'"
-
-  val (search, table, pr, preimage, status, seenAt, description, action, hash, secret, receivedMsat, sentMsat, feeMsat, balanceMsat, fiatRates, chainFee, incoming) =
+  val (search, table, pr, preimage, status, seenAt, description, action, hash, secret, receivedMsat, sentMsat, feeMsat, balanceMsat, fiatRates, chainFeeMsat, incoming) =
     ("psearch", "payment", "pr", "preimage", "status", "seenAt", "desc", "action", "hash", "secret", "received", "sent", "fee", "balance", "fiatrates", "chainfee", "incoming")
 
-  val newSql: String = {
-    val inserts = s"$pr, $preimage, $status, $seenAt, $description, $action, $hash, $secret, $receivedMsat, $sentMsat, $feeMsat, $balanceMsat, $fiatRates, $chainFee, $incoming"
-    s"INSERT OR IGNORE INTO $table ($inserts) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
-  }
+  private val inserts = s"$pr, $preimage, $status, $seenAt, $description, $action, $hash, $secret, $receivedMsat, $sentMsat, $feeMsat, $balanceMsat, $fiatRates, $chainFeeMsat, $incoming"
+
+  val newSql: String = s"INSERT OR IGNORE INTO $table ($inserts) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
 
   val newVirtualSql = s"INSERT INTO $fts$table ($search, $hash) VALUES (?, ?)"
 
@@ -200,30 +198,31 @@ object PaymentTable extends Table {
   val selectByHashSql = s"SELECT * FROM $table WHERE $hash = ?"
 
   val selectRecentSql: String = {
-    val recentFailed = s"($seenAt > ? AND $status = $ESCAPED_ABORTED)" // Skip all payments which have been failed a long time ago
-    val nonFailedOutgoing = s"($seenAt > 0 AND $status <> $ESCAPED_ABORTED AND $incoming = 0)" // Select all outgoing payments which are not failed yet
-    val recentPendingIncoming = s"($seenAt > ? AND $status = $ESCAPED_PENDING AND $incoming = 1)" // Skip unfulfilled incoming payments which are expired
-    val allFulfilledIncoming = s"($seenAt > 0 AND $status = $ESCAPED_SUCCEEDED AND $incoming = 1)" // Select all incoming payments which are fulfilled
+    val recentFailed = s"($seenAt > ? AND $status = $ABORTED)" // Skip all payments which have been failed a long time ago
+    val nonFailedOutgoing = s"($seenAt > 0 AND $status <> $ABORTED AND $incoming = 0)" // Select all outgoing payments which are not failed yet
+    val recentPendingIncoming = s"($seenAt > ? AND $status = $PENDING AND $incoming = 1)" // Skip unfulfilled incoming payments which are expired
+    val allFulfilledIncoming = s"($seenAt > 0 AND $status = $SUCCEEDED AND $incoming = 1)" // Select all incoming payments which are fulfilled by now
     s"SELECT * FROM $table WHERE $recentFailed OR $nonFailedOutgoing OR $recentPendingIncoming OR $allFulfilledIncoming ORDER BY $id DESC LIMIT ?"
   }
 
-  val selectSummarySql = s"SELECT SUM($feeMsat), SUM($receivedMsat), SUM($sentMsat), COUNT($id) FROM $table WHERE $status = $ESCAPED_SUCCEEDED"
+  val selectSummarySql = s"SELECT SUM($feeMsat), SUM($chainFeeMsat), SUM($receivedMsat), SUM($sentMsat), COUNT($id) FROM $table WHERE $status = $SUCCEEDED"
 
   val searchSql = s"SELECT * FROM $table WHERE $hash IN (SELECT $hash FROM $fts$table WHERE $search MATCH ? LIMIT 50)"
 
   // Updating
 
-  val updOkOutgoingSql = s"UPDATE $table SET $status = $ESCAPED_SUCCEEDED, $preimage = ?, $feeMsat = ? WHERE $hash = ? AND ($seenAt > 0 AND status <> $ESCAPED_SUCCEEDED AND $incoming = 0)"
+  val updOkOutgoingSql = s"UPDATE $table SET $status = $SUCCEEDED, $preimage = ?, $feeMsat = ? WHERE $hash = ? AND ($seenAt > 0 AND status <> $SUCCEEDED AND $incoming = 0)"
 
-  val updOkIncomingSql = s"UPDATE $table SET $status = $ESCAPED_SUCCEEDED, $receivedMsat = ?, $seenAt = ? WHERE $hash = ? AND ($seenAt > 0 AND status <> $ESCAPED_SUCCEEDED AND $incoming = 1)"
+  val updOkIncomingSql = s"UPDATE $table SET $status = $SUCCEEDED, $receivedMsat = ?, $seenAt = ? WHERE $hash = ? AND ($seenAt > 0 AND status <> $SUCCEEDED AND $incoming = 1)"
 
-  val updStatusSql = s"UPDATE $table SET $status = ? WHERE $hash = ? AND ($seenAt > 0 AND status <> $ESCAPED_SUCCEEDED)"
+  val updStatusSql = s"UPDATE $table SET $status = ? WHERE $hash = ? AND ($seenAt > 0 AND status <> $SUCCEEDED)"
 
   def createStatements: Seq[String] = {
     val createTable = s"""CREATE TABLE IF NOT EXISTS $table(
-      $IDAUTOINC, $pr TEXT NOT NULL, $preimage TEXT NOT NULL, $status TEXT NOT NULL, $seenAt INTEGER NOT NULL, $description TEXT NOT NULL,
+      $IDAUTOINC, $pr TEXT NOT NULL, $preimage TEXT NOT NULL, $status INTEGER NOT NULL, $seenAt INTEGER NOT NULL, $description TEXT NOT NULL,
       $action TEXT NOT NULL, $hash TEXT NOT NULL $UNIQUE, $secret TEXT NOT NULL, $receivedMsat INTEGER NOT NULL, $sentMsat INTEGER NOT NULL,
-      $feeMsat INTEGER NOT NULL, $balanceMsat INTEGER NOT NULL, $fiatRates TEXT NOT NULL, $chainFee INTEGER NOT NULL, $incoming INTEGER NOT NULL
+      $feeMsat INTEGER NOT NULL, $balanceMsat INTEGER NOT NULL, $fiatRates TEXT NOT NULL, $chainFeeMsat INTEGER NOT NULL,
+      $incoming INTEGER NOT NULL
     )"""
 
     val addSearchTable = s"CREATE VIRTUAL TABLE IF NOT EXISTS $fts$table USING $fts($search, $hash)"
@@ -236,7 +235,7 @@ object TxTable extends Table {
   val (search, table, rawTx, txid, depth, receivedSat, sentSat, feeSat, firstSeen, description, balanceMsat, fiatRates, incoming, doubleSpent) =
     ("tsearch", "txs", "raw", "txid", "depth", "received", "sent", "fee", "seen", "desc", "balance", "fiatrates", "incoming", "doublespent")
 
-  val inserts = s"$rawTx, $txid, $depth, $receivedSat, $sentSat, $feeSat, $firstSeen, $description, $balanceMsat, $fiatRates, $incoming, $doubleSpent"
+  private val inserts = s"$rawTx, $txid, $depth, $receivedSat, $sentSat, $feeSat, $firstSeen, $description, $balanceMsat, $fiatRates, $incoming, $doubleSpent"
 
   val newSql = s"INSERT OR IGNORE INTO $table ($inserts) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
 
@@ -256,14 +255,25 @@ object TxTable extends Table {
 
   def createStatements: Seq[String] = {
     val createTable = s"""CREATE TABLE IF NOT EXISTS $table(
-      $IDAUTOINC, $rawTx TEXT NOT NULL, $txid TEXT NOT NULL $UNIQUE, $depth INTEGER NOT NULL, $receivedSat INTEGER NOT NULL, $sentSat INTEGER NOT NULL,
-      $feeSat INTEGER NOT NULL, $firstSeen INTEGER NOT NULL, $description TEXT NOT NULL, $balanceMsat INTEGER NOT NULL, $fiatRates TEXT NOT NULL,
-      $incoming INTEGER NOT NULL, $doubleSpent INTEGER NOT NULL
+      $IDAUTOINC, $rawTx TEXT NOT NULL, $txid TEXT NOT NULL $UNIQUE, $depth INTEGER NOT NULL,
+      $receivedSat INTEGER NOT NULL, $sentSat INTEGER NOT NULL, $feeSat INTEGER NOT NULL, $firstSeen INTEGER NOT NULL,
+      $description TEXT NOT NULL, $balanceMsat INTEGER NOT NULL, $fiatRates TEXT NOT NULL, $incoming INTEGER NOT NULL,
+      $doubleSpent INTEGER NOT NULL
     )"""
 
     val addSearchTable = s"CREATE VIRTUAL TABLE IF NOT EXISTS $fts$table USING $fts($search, $txid)"
     createTable :: addSearchTable :: Nil
   }
+}
+
+object ChannelTxFeesTable extends Table {
+  val (table, txid, feeSat) = ("chantxfees", "txid", "fee")
+
+  val newSql = s"INSERT OR IGNORE INTO $table ($txid, $feeSat) VALUES (?, ?)"
+
+  val selectSummarySql = s"SELECT SUM($feeSat), COUNT($id) FROM $table"
+
+  def createStatements: Seq[String] = s"CREATE TABLE IF NOT EXISTS $table($IDAUTOINC, $txid TEXT NOT NULL $UNIQUE, $feeSat INTEGER NOT NULL)" :: Nil
 }
 
 object DataTable extends Table {

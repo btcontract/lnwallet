@@ -19,14 +19,14 @@ import scala.collection.mutable
 
 
 object PathFinder {
-  val WAITING = "path-finder-state-waiting"
-  val OPERATIONAL = "path-finder-state-operational"
+  val RESYNC_PERIOD: Long = 1000L * 3600 * 24 * 2
   val NotifyRejected = "path-finder-notify-rejected"
   val NotifyOperational = "path-finder-notify-operational"
   val CMDLoadGraph = "cmd-load-graph"
   val CMDResync = "cmd-resync"
 
-  val RESYNC_PERIOD: Long = 1000L * 3600 * 24 * 2 // days in msecs
+  val WAITING = 0
+  val OPERATIONAL = 1
 
   case class AvgHopParams(cltvExpiryDelta: CltvExpiryDelta, feeProportionalMillionths: MilliSatoshi, feeBaseMsat: MilliSatoshi, sampleSize: Long)
 

@@ -20,11 +20,11 @@ import immortan.utils.Rx
 
 
 object SyncMaster {
-  final val WAITING = "state-waiting"
-  final val SHUT_DOWN = "state-shut-down"
-  final val SHORT_ID_SYNC = "state-short-id-sync"
-  final val GOSSIP_SYNC = "state-gossip-sync"
-  final val PHC_SYNC = "phc-sync"
+  final val WAITING = 0
+  final val SHUT_DOWN = 1
+  final val SHORT_ID_SYNC = 2
+  final val GOSSIP_SYNC = 3
+  final val PHC_SYNC = 4
 
   final val CMDAddSync = "cmd-add-sync"
   final val CMDGetGossip = "cmd-get-gossip"

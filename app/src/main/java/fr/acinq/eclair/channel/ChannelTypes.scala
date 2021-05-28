@@ -35,74 +35,20 @@ import fr.acinq.eclair.payment.IncomingPacket
 import immortan.crypto.Tools
 
 
-// Fatal by deafult
-case class FeerateTooSmall(channelId: ByteVector32, remoteFeeratePerKw: FeeratePerKw) extends RuntimeException {
-  override def toString: String = s"FeerateTooSmall, remoteFeeratePerKw=$remoteFeeratePerKw"
+sealed trait LocalAddRejected {
+  val localAdd: UpdateAddHtlc
 }
 
-case class DustLimitTooSmall(channelId: ByteVector32, dustLimit: Satoshi, min: Satoshi) extends RuntimeException {
-  override def toString: String = s"DustLimitTooSmall, dustLimit=$dustLimit, min=$min"
-}
-
-case class DustLimitTooLarge(channelId: ByteVector32, dustLimit: Satoshi, max: Satoshi) extends RuntimeException {
-  override def toString: String = s"DustLimitTooLarge, dustLimit=$dustLimit, max=$max"
-}
-
-case class InvalidMaxAcceptedHtlcs(channelId: ByteVector32, maxAcceptedHtlcs: Int, max: Int) extends RuntimeException {
-  override def toString: String = s"InvalidMaxAcceptedHtlcs, maxAcceptedHtlcs=$maxAcceptedHtlcs, max=$max"
-}
-
-case class InvalidChainHash(channelId: ByteVector32, local: ByteVector32, remote: ByteVector32) extends RuntimeException {
-  override def toString: String = s"InvalidChainHash, local=$local, remote=$remote"
-}
-
-case class InvalidPushAmount(channelId: ByteVector32, pushAmount: MilliSatoshi, max: MilliSatoshi) extends RuntimeException {
-  override def toString: String = s"InvalidPushAmount, pushAmount=$pushAmount, max=$max"
-}
-
-case class ToSelfDelayTooHigh(channelId: ByteVector32, toSelfDelay: CltvExpiryDelta, max: CltvExpiryDelta) extends RuntimeException {
-  override def toString: String = s"ToSelfDelayTooHigh, toSelfDelay=$toSelfDelay, max=$max"
-}
-
-case class InvalidFundingAmount(channelId: ByteVector32, fundingAmount: Satoshi, min: Satoshi, max: Satoshi) extends RuntimeException {
-  override def toString: String = s"InvalidFundingAmount, fundingAmount=$fundingAmount, min=$min, max=$max"
-}
-
-case class DustLimitAboveOurChannelReserve(channelId: ByteVector32, dustLimit: Satoshi, channelReserve: Satoshi) extends RuntimeException {
-  override def toString: String = s"DustLimitAboveOurChannelReserve, dustLimit=$dustLimit, channelReserve=$channelReserve"
-}
-
-case class ChannelReserveBelowOurDustLimit(channelId: ByteVector32, channelReserve: Satoshi, dustLimit: Satoshi) extends RuntimeException {
-  override def toString: String = s"ChannelReserveBelowOurDustLimit, channelReserve=$channelReserve, dustLimit=$dustLimit"
-}
-
-case class ChannelReserveNotMet(channelId: ByteVector32, toLocal: MilliSatoshi, toRemote: MilliSatoshi, reserve: Satoshi) extends RuntimeException {
-  override def toString: String = s"ChannelReserveNotMet, toLocal=$toLocal, toRemote=$toRemote, reserve=$reserve"
-}
-
-case class FeerateTooDifferent(channelId: ByteVector32, localFeeratePerKw: FeeratePerKw, remoteFeeratePerKw: FeeratePerKw) extends RuntimeException {
-  override def toString: String = s"FeerateTooDifferent, localFeeratePerKw=$localFeeratePerKw, remoteFeeratePerKw=$remoteFeeratePerKw"
-}
-
-case class ChannelReserveTooHigh(channelId: ByteVector32, reserveToFundingRatio: Double, maxReserveToFundingRatio: Double) extends RuntimeException {
-  override def toString: String = s"DustLimitTooSmall, reserveToFundingRatio=$reserveToFundingRatio, maxReserveToFundingRatio=$maxReserveToFundingRatio"
-}
-
-case class ChannelTransitionFail(channelId: ByteVector32) extends RuntimeException {
-  override def toString: String = s"ChannelTransitionFail"
-}
-
-// Non-fatal by default
-case object ChannelOffline extends RuntimeException
-case object InPrincipleNotSendable extends RuntimeException
-case class CMDException(error: RuntimeException, cmd: Command) extends RuntimeException
+case class ChannelOffline(localAdd: UpdateAddHtlc) extends LocalAddRejected
+case class ChannelNotAbleToSend(localAdd: UpdateAddHtlc) extends LocalAddRejected
+case class InPrincipleNotSendable(localAdd: UpdateAddHtlc) extends LocalAddRejected
 
 
+case class INPUT_INIT_FUNDEE(remoteInfo: RemoteNodeInfo, localParams: LocalParams, remoteInit: Init, channelVersion: ChannelVersion, theirOpen: OpenChannel)
 case class INPUT_INIT_FUNDER(remoteInfo: RemoteNodeInfo, temporaryChannelId: ByteVector32, fakeFunding: MakeFundingTxResponse, pushAmount: MilliSatoshi,
                              fundingFeeratePerKw: FeeratePerKw, initialFeeratePerKw: FeeratePerKw, localParams: LocalParams, remoteInit: Init,
                              channelFlags: Byte, channelVersion: ChannelVersion)
 
-case class INPUT_INIT_FUNDEE(remoteInfo: RemoteNodeInfo, localParams: LocalParams, remoteInit: Init, channelVersion: ChannelVersion, theirOpen: OpenChannel)
 
 sealed trait BitcoinEvent
 case class BITCOIN_PARENT_TX_CONFIRMED(childTx: Transaction) extends BitcoinEvent
@@ -111,8 +57,6 @@ case object BITCOIN_FUNDING_DEPTHOK extends BitcoinEvent
 case object BITCOIN_FUNDING_SPENT extends BitcoinEvent
 case object BITCOIN_OUTPUT_SPENT extends BitcoinEvent
 
-
-sealed trait Command
 
 sealed trait IncomingResolution
 
@@ -132,22 +76,26 @@ case class ReasonableLocal(packet: IncomingPacket.FinalPacket, secret: PrivateKe
   val add: UpdateAddHtlc = packet.add
 }
 
-sealed trait FinalResolution extends IncomingResolution { val theirAdd: UpdateAddHtlc }
+sealed trait Command
 
-case class CMD_FAIL_HTLC(reason: Either[ByteVector, FailureMessage], nodeSecret: PrivateKey, theirAdd: UpdateAddHtlc) extends Command with FinalResolution
+sealed trait FinalResolution extends IncomingResolution with Command {
+  val theirAdd: UpdateAddHtlc
+}
 
-case class CMD_FAIL_MALFORMED_HTLC(onionHash: ByteVector32, failureCode: Int, theirAdd: UpdateAddHtlc) extends Command with FinalResolution
+case class CMD_FULFILL_HTLC(preimage: ByteVector32, theirAdd: UpdateAddHtlc) extends FinalResolution
 
-case class CMD_FULFILL_HTLC(preimage: ByteVector32, theirAdd: UpdateAddHtlc) extends Command with FinalResolution
+case class CMD_FAIL_MALFORMED_HTLC(onionHash: ByteVector32, failureCode: Int, theirAdd: UpdateAddHtlc) extends FinalResolution
+
+case class CMD_FAIL_HTLC(reason: Either[ByteVector, FailureMessage], nodeSecret: PrivateKey, theirAdd: UpdateAddHtlc) extends FinalResolution
 
 case class CMD_ADD_HTLC(fullTag: FullPaymentTag, firstAmount: MilliSatoshi, cltvExpiry: CltvExpiry, packetAndSecrets: PacketAndSecrets, payload: FinalPayload) extends Command {
-  final val partId: ByteVector = packetAndSecrets.packet.publicKey
+  val incompleteAdd: UpdateAddHtlc = UpdateAddHtlc(channelId = ByteVector32.Zeroes, id = 0L, firstAmount, fullTag.paymentHash, cltvExpiry, packetAndSecrets.packet, encryptedTag)
 
-  lazy val encryptedTag: ByteVector = {
-    // Important: LNParams.format must be defined
+  lazy val encryptedTag: PaymentTagTlv.EncryptedSecretStream = {
     val shortTag = ShortPaymentTag(fullTag.paymentSecret, fullTag.tag)
     val plainBytes = PaymentTagTlv.shortPaymentTagCodec.encode(shortTag).require.toByteVector
-    Tools.chaChaEncrypt(LNParams.secret.keys.ourNodePrivateKey.value, randomBytes(12), plainBytes)
+    val cipherbytes = Tools.chaChaEncrypt(LNParams.secret.keys.ourNodePrivateKey.value, randomBytes(12), plainBytes)
+    TlvStream(EncryptedPaymentSecret(cipherbytes) :: Nil)
   }
 }
 
@@ -156,15 +104,13 @@ case class CMD_UPDATE_FEERATE(channelId: ByteVector32, feeratePerKw: FeeratePerK
   val ourFeeRatesUpdate: UpdateFee = UpdateFee(channelId, feeratePerKw)
 }
 
+case object CMD_FORCECLOSE extends Command
+final case class CMD_CLOSE(scriptPubKey: Option[ByteVector] = None) extends Command
 case class CMD_HOSTED_STATE_OVERRIDE(so: StateOverride) extends Command
 case class HC_CMD_RESIZE(delta: Satoshi) extends Command
 case object CMD_SOCKET_OFFLINE extends Command
 case object CMD_SOCKET_ONLINE extends Command
 case object CMD_SIGN extends Command
-
-sealed trait CloseCommand extends Command
-case object CMD_FORCECLOSE extends CloseCommand
-final case class CMD_CLOSE(scriptPubKey: Option[ByteVector] = None) extends CloseCommand
 
 
 trait ChannelData
@@ -234,13 +180,13 @@ final case class DATA_WAIT_FOR_FUNDING_LOCKED(commitments: NormalCommits, shortC
 final case class DATA_NORMAL(commitments: NormalCommits, shortChannelId: ShortChannelId, localShutdown: Option[Shutdown] = None,
                              remoteShutdown: Option[Shutdown] = None) extends ChannelData with HasNormalCommitments
 
-final case class DATA_NEGOTIATING(commitments: NormalCommits, localShutdown: Shutdown, remoteShutdown: Shutdown, closingTxProposed: List[List[ClosingTxProposed]],
+final case class DATA_NEGOTIATING(commitments: NormalCommits, localShutdown: Shutdown,
+                                  remoteShutdown: Shutdown, closingTxProposed: List[List[ClosingTxProposed]] = List(Nil),
                                   bestUnpublishedClosingTxOpt: Option[Transaction] = None) extends ChannelData with HasNormalCommitments
 
-final case class DATA_CLOSING(commitments: NormalCommits, fundingTx: Option[Transaction], waitingSince: Long = System.currentTimeMillis, mutualCloseProposed: List[Transaction] = Nil,
-                              mutualClosePublished: List[Transaction] = Nil, localCommitPublished: Option[LocalCommitPublished] = None, remoteCommitPublished: Option[RemoteCommitPublished] = None,
-                              nextRemoteCommitPublished: Option[RemoteCommitPublished] = None, futureRemoteCommitPublished: Option[RemoteCommitPublished] = None,
-                              revokedCommitPublished: List[RevokedCommitPublished] = Nil) extends ChannelData with HasNormalCommitments {
+final case class DATA_CLOSING(commitments: NormalCommits, waitingSince: Long, mutualCloseProposed: List[Transaction] = Nil, mutualClosePublished: List[Transaction] = Nil,
+                              localCommitPublished: Option[LocalCommitPublished] = None, remoteCommitPublished: Option[RemoteCommitPublished] = None, nextRemoteCommitPublished: Option[RemoteCommitPublished] = None,
+                              futureRemoteCommitPublished: Option[RemoteCommitPublished] = None, revokedCommitPublished: List[RevokedCommitPublished] = Nil) extends ChannelData with HasNormalCommitments {
 
   lazy val balanceLeftoverRefunds: Seq[Transaction] = {
     // It's OK to use a set of all possible payment leftovers because it will be compared against an incoming tx
@@ -320,3 +266,63 @@ object ChannelVersion {
 object HostedChannelVersion {
   val RESIZABLE: ChannelVersion = ChannelVersion.STANDARD | ChannelVersion.fromBit(1)
 }
+
+// Channel exceptions
+
+case class FeerateTooSmall(channelId: ByteVector32, remoteFeeratePerKw: FeeratePerKw) extends RuntimeException {
+  override def toString: String = s"FeerateTooSmall, remoteFeeratePerKw=$remoteFeeratePerKw"
+}
+
+case class DustLimitTooSmall(channelId: ByteVector32, dustLimit: Satoshi, min: Satoshi) extends RuntimeException {
+  override def toString: String = s"DustLimitTooSmall, dustLimit=$dustLimit, min=$min"
+}
+
+case class DustLimitTooLarge(channelId: ByteVector32, dustLimit: Satoshi, max: Satoshi) extends RuntimeException {
+  override def toString: String = s"DustLimitTooLarge, dustLimit=$dustLimit, max=$max"
+}
+
+case class InvalidMaxAcceptedHtlcs(channelId: ByteVector32, maxAcceptedHtlcs: Int, max: Int) extends RuntimeException {
+  override def toString: String = s"InvalidMaxAcceptedHtlcs, maxAcceptedHtlcs=$maxAcceptedHtlcs, max=$max"
+}
+
+case class InvalidChainHash(channelId: ByteVector32, local: ByteVector32, remote: ByteVector32) extends RuntimeException {
+  override def toString: String = s"InvalidChainHash, local=$local, remote=$remote"
+}
+
+case class InvalidPushAmount(channelId: ByteVector32, pushAmount: MilliSatoshi, max: MilliSatoshi) extends RuntimeException {
+  override def toString: String = s"InvalidPushAmount, pushAmount=$pushAmount, max=$max"
+}
+
+case class ToSelfDelayTooHigh(channelId: ByteVector32, toSelfDelay: CltvExpiryDelta, max: CltvExpiryDelta) extends RuntimeException {
+  override def toString: String = s"ToSelfDelayTooHigh, toSelfDelay=$toSelfDelay, max=$max"
+}
+
+case class InvalidFundingAmount(channelId: ByteVector32, fundingAmount: Satoshi, min: Satoshi, max: Satoshi) extends RuntimeException {
+  override def toString: String = s"InvalidFundingAmount, fundingAmount=$fundingAmount, min=$min, max=$max"
+}
+
+case class DustLimitAboveOurChannelReserve(channelId: ByteVector32, dustLimit: Satoshi, channelReserve: Satoshi) extends RuntimeException {
+  override def toString: String = s"DustLimitAboveOurChannelReserve, dustLimit=$dustLimit, channelReserve=$channelReserve"
+}
+
+case class ChannelReserveBelowOurDustLimit(channelId: ByteVector32, channelReserve: Satoshi, dustLimit: Satoshi) extends RuntimeException {
+  override def toString: String = s"ChannelReserveBelowOurDustLimit, channelReserve=$channelReserve, dustLimit=$dustLimit"
+}
+
+case class ChannelReserveNotMet(channelId: ByteVector32, toLocal: MilliSatoshi, toRemote: MilliSatoshi, reserve: Satoshi) extends RuntimeException {
+  override def toString: String = s"ChannelReserveNotMet, toLocal=$toLocal, toRemote=$toRemote, reserve=$reserve"
+}
+
+case class FeerateTooDifferent(channelId: ByteVector32, localFeeratePerKw: FeeratePerKw, remoteFeeratePerKw: FeeratePerKw) extends RuntimeException {
+  override def toString: String = s"FeerateTooDifferent, localFeeratePerKw=$localFeeratePerKw, remoteFeeratePerKw=$remoteFeeratePerKw"
+}
+
+case class ChannelReserveTooHigh(channelId: ByteVector32, reserveToFundingRatio: Double, maxReserveToFundingRatio: Double) extends RuntimeException {
+  override def toString: String = s"DustLimitTooSmall, reserveToFundingRatio=$reserveToFundingRatio, maxReserveToFundingRatio=$maxReserveToFundingRatio"
+}
+
+case class ChannelTransitionFail(channelId: ByteVector32) extends RuntimeException {
+  override def toString: String = s"ChannelTransitionFail"
+}
+
+case class CMDException(error: RuntimeException, cmd: Command) extends RuntimeException

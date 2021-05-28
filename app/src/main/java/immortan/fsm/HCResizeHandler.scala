@@ -13,7 +13,7 @@ abstract class HCResizeHandler(delta: Satoshi, chan: ChannelHosted) extends Chan
 
   override def onBecome: PartialFunction[Transition, Unit] = {
     case (_, prevHc: HostedCommits, nextHc: HostedCommits, _, _)
-      if prevHc.getError.isEmpty && nextHc.getError.nonEmpty =>
+      if prevHc.error.isEmpty && nextHc.error.nonEmpty =>
       onChannelSuspended(nextHc)
       chan.listeners -= me
 

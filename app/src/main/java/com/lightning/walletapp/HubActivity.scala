@@ -749,7 +749,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
 
   def resolveAction(fulfill: RemoteFulfill): Unit =
     paymentInfos.find(_.paymentHash == fulfill.ourAdd.paymentHash).flatMap(_.action).foreach { action =>
-      def executeAction: Unit = showPaymentAction(action, fulfill.preimage)
+      def executeAction: Unit = showPaymentAction(action, fulfill.theirPreimage)
       UITask(executeAction).run
     }
 

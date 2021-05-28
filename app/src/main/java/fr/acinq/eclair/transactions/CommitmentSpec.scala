@@ -48,9 +48,11 @@ case class OutgoingHtlc(add: UpdateAddHtlc) extends DirectedHtlc
 trait RemoteReject { val ourAdd: UpdateAddHtlc }
 case class RemoteUpdateFail(fail: UpdateFailHtlc, ourAdd: UpdateAddHtlc) extends RemoteReject
 case class RemoteUpdateMalform(malform: UpdateFailMalformedHtlc, ourAdd: UpdateAddHtlc) extends RemoteReject
-case class RemoteFulfill(ourAdd: UpdateAddHtlc, preimage: ByteVector32)
 
-final case class CommitmentSpec(feeratePerKw: FeeratePerKw, toLocal: MilliSatoshi, toRemote: MilliSatoshi, htlcs: Set[DirectedHtlc] = Set.empty) {
+case class RemoteFulfill(ourAdd: UpdateAddHtlc, theirPreimage: ByteVector32)
+case class LocalFulfill(theirAdd: UpdateAddHtlc, ourPreimage: ByteVector32)
+
+case class CommitmentSpec(feeratePerKw: FeeratePerKw, toLocal: MilliSatoshi, toRemote: MilliSatoshi, htlcs: Set[DirectedHtlc] = Set.empty) {
   def findIncomingHtlcById(id: Long): Option[IncomingHtlc] = htlcs.collectFirst { case htlc: IncomingHtlc if htlc.add.id == id => htlc }
   def findOutgoingHtlcById(id: Long): Option[OutgoingHtlc] = htlcs.collectFirst { case htlc: OutgoingHtlc if htlc.add.id == id => htlc }
   lazy val incomingAdds: Set[UpdateAddHtlc] = htlcs.collect(DirectedHtlc.incoming)

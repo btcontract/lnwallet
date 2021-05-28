@@ -13,10 +13,10 @@ import immortan.utils.Rx
 
 
 object PreimageCheck {
-  final val CMDCancel = "preimage-check-cmd-cancel"
-  final val OPERATIONAL = "preimage-check-operational"
-  final val FINALIZED = "preimage-check-finalized"
+  final val OPERATIONAL = 0
+  final val FINALIZED = 1
 
+  final val CMDCancel = "preimage-check-cmd-cancel"
   case class PeerDisconnected(worker: CommsTower.Worker)
   case class PeerResponse(msg: HostedChannelMessage, worker: CommsTower.Worker)
   case class CMDStart(hosts: Set[RemoteNodeInfo], hashes: Set[ByteVector32] = Set.empty)
@@ -61,7 +61,7 @@ abstract class PreimageCheck extends StateMachine[PreimageCheck.CheckData] { me 
       for (pair <- data.pairs.values) CommsTower forget pair
       become(data, FINALIZED)
 
-    case (PreimageCheck.CMDStart(hosts, hashes), null) =>
+    case (PreimageCheck.CMDStart(hosts, hashes), -1) =>
       become(PreimageCheck.CheckData(hosts.map(randomPair).toMap, pending = hosts, hashes), OPERATIONAL)
       for (Tuple2(info, pair) <- data.pairs) CommsTower.listen(listeners1 = Set(listener), pair, info)
       Rx.ioQueue.delay(30.seconds).foreach(_ => me doCheck true)

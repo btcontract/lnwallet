@@ -190,23 +190,24 @@ object ChannelCodecs {
   }.as[RemoteNodeInfo]
 
   val commitmentsCodec = {
-    ("channelVersion" | channelVersionCodec) ::
-      ("remoteInfo" | remoteNodeInfoCodec) ::
-      ("localParams" | localParamsCodec) ::
-      ("remoteParams" | remoteParamsCodec) ::
-      ("channelFlags" | byte) ::
-      ("localCommit" | localCommitCodec) ::
-      ("remoteCommit" | remoteCommitCodec) ::
-      ("localChanges" | localChangesCodec) ::
-      ("remoteChanges" | remoteChangesCodec) ::
-      ("localNextHtlcId" | uint64overflow) ::
-      ("remoteNextHtlcId" | uint64overflow) ::
-      ("remoteNextCommitInfo" | either(bool8, waitingForRevocationCodec, publicKey)) ::
-      ("commitInput" | inputInfoCodec) ::
-      ("remotePerCommitmentSecrets" | byteAligned(ShaChain.shaChainCodec)) ::
-      ("channelId" | bytes32) ::
-      ("updateOpt" | optional(bool8, lengthDelimited(channelUpdateCodec))) ::
-      ("startedAt" | int64)
+    (byte withContext "channelFlags") ::
+      (bytes32 withContext "channelId") ::
+      (channelVersionCodec withContext "channelVersion") ::
+      (either(bool8, waitingForRevocationCodec, publicKey) withContext "remoteNextCommitInfo") ::
+      (byteAligned(ShaChain.shaChainCodec) withContext "remotePerCommitmentSecrets") ::
+      (optional(bool8, lengthDelimited(channelUpdateCodec)) withContext "updateOpt") ::
+      (setCodec(uint64overflow) withContext "postCloseOutgoingResolvedIds") ::
+      (remoteNodeInfoCodec withContext "remoteInfo") ::
+      (localParamsCodec withContext "localParams") ::
+      (remoteParamsCodec withContext "remoteParams") ::
+      (localCommitCodec withContext "localCommit") ::
+      (remoteCommitCodec withContext "remoteCommit") ::
+      (localChangesCodec withContext "localChanges") ::
+      (remoteChangesCodec withContext "remoteChanges") ::
+      (uint64overflow withContext "localNextHtlcId") ::
+      (uint64overflow withContext "remoteNextHtlcId") ::
+      (inputInfoCodec withContext "commitInput") ::
+      (int64 withContext "startedAt")
   }.as[NormalCommits]
 
   val closingTxProposedCodec = {
@@ -271,7 +272,6 @@ object ChannelCodecs {
 
   val DATA_CLOSING_Codec = {
     ("commitments" | commitmentsCodec) ::
-      ("fundingTx" | optional(bool8, txCodec)) ::
       ("waitingSince" | int64) ::
       ("mutualCloseProposed" | listOfN(uint16, txCodec)) ::
       ("mutualClosePublished" | listOfN(uint16, txCodec)) ::
@@ -283,17 +283,18 @@ object ChannelCodecs {
   }.as[DATA_CLOSING]
 
   val DATA_WAIT_FOR_REMOTE_PUBLISH_FUTURE_COMMITMENT_Codec = {
-    ("commitments" | commitmentsCodec) ::
-      ("remoteChannelReestablish" | channelReestablishCodec)
+    (commitmentsCodec withContext "commitments") ::
+      (channelReestablishCodec withContext "remoteChannelReestablish")
   }.as[DATA_WAIT_FOR_REMOTE_PUBLISH_FUTURE_COMMITMENT]
 
   val hostedCommitsCodec = {
     (remoteNodeInfoCodec withContext "remoteInfo") ::
+      (commitmentSpecCodec withContext "localSpec") ::
       (lengthDelimited(lastCrossSignedStateCodec) withContext "lastCrossSignedState") ::
       (listOfN(uint16, updateMessageCodec) withContext "nextLocalUpdates") ::
       (listOfN(uint16, updateMessageCodec) withContext "nextRemoteUpdates") ::
-      (commitmentSpecCodec withContext "localSpec") ::
       (optional(bool8, lengthDelimited(channelUpdateCodec)) withContext "updateOpt") ::
+      (setCodec(uint64overflow) withContext "postErrorOutgoingResolvedIds") ::
       (optional(bool8, lengthDelimited(errorCodec)) withContext "localError") ::
       (optional(bool8, lengthDelimited(errorCodec)) withContext "remoteError") ::
       (optional(bool8, lengthDelimited(resizeChannelCodec)) withContext "resizeProposal") ::

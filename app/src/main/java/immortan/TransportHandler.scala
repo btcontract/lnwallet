@@ -96,11 +96,12 @@ abstract class TransportHandler(keyPair: KeyPair, remotePubKey: ByteVector) exte
 }
 
 object TransportHandler {
-  val HANDSHAKE = "Handshake"
-  val WAITING_CYPHERTEXT = "WaitingCyphertext"
   val prologue: ByteVector = ByteVector("lightning" getBytes "UTF-8")
   val prefix: Byte = 0.toByte
   val Ping = "Ping"
+
+  val HANDSHAKE = 0
+  val WAITING_CYPHERTEXT = 1
 
   def expectedLength(reader: HandshakeStateReader): Int = reader.messages.length match { case 3 | 2 => 50 case _ => 66 }
 

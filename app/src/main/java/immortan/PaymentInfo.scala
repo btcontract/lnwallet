@@ -20,10 +20,10 @@ object PaymentInfo {
 }
 
 object PaymentStatus {
-  final val INIT = "state-init"
-  final val PENDING = "state-pending"
-  final val ABORTED = "state-aborted"
-  final val SUCCEEDED = "state-succeeded"
+  final val SUCCEEDED = 3
+  final val ABORTED = 2
+  final val PENDING = 1
+  final val INIT = 0
 }
 
 sealed trait TransactionDetails {
@@ -32,7 +32,7 @@ sealed trait TransactionDetails {
 }
 
 case class SplitParams(prExt: PaymentRequestExt, action: Option[PaymentAction], description: PaymentDescription, cmd: SendMultiPart, chainFee: MilliSatoshi)
-case class PaymentInfo(prString: String, preimage: ByteVector32, status: String, seenAt: Long, descriptionString: String, actionString: String, paymentHash: ByteVector32,
+case class PaymentInfo(prString: String, preimage: ByteVector32, status: Int, seenAt: Long, descriptionString: String, actionString: String, paymentHash: ByteVector32,
                        paymentSecret: ByteVector32, received: MilliSatoshi, sent: MilliSatoshi, fee: MilliSatoshi, balanceSnapshot: MilliSatoshi, fiatRatesString: String,
                        chainFee: MilliSatoshi, incoming: Long) extends TransactionDetails {
 

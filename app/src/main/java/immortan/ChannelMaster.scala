@@ -11,12 +11,12 @@ import fr.acinq.eclair.channel._
 import scala.concurrent.duration._
 import fr.acinq.bitcoin.{ByteVector32, Satoshi}
 import fr.acinq.bitcoin.Crypto.{PrivateKey, PublicKey}
-import immortan.ChannelListener.{Malfunction, Transition}
 import fr.acinq.eclair.transactions.{RemoteFulfill, RemoteReject}
 import immortan.crypto.{CanBeRepliedTo, CanBeShutDown, StateMachine}
 import java.util.concurrent.atomic.AtomicLong
 import fr.acinq.eclair.payment.IncomingPacket
 import com.google.common.cache.LoadingCache
+import immortan.ChannelListener.Transition
 import rx.lang.scala.Subject
 import immortan.utils.Rx
 import scala.util.Try
@@ -134,7 +134,7 @@ class ChannelMaster(val payBag: PaymentBag, val chanBag: ChannelBag, val dataBag
 
     override def gotFirstPreimage(data: OutgoingPaymentSenderData, fulfill: RemoteFulfill): Unit = chanBag.db txWrap {
       // Note that this method MAY get called multiple times for multipart payments if fulfills happen between restarts
-      payBag.setPreimage(fulfill.ourAdd.paymentHash, fulfill.preimage)
+      payBag.setPreimage(fulfill.ourAdd.paymentHash, fulfill.theirPreimage)
 
       getPaymentInfoMemo.get(fulfill.ourAdd.paymentHash).filter(_.status != PaymentStatus.SUCCEEDED).foreach { paymentInfo =>
         // Persist various payment metadata if this is ACTUALLY the first preimage (otherwise payment would be marked as successful)
@@ -216,7 +216,7 @@ class ChannelMaster(val payBag: PaymentBag, val chanBag: ChannelBag, val dataBag
     val chans = all.values.filter(Channel.isOperational)
     val sendableNoFee = opm.getSendable(chans, maxFee = 0L.msat).values.sum
     // Subtract max send fee from EACH channel since ANY channel MAY use all of it
-    opm.getSendable(chans, maxFee = sendableNoFee * LNParams.offChainFeeRatio).values.sum
+    opm.getSendable(chans, maxFee = sendableNoFee * LNParams.maxOffChainFeeRatio).values.sum
   }
 
   def checkIfSendable(paymentHash: ByteVector32): Option[Int] =
@@ -228,22 +228,20 @@ class ChannelMaster(val payBag: PaymentBag, val chanBag: ChannelBag, val dataBag
 
   // These are executed in Channel context
 
-  override def fulfillReceived(fulfill: RemoteFulfill): Unit = opm process fulfill
+  override def localAddRejected(reason: LocalAddRejected): Unit = opm process reason
 
-  override def onException: PartialFunction[Malfunction, Unit] = {
-    case (_, _, commandError: CMDException) => opm process commandError
-  }
+  override def fulfillReceived(fulfill: RemoteFulfill): Unit = opm process fulfill
 
   override def onBecome: PartialFunction[Transition, Unit] = {
     case (_, _, _, SLEEPING, CLOSING) => next(statusUpdateStream)
     case (_, _, _, OPEN, SLEEPING | CLOSING) => next(statusUpdateStream)
 
     case (_, prevHc: HostedCommits, nextHc: HostedCommits, _, _)
-      if prevHc.getError.isEmpty && nextHc.getError.nonEmpty =>
+      if prevHc.error.isEmpty && nextHc.error.nonEmpty =>
       next(statusUpdateStream)
 
     case (_, prevHc: HostedCommits, nextHc: HostedCommits, _, _)
-      if prevHc.getError.nonEmpty && nextHc.getError.isEmpty =>
+      if prevHc.error.nonEmpty && nextHc.error.isEmpty =>
       opm process OutgoingPaymentMaster.CMDChanGotOnline
       next(statusUpdateStream)
 

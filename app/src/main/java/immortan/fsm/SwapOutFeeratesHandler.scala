@@ -14,11 +14,11 @@ import immortan.utils.Rx
 
 
 object SwapOutFeeratesHandler {
-  final val WAITING_FIRST_RESPONSE = "feerates-state-waiting-first-response"
-  final val WAITING_REST_OF_RESPONSES = "feerates-state-waiting-rest-of-responses"
-  final val FINALIZED = "feerates-state-finalized"
-  final val CMDCancel = "feerates-cmd-cancel"
+  final val WAITING_FIRST_RESPONSE = 0
+  final val WAITING_REST_OF_RESPONSES = 1
+  final val FINALIZED = 2
 
+  final val CMDCancel = "feerates-cmd-cancel"
   case class NoSwapOutSupport(worker: CommsTower.Worker)
   case class YesSwapOutSupport(worker: CommsTower.Worker, msg: SwapOut)
   case class SwapOutResponseExt(msg: SwapOutFeerates, remoteInfo: RemoteNodeInfo)
@@ -78,7 +78,7 @@ abstract class SwapOutFeeratesHandler extends StateMachine[FeeratesData] { me =>
       for (cnc <- data.cmdStart.capableCncs) CommsTower.rmListenerNative(cnc.commits.remoteInfo, swapOutListener)
       become(data, FINALIZED)
 
-    case (cmd: CMDStart, null) =>
+    case (cmd: CMDStart, -1) =>
       become(FeeratesData(results = cmd.capableCncs.map(_.commits.remoteInfo -> None).toMap, cmd), WAITING_FIRST_RESPONSE)
       for (cnc <- cmd.capableCncs) CommsTower.listenNative(Set(swapOutListener), cnc.commits.remoteInfo)
       Rx.ioQueue.delay(30.seconds).foreach(_ => me doSearch true)

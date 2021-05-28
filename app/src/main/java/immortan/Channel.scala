@@ -19,12 +19,12 @@ import scala.util.Failure
 
 
 object Channel {
-  final val WAIT_FOR_INIT = "WAIT-FOR-INIT"
-  final val WAIT_FOR_ACCEPT = "WAIT-FOR-ACCEPT"
-  final val WAIT_FUNDING_DONE = "WAIT-FUNDING-DONE"
-  final val SLEEPING = "SLEEPING"
-  final val CLOSING = "CLOSING"
-  final val OPEN = "OPEN"
+  final val WAIT_FOR_INIT = 0
+  final val WAIT_FOR_ACCEPT = 1
+  final val WAIT_FUNDING_DONE = 2
+  final val SLEEPING = 3
+  final val CLOSING = 4
+  final val OPEN = 5
 
   // Single stacking thread for all channels, must be used when asking channels for pending payments to avoid race conditions
   implicit val channelContext: ExecutionContextExecutor = scala.concurrent.ExecutionContext fromExecutor Executors.newSingleThreadExecutor
@@ -49,7 +49,7 @@ object Channel {
 
   def isOperational(chan: Channel): Boolean = chan.data match {
     case data: DATA_NORMAL => data.localShutdown.isEmpty && data.remoteShutdown.isEmpty
-    case hostedCommits: HostedCommits => hostedCommits.getError.isEmpty
+    case hostedCommits: HostedCommits => hostedCommits.error.isEmpty
     case _ => false
   }
 
@@ -74,14 +74,14 @@ trait Channel extends StateMachine[ChannelData] with CanBeRepliedTo { me =>
 
   def STORE(data: PersistentChannelData): PersistentChannelData
 
-  def BECOME(data1: ChannelData, state1: String): Unit = {
+  def BECOME(data1: ChannelData, state1: Int): Unit = {
     // Transition must be defined before vars are updated
     val trans = (me, data, data1, state, state1)
     super.become(data1, state1)
     events.onBecome(trans)
   }
 
-  def StoreBecomeSend(data1: PersistentChannelData, state1: String, lnMessage: LightningMessage*): Unit = {
+  def StoreBecomeSend(data1: PersistentChannelData, state1: Int, lnMessage: LightningMessage*): Unit = {
     // Storing goes first to ensure we retain an updated data before revealing it if anything goes wrong
 
     STORE(data1)
@@ -101,6 +101,7 @@ trait Channel extends StateMachine[ChannelData] with CanBeRepliedTo { me =>
     }
 
     override def stateUpdated(rejects: Seq[RemoteReject] = Nil): Unit = for (lst <- listeners) lst.stateUpdated(rejects)
+    override def localAddRejected(reason: LocalAddRejected): Unit = for (lst <- listeners) lst.localAddRejected(reason)
     override def fulfillReceived(fulfill: RemoteFulfill): Unit = for (lst <- listeners) lst.fulfillReceived(fulfill)
     override def addReceived(add: UpdateAddHtlcExt): Unit = for (lst <- listeners) lst.addReceived(add)
   }
@@ -109,39 +110,40 @@ trait Channel extends StateMachine[ChannelData] with CanBeRepliedTo { me =>
 
   class ActorEventsReceiver extends Actor {
     context.system.eventStream.subscribe(channel = classOf[CurrentBlockCount], subscriber = self)
+    override def receive: Receive = main(lastSeenBlockCount = None, useDelay = true)
 
-    def main(lastSeenBlockCount: Option[CurrentBlockCount] = None): Receive = {
-      case currentBlockCount: CurrentBlockCount if lastSeenBlockCount.isEmpty =>
-        // Delay block count propagation to give peer a last change to resolve pending HTLC
+    def main(lastSeenBlockCount: Option[CurrentBlockCount], useDelay: Boolean): Receive = {
+      case currentBlockCount: CurrentBlockCount if lastSeenBlockCount.isEmpty && useDelay =>
+        // Delay first block count propagation to give peer a last change to resolve on reconnect
         context.system.scheduler.scheduleOnce(10.seconds)(self ! "propagate")(LNParams.ec)
-        context become main(currentBlockCount.asSome)
+        context become main(currentBlockCount.asSome, useDelay = true)
 
-      case currentBlockCount: CurrentBlockCount if lastSeenBlockCount.isDefined =>
-        // Replace block count with a new one if it happens while delaying propagation
-        context become main(currentBlockCount.asSome)
+      case currentBlockCount: CurrentBlockCount if lastSeenBlockCount.isDefined && useDelay =>
+        // Replace block count with a new one if this happens while propagation is being delayed
+        context become main(currentBlockCount.asSome, useDelay = true)
 
       case "propagate" if lastSeenBlockCount.isDefined =>
-        // Propagate block count and wait for new one
+        // Propagate all subsequent block counts right away
+        context become main(None, useDelay = false)
+        // Popagate the last delayed block count
         process(lastSeenBlockCount.get)
-        context become main(None)
 
       case msg =>
         process(msg)
     }
-
-    override def receive: Receive = main(None)
   }
 }
 
 object ChannelListener {
   type Malfunction = (Channel, ChannelData, Throwable)
-  type Transition = (Channel, ChannelData, ChannelData, String, String)
+  type Transition = (Channel, ChannelData, ChannelData, Int, Int)
 }
 
 trait ChannelListener {
   def onException: PartialFunction[ChannelListener.Malfunction, Unit] = none
   def onBecome: PartialFunction[ChannelListener.Transition, Unit] = none
   def stateUpdated(rejects: Seq[RemoteReject] = Nil): Unit = none
+  def localAddRejected(reason: LocalAddRejected): Unit = none
   def fulfillReceived(fulfill: RemoteFulfill): Unit = none
   def addReceived(add: UpdateAddHtlcExt): Unit = none
 }

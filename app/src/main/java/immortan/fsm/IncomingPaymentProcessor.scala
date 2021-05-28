@@ -18,11 +18,12 @@ import scala.util.Success
 
 
 object IncomingPaymentProcessor {
-  final val SHUTDOWN = "incoming-processor-shutdown"
-  final val FINALIZING = "incoming-processor-finalizing"
-  final val RECEIVING = "incoming-processor-receiving"
-  final val SENDING = "incoming-processor-sending"
   final val CMDTimeout = "cmd-timeout"
+
+  final val SHUTDOWN = 0
+  final val FINALIZING = 1
+  final val RECEIVING = 2
+  final val SENDING = 3
 }
 
 sealed trait IncomingPaymentProcessor extends StateMachine[IncomingProcessorData] with CanBeShutDown { me =>
@@ -129,7 +130,7 @@ case class TrampolineAborted(failure: FailureMessage) extends IncomingProcessorD
 
 class TrampolinePaymentRelayer(val fullTag: FullPaymentTag, cm: ChannelMaster) extends IncomingPaymentProcessor with OutgoingPaymentListener { self =>
   // Important: we may have outgoing leftovers on restart, so we always need to create a sender FSM right away, which will be firing events once leftovers get finalized
-  override def gotFirstPreimage(data: OutgoingPaymentSenderData, fulfill: RemoteFulfill): Unit = self doProcess TrampolineRevealed(fulfill.preimage, data.asSome)
+  override def gotFirstPreimage(data: OutgoingPaymentSenderData, fulfill: RemoteFulfill): Unit = self doProcess TrampolineRevealed(fulfill.theirPreimage, data.asSome)
   override def wholePaymentFailed(data: OutgoingPaymentSenderData): Unit = self doProcess data
 
   def first(adds: ReasonableTrampolines): IncomingPacket.NodeRelayPacket = adds.head.packet
@@ -262,7 +263,7 @@ class TrampolinePaymentRelayer(val fullTag: FullPaymentTag, cm: ChannelMaster) e
         val inner = first(adds).innerPayload
         val totalFeeReserve = lastAmountIn - inner.amountToForward - relayFee(inner, LNParams.trampoline)
         val extraEdges = RouteCalculation.makeExtraEdges(inner.invoiceRoutingInfo.getOrElse(Nil), inner.outgoingNodeId)
-        val routerConf = LNParams.routerConf.copy(maxCltvDelta = expiryIn(adds) - inner.outgoingCltv - LNParams.trampoline.cltvExpiryDelta)
+        val routerConf = LNParams.routerConf.copy(initCltvMaxDelta = expiryIn(adds) - inner.outgoingCltv - LNParams.trampoline.cltvExpiryDelta)
         // It makes no sense to try to route out a payment through channels used by peer to route it in, this also includes possible unused multiple channels with same peer
         val allowedChans = cm.all -- adds.map(_.add.channelId).flatMap(cm.all.get).flatMap(Channel.chanAndCommitsOpt).map(_.commits.remoteInfo.nodeId).flatMap(cm.fromNode).map(_.commits.channelId)
         val send = SendMultiPart(fullTag, Left(inner.outgoingCltv), SplitInfo(inner.amountToForward, inner.amountToForward), routerConf, inner.outgoingNodeId, totalFeeReserve, allowedChans.values.toSeq)

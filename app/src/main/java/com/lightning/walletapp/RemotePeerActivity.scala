@@ -203,7 +203,7 @@ class RemotePeerActivity extends BaseActivity with ExternalDataChecker { me =>
     alert.dismiss
 
     // We only need local params to extract defaultFinalScriptPubKey
-    val localParams = LNParams.makeChannelParams(remoteNodeInfo, LNParams.chainWallet, isFunder = false, LNParams.minFundingSatoshis)
+    val localParams = LNParams.makeChannelParams(LNParams.chainWallet, isFunder = false, LNParams.minFundingSatoshis)
     new HCOpenHandler(remoteNodeInfo, peerSpecificSecret = randomBytes32, localParams.defaultFinalScriptPubKey, LNParams.cm) {
       def onEstablished(channel: ChannelHosted): Unit = disconnectListenersAndFinish
       def onFailure(reason: Throwable): Unit = revertAndInform(reason)

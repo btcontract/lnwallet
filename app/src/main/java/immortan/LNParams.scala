@@ -28,26 +28,27 @@ import scala.util.Try
 
 object LNParams {
   val blocksPerDay: Int = 144 // On average we can expect this many blocks per day
-  val cltvRejectThreshold: Int = 144 // Reject incoming payment if CLTV expiry is closer than this to current chain tip when HTLC arrives
-  val incomingFinalCltvExpiry: CltvExpiryDelta = CltvExpiryDelta(144 + 72) // Ask payer to set final CLTV expiry to payer's current chain tip + this many blocks
+  val ncFulfillSafetyBlocks: Int = 36 // Force-close and redeem on chain if NC peer stalls state update and this many blocks are left until expiration
+  val hcFulfillSafetyBlocks: Int = 144 // Offer to publish preimage on chain if HC peer stalls state update and this many blocks are left until expiration
+  val cltvRejectThreshold: Int = hcFulfillSafetyBlocks + 36 // Reject incoming payment if CLTV expiry is closer than this to current chain tip when HTLC arrives
+  val incomingFinalCltvExpiry: CltvExpiryDelta = CltvExpiryDelta(hcFulfillSafetyBlocks + 72) // Ask payer to set final CLTV expiry to current chain tip + this many blocks
 
   val routingCltvExpiryDelta: CltvExpiryDelta = CltvExpiryDelta(144 * 2) // Ask relayer to set CLTV expiry delta for our channel to this much blocks
   val maxCltvExpiryDelta: CltvExpiryDelta = CltvExpiryDelta(1008) // A relative expiry per single channel hop can not exceed this much blocks
-  val maxToLocalDelay: CltvExpiryDelta = CltvExpiryDelta(2016)
-  val maxFundingSatoshis: Satoshi = Satoshi(10000000000L)
-  val maxReserveToFundingRatio: Double = 0.05
-  val maxNegotiationIterations: Int = 20
+  val maxToLocalDelay: CltvExpiryDelta = CltvExpiryDelta(2016) // We ask peer to delay their payment for this long in case of force-close
+  val maxFundingSatoshis: Satoshi = Satoshi(10000000000L) // Proposed channels of capacity more than this are not allowed
+  val maxReserveToFundingRatio: Double = 0.05 // %
+  val maxOffChainFeeRatio: Double = 0.01 // %
+  val maxNegotiationIterations: Int = 50
   val maxChainConnectionsCount: Int = 5
   val maxAcceptedHtlcs: Int = 483
 
-  val minInvoiceExpiryDelta: CltvExpiryDelta = CltvExpiryDelta(18)
-  val minPayment: MilliSatoshi = MilliSatoshi(5000L)
-  val minFundingSatoshis: Satoshi = Satoshi(100000L)
+  val minInvoiceExpiryDelta: CltvExpiryDelta = CltvExpiryDelta(18) // If payee does not provide an explicit relative CLTV this is what we use by default
+  val minForceClosableIncomingHtlcAmountToFeeRatio = 2 // When incoming HTLC gets (nearly) expired, how much higher than trim threshold should it be for us to force-close
+  val minPayment: MilliSatoshi = MilliSatoshi(1000L) // We can neither send nor receive LN payments which are below this value
+  val minFundingSatoshis: Satoshi = Satoshi(200000L) // Proposed channels of capacity less than this are not allowed
   val minDustLimit: Satoshi = Satoshi(546L)
-  val minDepthBlocks: Int = 3
-
-  val reserveToFundingRatio: Double = 0.0025 // %
-  val offChainFeeRatio: Double = 0.01 // %
+  val minDepthBlocks: Int = 2
 
   // Variables to be assigned at runtime
 
@@ -110,7 +111,7 @@ object LNParams {
 
   // We make sure force-close pays directly to wallet
   def makeChannelParams(chainWallet: WalletExt, isFunder: Boolean, fundingAmount: Satoshi): LocalParams = {
-    val walletKey: PublicKey = Await.result(chainWallet.wallet.getReceiveAddresses, atMost = 40.seconds).values.head.publicKey
+    val walletKey = Await.result(chainWallet.wallet.getReceiveAddresses, atMost = 40.seconds).values.head.publicKey
     makeChannelParams(Script.write(Script.pay2wpkh(walletKey).toList), walletKey, isFunder, fundingAmount)
   }
 
@@ -120,8 +121,8 @@ object LNParams {
 
   // Note: we set local maxHtlcValueInFlightMsat to channel capacity to simplify calculations
   def makeChannelParams(defFinalScriptPubkey: ByteVector, walletStaticPaymentBasepoint: PublicKey, isFunder: Boolean, keyPath: DeterministicWallet.KeyPath, fundingAmount: Satoshi): LocalParams =
-    LocalParams(ChannelKeys.fromPath(secret.keys.master, keyPath), minDustLimit, UInt64(fundingAmount.toMilliSatoshi.toLong), (fundingAmount * reserveToFundingRatio).max(minDustLimit),
-      minPayment, maxToLocalDelay, maxAcceptedHtlcs, isFunder, defFinalScriptPubkey, walletStaticPaymentBasepoint)
+    LocalParams(ChannelKeys.fromPath(secret.keys.master, keyPath), minDustLimit, UInt64(fundingAmount.toMilliSatoshi.toLong), channelReserve = (fundingAmount * 0.001).max(minDustLimit),
+      minPayment, maxToLocalDelay, maxAcceptedHtlcs = 6, isFunder, defFinalScriptPubkey, walletStaticPaymentBasepoint)
 
   def currentBlockDay: Long = blockCount.get / blocksPerDay
 

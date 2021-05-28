@@ -6,17 +6,20 @@ import fr.acinq.eclair.channel._
 import com.softwaremill.quicklens._
 import fr.acinq.eclair.transactions._
 import fr.acinq.bitcoin.{ByteVector32, ByteVector64}
+import immortan.crypto.Tools.{Any2Some, hostedChanId}
 import scodec.bits.ByteVector
-import immortan.crypto.Tools
 
 
 case class WaitRemoteHostedReply(remoteInfo: RemoteNodeInfo, refundScriptPubKey: ByteVector, secret: ByteVector) extends ChannelData
 
 case class WaitRemoteHostedStateUpdate(remoteInfo: RemoteNodeInfo, hc: HostedCommits) extends ChannelData
 
-case class HostedCommits(remoteInfo: RemoteNodeInfo, lastCrossSignedState: LastCrossSignedState, nextLocalUpdates: List[UpdateMessage], nextRemoteUpdates: List[UpdateMessage],
-                         localSpec: CommitmentSpec, updateOpt: Option[ChannelUpdate], localError: Option[Error], remoteError: Option[Error], resizeProposal: Option[ResizeChannel] = None,
-                         overrideProposal: Option[StateOverride] = None, startedAt: Long = System.currentTimeMillis) extends PersistentChannelData with Commitments { me =>
+case class HostedCommits(remoteInfo: RemoteNodeInfo, localSpec: CommitmentSpec, lastCrossSignedState: LastCrossSignedState, nextLocalUpdates: List[UpdateMessage],
+                         nextRemoteUpdates: List[UpdateMessage], updateOpt: Option[ChannelUpdate], postErrorOutgoingResolvedIds: Set[Long], localError: Option[Error],
+                         remoteError: Option[Error], resizeProposal: Option[ResizeChannel] = None, overrideProposal: Option[StateOverride] = None,
+                         startedAt: Long = System.currentTimeMillis) extends PersistentChannelData with Commitments { me =>
+
+  val error: Option[Error] = localError.orElse(remoteError)
 
   val nextTotalLocal: Long = lastCrossSignedState.localUpdates + nextLocalUpdates.size
 
@@ -24,11 +27,16 @@ case class HostedCommits(remoteInfo: RemoteNodeInfo, lastCrossSignedState: LastC
 
   val nextLocalSpec: CommitmentSpec = CommitmentSpec.reduce(localSpec, nextLocalUpdates, nextRemoteUpdates)
 
-  val channelId: ByteVector32 = Tools.hostedChanId(remoteInfo.nodeSpecificPubKey.value, remoteInfo.nodeId.value)
+  val channelId: ByteVector32 = hostedChanId(remoteInfo.nodeSpecificPubKey.value, remoteInfo.nodeId.value)
 
-  val allOutgoing: Set[UpdateAddHtlc] = localSpec.outgoingAdds ++ nextLocalSpec.outgoingAdds
+  val allOutgoing: Set[UpdateAddHtlc] = {
+    val allOutgoingAdds = localSpec.outgoingAdds ++ nextLocalSpec.outgoingAdds
+    allOutgoingAdds.filterNot(add => postErrorOutgoingResolvedIds contains add.id)
+  }
 
   val crossSignedIncoming: Set[UpdateAddHtlcExt] = for (theirAdd <- localSpec.incomingAdds) yield UpdateAddHtlcExt(theirAdd, remoteInfo)
+
+  val revealedFulfills: Set[LocalFulfill] = getPendingFulfills(Helpers extractRevealedPreimages nextLocalUpdates)
 
   val maxSendInFlight: MilliSatoshi = lastCrossSignedState.initHostedChannel.maxHtlcValueInFlightMsat.toMilliSatoshi
 
@@ -43,30 +51,29 @@ case class HostedCommits(remoteInfo: RemoteNodeInfo, lastCrossSignedState: LastC
       blockDay, nextLocalSpec.toLocal, nextLocalSpec.toRemote, nextTotalLocal, nextTotalRemote, nextLocalSpec.incomingAdds.toList,
       nextLocalSpec.outgoingAdds.toList, localSigOfRemote = ByteVector64.Zeroes, remoteSigOfLocal = ByteVector64.Zeroes)
 
-  def getError: Option[Error] = localError.orElse(remoteError)
   def addLocalProposal(update: UpdateMessage): HostedCommits = copy(nextLocalUpdates = nextLocalUpdates :+ update)
   def addRemoteProposal(update: UpdateMessage): HostedCommits = copy(nextRemoteUpdates = nextRemoteUpdates :+ update)
   def isResizingSupported: Boolean = lastCrossSignedState.initHostedChannel.version == HostedChannelVersion.RESIZABLE
   def alreadyReplied(id: Long): Boolean = nextLocalSpec.findIncomingHtlcById(id).isEmpty
 
-  def sendAdd(cmd: CMD_ADD_HTLC, blockHeight: Long): (HostedCommits, UpdateAddHtlc) = {
-    val encryptedTag: PaymentTagTlv.EncryptedSecretStream = TlvStream(EncryptedPaymentSecret(cmd.encryptedTag) :: Nil)
-    val add = UpdateAddHtlc(channelId, nextTotalLocal + 1, cmd.firstAmount, cmd.fullTag.paymentHash, cmd.cltvExpiry, cmd.packetAndSecrets.packet, encryptedTag)
-    val commits1: HostedCommits = addLocalProposal(add)
+  type UpdatedHCAndAdd = (HostedCommits, UpdateAddHtlc)
+  def sendAdd(cmd: CMD_ADD_HTLC, blockHeight: Long): Either[LocalAddRejected, UpdatedHCAndAdd] = {
+    val completeAdd = cmd.incompleteAdd.copy(channelId = channelId, id = nextTotalLocal + 1)
+    val commits1 = addLocalProposal(completeAdd)
 
-    if (cmd.payload.amount < minSendable) throw CMDException(InPrincipleNotSendable, cmd)
-    if (CltvExpiry(blockHeight) >= cmd.cltvExpiry) throw CMDException(InPrincipleNotSendable, cmd)
-    if (LNParams.maxCltvExpiryDelta.toCltvExpiry(blockHeight) < cmd.cltvExpiry) throw CMDException(InPrincipleNotSendable, cmd)
-    if (commits1.nextLocalSpec.outgoingAdds.size > lastCrossSignedState.initHostedChannel.maxAcceptedHtlcs) throw CMDException(new RuntimeException, cmd)
-    if (commits1.allOutgoing.foldLeft(0L.msat)(_ + _.amountMsat) > maxSendInFlight) throw CMDException(new RuntimeException, cmd)
-    if (commits1.nextLocalSpec.toLocal < 0L.msat) throw CMDException(new RuntimeException, cmd)
-    (commits1, add)
+    if (cmd.payload.amount < minSendable) return InPrincipleNotSendable(cmd.incompleteAdd).asLeft
+    if (CltvExpiry(blockHeight) >= cmd.cltvExpiry) return InPrincipleNotSendable(cmd.incompleteAdd).asLeft
+    if (LNParams.maxCltvExpiryDelta.toCltvExpiry(blockHeight) < cmd.cltvExpiry) return InPrincipleNotSendable(cmd.incompleteAdd).asLeft
+    if (commits1.nextLocalSpec.outgoingAdds.size > lastCrossSignedState.initHostedChannel.maxAcceptedHtlcs) return ChannelNotAbleToSend(cmd.incompleteAdd).asLeft
+    if (commits1.allOutgoing.foldLeft(0L.msat)(_ + _.amountMsat) > maxSendInFlight) return ChannelNotAbleToSend(cmd.incompleteAdd).asLeft
+    if (commits1.nextLocalSpec.toLocal < 0L.msat) return ChannelNotAbleToSend(cmd.incompleteAdd).asLeft
+    Right(commits1, completeAdd)
   }
 
   def receiveAdd(add: UpdateAddHtlc): HostedCommits = {
     val commits1: HostedCommits = addRemoteProposal(add)
+    // We do not check whether total incoming amount exceeds maxHtlcValueInFlightMsat becase we always accept up to channel capacity
     if (commits1.nextLocalSpec.incomingAdds.size > lastCrossSignedState.initHostedChannel.maxAcceptedHtlcs) throw ChannelTransitionFail(channelId)
-    // Note: we do not check whether total incoming amount exceeds maxHtlcValueInFlightMsat becase we always accept up to channel capacity
     if (commits1.nextLocalSpec.toRemote < 0L.msat) throw ChannelTransitionFail(channelId)
     if (add.id != nextTotalRemote + 1) throw ChannelTransitionFail(channelId)
     commits1
@@ -75,17 +82,20 @@ case class HostedCommits(remoteInfo: RemoteNodeInfo, lastCrossSignedState: LastC
   // Relaxed constraints for receiveng preimages over HCs: we look at nextLocalSpec, not localSpec
   def receiveFulfill(fulfill: UpdateFulfillHtlc): (HostedCommits, UpdateAddHtlc) = nextLocalSpec.findOutgoingHtlcById(fulfill.id) match {
     case Some(ourAdd) if ourAdd.add.paymentHash != fulfill.paymentHash => throw ChannelTransitionFail(channelId)
+    case _ if postErrorOutgoingResolvedIds.contains(fulfill.id) => throw ChannelTransitionFail(channelId)
     case Some(ourAdd) => (addRemoteProposal(fulfill), ourAdd.add)
     case None => throw ChannelTransitionFail(channelId)
   }
 
   def receiveFail(fail: UpdateFailHtlc): HostedCommits = localSpec.findOutgoingHtlcById(fail.id) match {
+    case _ if postErrorOutgoingResolvedIds.contains(fail.id) => throw ChannelTransitionFail(channelId)
     case None => throw ChannelTransitionFail(channelId)
     case _ => addRemoteProposal(fail)
   }
 
   def receiveFailMalformed(fail: UpdateFailMalformedHtlc): HostedCommits = localSpec.findOutgoingHtlcById(fail.id) match {
     case _ if fail.failureCode.&(FailureMessageCodecs.BADONION) != 0 => throw ChannelTransitionFail(channelId)
+    case _ if postErrorOutgoingResolvedIds.contains(fail.id) => throw ChannelTransitionFail(channelId)
     case None => throw ChannelTransitionFail(channelId)
     case _ => addRemoteProposal(fail)
   }

@@ -24,7 +24,6 @@ import fr.acinq.bitcoin.{ByteVector32, OutPoint, Transaction}
 import fr.acinq.eclair.blockchain.{PublishAsap, WatchConfirmed, WatchSpent}
 import fr.acinq.eclair.blockchain.fee.OnChainFeeConf
 import fr.acinq.eclair.channel.Helpers.Closing
-import scala.collection.immutable.Queue
 
 
 trait Handlers { me: ChannelNormal =>
@@ -37,11 +36,13 @@ trait Handlers { me: ChannelNormal =>
   def publishIfNeeded(txes: Iterable[Transaction], irrevocablySpent: Map[OutPoint, ByteVector32] = Map.empty): Unit =
     txes.filterNot(Closing inputsAlreadySpent irrevocablySpent).map(PublishAsap).foreach(event => chainWallet.watcher ! event)
 
+  // Watch utxos only we can spend
   def watchConfirmedIfNeeded(txes: Iterable[Transaction], irrevocablySpent: Map[OutPoint, ByteVector32] = Map.empty): Unit =
     txes.filterNot(Closing inputsAlreadySpent irrevocablySpent).map(BITCOIN_TX_CONFIRMED).foreach { replyEvent =>
       chainWallet.watcher ! WatchConfirmed(receiver, replyEvent.tx, replyEvent, LNParams.minDepthBlocks)
     }
 
+  // Watch utxos that both we and peer can spend
   def watchSpentIfNeeded(parentTx: Transaction, txes: Iterable[Transaction], irrevocablySpent: Map[OutPoint, ByteVector32] = Map.empty): Unit =
     txes.filterNot(Closing inputsAlreadySpent irrevocablySpent).map(_.txIn.head.outPoint.index.toInt).foreach { outPointIndex =>
       chainWallet.watcher ! WatchSpent(receiver, parentTx, outPointIndex, BITCOIN_OUTPUT_SPENT)
@@ -63,68 +64,6 @@ trait Handlers { me: ChannelNormal =>
     publishIfNeeded(rcp.claimMainOutputTx ++ rcp.mainPenaltyTx ++ rcp.htlcPenaltyTxs ++ rcp.claimHtlcDelayedPenaltyTxs, rcp.irrevocablySpent)
     watchSpentIfNeeded(rcp.commitTx, rcp.mainPenaltyTx ++ rcp.htlcPenaltyTxs, rcp.irrevocablySpent)
     watchConfirmedIfNeeded(List(rcp.commitTx) ++ rcp.claimMainOutputTx, rcp.irrevocablySpent)
-  }
-
-  def handleSync(channelReestablish: ChannelReestablish, d: HasNormalCommitments): (NormalCommits, Queue[LightningMessage]) = {
-    var sendQueue = Queue.empty[LightningMessage]
-
-    // first we clean up unacknowledged updates
-    val commitments1 = d.commitments.copy(
-      localChanges = d.commitments.localChanges.copy(proposed = Nil),
-      remoteChanges = d.commitments.remoteChanges.copy(proposed = Nil),
-      localNextHtlcId = d.commitments.localNextHtlcId - d.commitments.localChanges.proposed.collect { case u: UpdateAddHtlc => u }.size,
-      remoteNextHtlcId = d.commitments.remoteNextHtlcId - d.commitments.remoteChanges.proposed.collect { case u: UpdateAddHtlc => u }.size)
-
-    def resendRevocation: Unit =
-      if (commitments1.localCommit.index == channelReestablish.nextRemoteRevocationNumber + 1) {
-        val localPerCommitmentSecret = commitments1.localParams.keys.commitmentSecret(d.commitments.localCommit.index - 1)
-        val localNextPerCommitmentPoint = commitments1.localParams.keys.commitmentPoint(d.commitments.localCommit.index + 1)
-        sendQueue :+= RevokeAndAck(commitments1.channelId, localPerCommitmentSecret, localNextPerCommitmentPoint)
-      } else if (commitments1.localCommit.index != channelReestablish.nextRemoteRevocationNumber) {
-        throw ChannelTransitionFail(d.commitments.channelId)
-      }
-
-    commitments1.remoteNextCommitInfo match {
-      case _ if commitments1.remoteNextCommitInfo.isRight && commitments1.remoteCommit.index + 1 == channelReestablish.nextLocalCommitmentNumber => resendRevocation
-      case Left(waitingForRevocation) if waitingForRevocation.nextRemoteCommit.index + 1 == channelReestablish.nextLocalCommitmentNumber => resendRevocation
-
-      case Left(waitingForRevocation) if waitingForRevocation.nextRemoteCommit.index == channelReestablish.nextLocalCommitmentNumber =>
-        if (commitments1.localCommit.index <= waitingForRevocation.sentAfterLocalCommitIndex) resendRevocation
-        (commitments1.localChanges.signed :+ waitingForRevocation.sent).foreach(update => sendQueue :+= update)
-        if (commitments1.localCommit.index > waitingForRevocation.sentAfterLocalCommitIndex) resendRevocation
-
-      case _ => throw ChannelTransitionFail(d.commitments.channelId)
-    }
-
-    (commitments1, sendQueue)
-  }
-
-  def maybeStartNegotiations(d: DATA_NORMAL, remote: Shutdown, conf: OnChainFeeConf): (HasNormalCommitments, List[ChannelMessage]) = {
-    // so we don't have any unsigned outgoing htlcs
-    val (localShutdown1, sendList) = d.localShutdown match {
-      case Some(localShutdown) =>
-        (localShutdown, Nil)
-      case None =>
-        val localShutdown = Shutdown(d.channelId, d.commitments.localParams.defaultFinalScriptPubKey)
-        // we need to send our shutdown if we didn't previously
-        (localShutdown, localShutdown :: Nil)
-    }
-
-    // are there pending signed htlcs on either changes? we need to have received their last revocation!
-    if (d.commitments.hasNoPendingHtlcsOrFeeUpdate) {
-      // there are no pending signed changes, let's go directly to NEGOTIATING
-      if (d.commitments.localParams.isFunder) {
-        // we are funder, need to initiate the negotiation by sending the first closing_signed
-        val (closingTx, closingSigned) = Closing.makeFirstClosingTx(d.commitments, localShutdown1.scriptPubKey, remote.scriptPubKey, conf)
-        (DATA_NEGOTIATING(d.commitments, localShutdown1, remote, List(ClosingTxProposed(closingTx.tx, closingSigned) :: Nil), bestUnpublishedClosingTxOpt = None), sendList :+ closingSigned)
-      } else {
-        // we are fundee, will wait for their closing_signed
-        (DATA_NEGOTIATING(d.commitments, localShutdown1, remote, closingTxProposed = List(Nil), bestUnpublishedClosingTxOpt = None), sendList)
-      }
-    } else {
-      // there are some pending signed changes, we need to wait for them to be settled (fail/fulfill htlcs and sign fee updates)
-      (d.copy(localShutdown = Some(localShutdown1), remoteShutdown = Some(remote)), sendList)
-    }
   }
 
   def handleNegotiations(d: DATA_NEGOTIATING, m: ClosingSigned, conf: OnChainFeeConf): Unit = {
@@ -165,7 +104,7 @@ trait Handlers { me: ChannelNormal =>
 
   def handleMutualClose(closingTx: Transaction, d: Either[DATA_NEGOTIATING, DATA_CLOSING]): Unit = {
     val nextData = d match {
-      case Left(negotiating) => DATA_CLOSING(negotiating.commitments, fundingTx = None, System.currentTimeMillis, negotiating.closingTxProposed.flatten.map(_.unsignedTx), closingTx :: Nil)
+      case Left(negotiating) => DATA_CLOSING(negotiating.commitments, System.currentTimeMillis, negotiating.closingTxProposed.flatten.map(_.unsignedTx), closingTx :: Nil)
       case Right(closing) => closing.copy(mutualClosePublished = closing.mutualClosePublished :+ closingTx)
     }
 

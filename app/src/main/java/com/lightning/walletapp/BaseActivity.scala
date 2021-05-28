@@ -454,7 +454,7 @@ trait BaseActivity extends AppCompatActivity { me =>
       val cltvExpiry = Right(prExt.pr.minFinalCltvExpiryDelta getOrElse LNParams.minInvoiceExpiryDelta)
       val fullTag = FullPaymentTag(prExt.pr.paymentHash, prExt.pr.paymentSecret.get, PaymentTagTlv.LOCALLY_SENT)
       // An assumption here is that maxSendable is at most ChannelMaster.maxSendable so max off-chain fee ratio is already counted in so we can send amount + fee
-      val feeReserve = toSend * LNParams.offChainFeeRatio match { case percent if percent > typicalChainTxFee && WalletApp.capLNFeeToChain => typicalChainTxFee case percent => percent }
+      val feeReserve = toSend * LNParams.maxOffChainFeeRatio match { case percent if percent > typicalChainTxFee && WalletApp.capLNFeeToChain => typicalChainTxFee case percent => percent }
       SendMultiPart(fullTag, cltvExpiry, SplitInfo(totalSum = 0L.msat, toSend), LNParams.routerConf, prExt.pr.nodeId, feeReserve, LNParams.cm.all.values.toSeq, fullTag.paymentSecret, extraEdges)
     }
 
