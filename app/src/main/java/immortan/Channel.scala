@@ -59,9 +59,14 @@ object Channel {
     case _ => false
   }
 
-  def isOperationalOrWaiting(chan: Channel): Boolean = isOperational(chan) || isWaiting(chan)
-  def isOperationalAndOpen(chan: Channel): Boolean = isOperational(chan) && OPEN == chan.state
-  def isOperationalAndSleeping(chan: Channel): Boolean = isOperational(chan) && SLEEPING == chan.state
+  def isOperationalOrWaiting(chan: Channel): Boolean =
+    isOperational(chan) || isWaiting(chan)
+
+  def isOperationalAndOpen(chan: Channel): Boolean =
+    isOperational(chan) && OPEN == chan.state
+
+  def isOperationalAndSleeping(chan: Channel): Boolean =
+    isOperational(chan) && SLEEPING == chan.state
 }
 
 trait Channel extends StateMachine[ChannelData] with CanBeRepliedTo { me =>
@@ -82,7 +87,7 @@ trait Channel extends StateMachine[ChannelData] with CanBeRepliedTo { me =>
   }
 
   def StoreBecomeSend(data1: PersistentChannelData, state1: Int, lnMessage: LightningMessage*): Unit = {
-    // Storing goes first to ensure we retain an updated data before revealing it if anything goes wrong
+    // Storing first to ensure we retain an updated data before revealing it if anything goes wrong
 
     STORE(data1)
     BECOME(data1, state1)

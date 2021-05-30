@@ -162,7 +162,7 @@ abstract class ChannelHosted extends Channel { me =>
 
 
     case (hc: HostedCommits, remoteLCSS: LastCrossSignedState, SLEEPING) if hc.error.isEmpty =>
-      val hc1 = hc.resizeProposal.filter(_ isRemoteResized remoteLCSS).map(hc.withResize).getOrElse(hc) // But they may have a resized one
+      val hc1 = hc.resizeProposal.filter(_ isRemoteResized remoteLCSS).map(hc.withResize).getOrElse(hc) // They may have a resized LCSS
       val weAreEven = hc.lastCrossSignedState.remoteUpdates == remoteLCSS.localUpdates && hc.lastCrossSignedState.localUpdates == remoteLCSS.remoteUpdates
       val weAreAhead = hc.lastCrossSignedState.remoteUpdates > remoteLCSS.localUpdates || hc.lastCrossSignedState.localUpdates > remoteLCSS.remoteUpdates
       val isLocalSigOk = remoteLCSS.verifyRemoteSig(hc1.remoteInfo.nodeSpecificPubKey)

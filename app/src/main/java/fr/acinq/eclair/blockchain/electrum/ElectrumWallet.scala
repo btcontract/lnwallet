@@ -450,8 +450,8 @@ class ElectrumWallet(seed: ByteVector, client: ActorRef, params: ElectrumWallet.
         case _ => stay replying CompleteTransactionResponse(None)
       }
 
-    case Event(SendAll(publicKeyScript, feeRatePerKw, sequenceFlag), data) =>
-      Try(data.spendAll(publicKeyScript, feeRatePerKw, dustLimit, sequenceFlag)) match {
+    case Event(SendAll(publicKeyScript, extraUtxos, feeRatePerKw, sequenceFlag), data) =>
+      Try(data.spendAll(publicKeyScript, extraUtxos, feeRatePerKw, dustLimit, sequenceFlag)) match {
         case Success(txAndFee) => stay replying SendAllResponse(Some(txAndFee))
         case _ => stay replying SendAllResponse(None)
       }
@@ -494,7 +494,7 @@ object ElectrumWallet {
   case class CompleteTransaction(tx: Transaction, feeRatePerKw: FeeratePerKw, sequenceFlag: Long) extends Request
   case class CompleteTransactionResponse(result: Option[TxAndFee] = None) extends Response
 
-  case class SendAll(publicKeyScript: ByteVector, feeRatePerKw: FeeratePerKw, sequenceFlag: Long) extends Request
+  case class SendAll(publicKeyScript: ByteVector, extraUtxos: List[TxOut], feeRatePerKw: FeeratePerKw, sequenceFlag: Long) extends Request
   case class SendAllResponse(result: Option[TxAndFee] = None) extends Response
 
   case class CommitTransaction(tx: Transaction) extends Request
@@ -764,7 +764,7 @@ object ElectrumWallet {
      * @return the (confirmed, unconfirmed) balance for this script hash. This balance may not
      *         be up-to-date if we have not received all data we've asked for yet.
      */
-    def balance(scriptHash: ByteVector32): (Satoshi, Satoshi) = {
+    def calculateBalance(scriptHash: ByteVector32): (Satoshi, Satoshi) = {
       history.get(scriptHash) match {
         case None => (0.sat, 0.sat)
 
@@ -793,20 +793,10 @@ object ElectrumWallet {
       }
     }
 
-    /**
-     *
-     * @return the (confirmed, unconfirmed) balance for this wallet. This balance may not
-     *         be up-to-date if we have not received all data we've asked for yet.
-     */
-    lazy val balance: (Satoshi, Satoshi) = {
-      // .toList is very important here: keys are returned in a Set-like structure, without the .toList we map
-      // to another set-like structure that will remove duplicates, so if we have several script hashes with exactly the
-      // same balance we don't return the correct aggregated balance
-      val balances = (accountKeyMap.keys ++ changeKeyMap.keys).toList.map(scriptHash => balance(scriptHash))
-      balances.foldLeft((0.sat, 0.sat)) {
+    lazy val balance: (Satoshi, Satoshi) =
+      (accountKeyMap.keys ++ changeKeyMap.keys).toList.map(calculateBalance).foldLeft((0L.sat, 0L.sat)) {
         case ((confirmed, unconfirmed), (confirmed1, unconfirmed1)) => (confirmed + confirmed1, unconfirmed + unconfirmed1)
       }
-    }
 
     def transactionReceived(tx: Transaction, feeOpt: Option[Satoshi], received: Satoshi, sent: Satoshi): TransactionReceived = {
       val walletAddresses = tx.txOut.filter(isMine).map(_.publicKeyScript).flatMap(publicScriptMap.get).map(segwitAddress(_, chainHash))
@@ -939,7 +929,7 @@ object ElectrumWallet {
      */
     def commitTransaction(tx: Transaction): Data = {
       // HACK! since we base our utxos computation on the history as seen by the electrum server (so that it is
-      // reorg-proof out of the box), we need to update the history  right away if we want to be able to build chained
+      // reorg-proof out of the box), we need to update the history right away if we want to be able to build chained
       // unconfirmed transactions. A few seconds later electrum will notify us and the entry will be overwritten.
       // Note that we need to take into account both inputs and outputs, because there may be change.
       val history1 = (tx.txIn.filter(isMine).flatMap(extractPubKeySpentFrom).map(computeScriptHashFromPublicKey) ++ tx.txOut.filter(isMine).map(_.publicKeyScript).map(computeScriptHash))
@@ -955,29 +945,20 @@ object ElectrumWallet {
       copy(transactions = transactions + (tx.txid -> tx), heights = heights + (tx.txid -> 0), history = history1)
     }
 
-    /**
-     * spend all our balance, including unconfirmed utxos and locked utxos (i.e utxos
-     * that are used in funding transactions that have not been published yet
-     *
-     * @param publicKeyScript script to send all our funds to
-     * @param feeRatePerKw    fee rate in satoshi per kiloweight
-     * @return a (tx, fee) tuple, tx is a signed transaction that spends all our balance and
-     *         fee is the associated bitcoin network fee
-     */
-    def spendAll(publicKeyScript: ByteVector, feeRatePerKw: FeeratePerKw, dustLimit: Satoshi, sequenceFlag: Long): TxAndFee = {
+    def spendAll(publicKeyScript: ByteVector, extraUtxos: List[TxOut], feeRatePerKw: FeeratePerKw, dustLimit: Satoshi, sequenceFlag: Long): TxAndFee = {
       // use confirmed and unconfirmed balance
       val amount = balance._1 + balance._2
-      val tx = Transaction(version = 2, txIn = Nil, txOut = TxOut(amount, publicKeyScript) :: Nil, lockTime = 0)
+      val tx = Transaction(version = 2, txIn = Nil, txOut = TxOut(amount, publicKeyScript) :: extraUtxos, lockTime = 0)
       // use all uxtos, including locked ones
       val tx1 = addUtxosWithDummySig(tx, utxos, sequenceFlag)
       val fee = Transactions.weight2fee(feeRatePerKw, tx1.weight())
       require(amount - fee > dustLimit, "amount to send is below dust limit")
-      val tx2 = tx1.copy(txOut = TxOut(amount - fee, publicKeyScript) :: Nil)
+      val tx2 = tx1.copy(txOut = TxOut(amount - fee, publicKeyScript) :: extraUtxos)
       TxAndFee(signTransaction(tx2), fee)
     }
 
-    def spendAll(publicKeyScript: Seq[ScriptElt], feeRatePerKw: FeeratePerKw, dustLimit: Satoshi, sequenceFlag: Long): TxAndFee =
-      spendAll(Script.write(publicKeyScript), feeRatePerKw, dustLimit, sequenceFlag)
+    def spendAll(publicKeyScript: Seq[ScriptElt], extraUtxos: List[TxOut], feeRatePerKw: FeeratePerKw, dustLimit: Satoshi, sequenceFlag: Long): TxAndFee =
+      spendAll(Script.write(publicKeyScript), extraUtxos, feeRatePerKw, dustLimit, sequenceFlag)
   }
 
   object Data {

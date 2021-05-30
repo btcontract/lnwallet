@@ -7,6 +7,7 @@ import fr.acinq.eclair._
 import scala.concurrent.duration._
 import com.lightning.walletapp.sqlite._
 import com.lightning.walletapp.R.string._
+import android.os.{Build, VibrationEffect}
 import immortan.crypto.Tools.{Fiat2Btc, none, runAnd}
 import fr.acinq.bitcoin.{Block, ByteVector32, Satoshi, SatoshiLong}
 import fr.acinq.eclair.channel.{CMD_CHECK_FEERATE, PersistentChannelData}
@@ -24,7 +25,6 @@ import android.text.format.DateFormat
 import androidx.multidex.MultiDex
 import rx.lang.scala.Observable
 import android.widget.Toast
-import android.os.Build
 import java.util.Date
 import scala.util.Try
 
@@ -40,8 +40,8 @@ object WalletApp {
   // store this info here to use it when chain wallet receives a sent tx
   var txDescriptions: Map[ByteVector32, TxDescription] = Map.empty
 
-  final val dbFileNameMisc = "misc.db"
-  final val dbFileNameGraph = "graph.db"
+  final val dbFileNameMisc = "misc1.db" // TODO: put back
+  final val dbFileNameGraph = "graph1.db" // TODO: put back
   final val dbFileNameEssential = "essential3.db" // TODO: put back
 
   val backupSaveWorker: ThrottledWork[String, Any] = new ThrottledWork[String, Any] {
@@ -238,8 +238,9 @@ object WalletApp {
 }
 
 object Vibrator {
+  private val waveForm = VibrationEffect.createWaveform(Array(0L, 85, 200), -1)
   private val vibrator = WalletApp.app.getSystemService(Context.VIBRATOR_SERVICE).asInstanceOf[android.os.Vibrator]
-  def vibrate: Unit = if (null != vibrator && vibrator.hasVibrator) vibrator.vibrate(Array(0L, 85, 200), -1)
+  def vibrate: Unit = if (null != vibrator && vibrator.hasVibrator) vibrator.vibrate(waveForm)
 }
 
 class WalletApp extends Application { me =>
