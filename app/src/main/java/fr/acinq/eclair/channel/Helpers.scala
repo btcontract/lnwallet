@@ -10,16 +10,16 @@ import fr.acinq.eclair.transactions.Scripts._
 import fr.acinq.eclair.transactions.DirectedHtlc._
 import fr.acinq.eclair.transactions.Transactions._
 import fr.acinq.bitcoin.Crypto.{PrivateKey, PublicKey, ripemd160, sha256}
+import immortan.crypto.Tools.{Any2Some, newFeerate}
 import immortan.{ChannelBag, LNParams}
 import scala.util.{Success, Try}
 
 import fr.acinq.eclair.crypto.Generators
-import immortan.crypto.Tools.Any2Some
 import scodec.bits.ByteVector
 
 
 object Helpers {
-  def validateParamsFundee(open: OpenChannel, conf: OnChainFeeConf): Unit = {
+  def validateParamsFundee(open: OpenChannel, commits: NormalCommits): Unit = {
     val reserveToFundingRatio = open.channelReserveSatoshis.toLong.toDouble / Math.max(open.fundingSatoshis.toLong, 1L)
     if (reserveToFundingRatio > LNParams.maxReserveToFundingRatio) throw ChannelReserveTooHigh(open.temporaryChannelId, reserveToFundingRatio, LNParams.maxReserveToFundingRatio)
     if (open.maxAcceptedHtlcs > LNParams.maxAcceptedHtlcs) throw InvalidMaxAcceptedHtlcs(open.temporaryChannelId, open.maxAcceptedHtlcs, LNParams.maxAcceptedHtlcs)
@@ -33,13 +33,13 @@ object Helpers {
     if (open.fundingSatoshis < LNParams.minFundingSatoshis || open.fundingSatoshis > LNParams.maxFundingSatoshis)
       throw InvalidFundingAmount(open.temporaryChannelId, open.fundingSatoshis, LNParams.minFundingSatoshis, LNParams.maxFundingSatoshis)
 
+    newFeerate(LNParams.feeRatesInfo, commits.localCommit.spec, LNParams.shouldForceClosePaymentFeerateDiff).foreach { localFeeratePerKw =>
+      throw FeerateTooDifferent(open.temporaryChannelId, localFeeratePerKw, open.feeratePerKw)
+    }
+
     val (toLocalMsat, toRemoteMsat) = (open.pushMsat, open.fundingSatoshis.toMilliSatoshi - open.pushMsat)
     val invalidReserve = toLocalMsat < open.channelReserveSatoshis && toRemoteMsat < open.channelReserveSatoshis
     if (invalidReserve) throw ChannelReserveNotMet(open.temporaryChannelId, toLocalMsat, toRemoteMsat, open.channelReserveSatoshis)
-
-    val localFeeratePerKw = conf.feeEstimator.getFeeratePerKw(conf.feeTargets.commitmentBlockTarget)
-    val isFeeDiffTooHigh = conf.feerateTolerance.isFeeDiffTooHigh(localFeeratePerKw, open.feeratePerKw)
-    if (isFeeDiffTooHigh) throw FeerateTooDifferent(open.temporaryChannelId, localFeeratePerKw, open.feeratePerKw)
   }
 
   def validateParamsFunder(open: OpenChannel, accept: AcceptChannel): Unit = {

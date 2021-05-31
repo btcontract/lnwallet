@@ -16,6 +16,7 @@ import fr.acinq.eclair.blockchain.electrum.{CheckPoint, ElectrumClientPool}
 import android.content.{ClipData, ClipboardManager, Context, Intent, SharedPreferences}
 import fr.acinq.eclair.blockchain.electrum.ElectrumWallet.{TransactionReceived, WalletReady}
 import com.lightning.walletapp.utils.{AwaitService, DelayedNotification, LocalBackup, UsedAddons, WebsocketBus}
+import fr.acinq.eclair.blockchain.fee.FeeratesPerKw
 import fr.acinq.eclair.router.Router.RouterConf
 import androidx.appcompat.app.AppCompatDelegate
 import immortan.utils.Denomination.formatFiat
@@ -127,8 +128,8 @@ object WalletApp {
     LNParams.ourInit = LNParams.createInit
 
     extDataBag.db txWrap {
-      LNParams.fiatRatesInfo = extDataBag.tryGetFiatRatesInfo getOrElse FiatRatesInfo(Map.empty, Map.empty, stamp = 0L)
-      LNParams.feeRatesInfo = extDataBag.tryGetFeeRatesInfo getOrElse FeeRatesInfo(FeeRates.defaultFeerates, stamp = 0L)
+      LNParams.fiatRatesInfo = extDataBag.tryGetFiatRatesInfo getOrElse FiatRatesInfo(rates = Map.empty, oldRates = Map.empty, stamp = 0L)
+      LNParams.feeRatesInfo = extDataBag.tryGetFeeRatesInfo getOrElse FeeRatesInfo(FeeratesPerKw(FeeRatesHelpers.defaultFeerates), history = Nil, stamp = 0L)
       LNParams.trampoline = extDataBag.tryGetTrampolineOn getOrElse TrampolineOn.byDefault(LNParams.minPayment, LNParams.routingCltvExpiryDelta)
     }
 

@@ -6,11 +6,14 @@ import immortan.ErrorCodes._
 import fr.acinq.eclair.wire._
 import immortan.crypto.Tools._
 import fr.acinq.eclair.channel._
+import com.softwaremill.quicklens._
 import fr.acinq.eclair.transactions._
+import fr.acinq.bitcoin.{ByteVector64, SatoshiLong}
+import fr.acinq.eclair.channel.Helpers.HashToPreimage
+import fr.acinq.eclair.blockchain.CurrentBlockCount
 import fr.acinq.eclair.blockchain.fee.FeeratePerKw
 import fr.acinq.eclair.payment.OutgoingPacket
-import fr.acinq.bitcoin.ByteVector64
-import fr.acinq.bitcoin.SatoshiLong
+import immortan.fsm.PreimageCheck
 import scodec.bits.ByteVector
 
 
@@ -78,11 +81,56 @@ abstract class ChannelHosted extends Channel { me =>
 
     // CHANNEL IS ESTABLISHED
 
+    case (hc: HostedCommits, CurrentBlockCount(tip), OPEN | SLEEPING) =>
+      // Keep in mind that we may have many outgoing HTLCs which have the same preimage
+      val sentExpired = hc.allOutgoing.filter(tip > _.cltvExpiry.toLong).groupBy(_.paymentHash)
+      val hasReceivedRevealedExpired = hc.revealedFulfills.exists(tip > _.theirAdd.cltvExpiry.toLong)
+
+      // For each expired outgoing payment:
+      // - ROUTED with preimage -> suspend channel, notify payment success
+      // - LOCAL with preimage -> suspend channel, notify payment success
+      // - ROUTED without preimage -> suspend channel, notify failure
+      // - LOCAL without preimage -> do nothing
+
+      val checker = new PreimageCheck {
+        override def onComplete(h2p: HashToPreimage): Unit = {
+          val fulfillAndFailSets = Set.empty[UpdateAddHtlc] -> Set.empty[UpdateAddHtlc]
+
+          val (fulfills, fails) = sentExpired.values.flatten.foldLeft(fulfillAndFailSets) {
+            case (Tuple2(fulfillSet, failSet), ourAdd) if h2p.contains(ourAdd.paymentHash) => (fulfillSet + ourAdd, failSet)
+            case (Tuple2(fulfillSet, failSet), ourAdd) if ourAdd.fullTag.tag == PaymentTagTlv.TRAMPLOINE_ROUTED => (fulfillSet, failSet + ourAdd)
+            case (stateSoFar, _) => stateSoFar
+          }
+
+          if (fulfills.nonEmpty || fails.nonEmpty) {
+            val settledHtlcIds = (fulfills ++ fails).map(_.id)
+            localSuspend(hc.modify(_.postErrorOutgoingResolvedIds).using(_ ++ settledHtlcIds), ERR_HOSTED_TIMED_OUT_OUTGOING_HTLC)
+            for (add <- fulfills) events fulfillReceived RemoteFulfill(theirPreimage = h2p(add.paymentHash), ourAdd = add)
+            for (add <- fails) events localAddRejected InPrincipleNotSendable(localAdd = add)
+          }
+        }
+      }
+
+      if (hasReceivedRevealedExpired) {
+        // We have incoming payments for which we have revealed a preimage but they are still unresolved and completely expired by now
+        // unless we have published a preimage on chain we can not prove we have revealed a preimage in time at this point
+        // at the very least it makes sense to halt further usage of this potentially malicious channel
+        localSuspend(hc, ERR_HOSTED_MANUAL_SUSPEND)
+      }
+
+      if (sentExpired.nonEmpty) {
+        // Our peer might have published a preimage on chain instead of directly sending it to us
+        // if it turns out that preimage is not present on chain at this point we can safely fail an HTLC
+        val cmdStart = PreimageCheck.CMDStart(sentExpired.keySet, LNParams.syncParams.phcSyncNodes)
+        checker process cmdStart
+      }
+
+
     // We specifically do not accept remote adds when channel is in error state
-    case (hc: HostedCommits, add: UpdateAddHtlc, OPEN) if hc.error.isEmpty =>
-      val theirAdd = UpdateAddHtlcExt(add, hc.remoteInfo)
-      BECOME(hc.receiveAdd(add), OPEN)
-      events addReceived theirAdd
+    case (hc: HostedCommits, theirAdd: UpdateAddHtlc, OPEN) if hc.error.isEmpty =>
+      val theirAddExt = UpdateAddHtlcExt(theirAdd, hc.remoteInfo)
+      BECOME(hc.receiveAdd(theirAdd), OPEN)
+      events addReceived theirAddExt
 
 
     // Relaxed constraints for receiveng preimages over HCs
@@ -109,7 +157,7 @@ abstract class ChannelHosted extends Channel { me =>
 
 
     // First attempt a normal state update, then a resized state update if original signature check fails and we have a pending resize proposal
-    case (hc: HostedCommits, remoteSU: StateUpdate, OPEN) if (remoteSU.localSigOfRemoteLCSS != hc.lastCrossSignedState.remoteSigOfLocal) && hc.error.isEmpty =>
+    case (hc: HostedCommits, remoteSU: StateUpdate, OPEN) if remoteSU.localSigOfRemoteLCSS != hc.lastCrossSignedState.remoteSigOfLocal && hc.error.isEmpty =>
       attemptStateUpdate(remoteSU, hc)
 
 
@@ -254,8 +302,11 @@ abstract class ChannelHosted extends Channel { me =>
     case _ =>
   }
 
-  def rejectOverriddenOutgoingAdds(hc: HostedCommits, hc1: HostedCommits): Unit =
+  def rejectOverriddenOutgoingAdds(hc: HostedCommits, hc1: HostedCommits): Unit = {
     hc.allOutgoing -- hc1.allOutgoing map InPrincipleNotSendable foreach events.localAddRejected
+    // We have already rejected overridden outgoing HTLCs as if they are not sendable
+    events stateUpdated Nil
+  }
 
   def restoreCommits(localLCSS: LastCrossSignedState, remoteInfo: RemoteNodeInfo): HostedCommits = {
     val inFlightHtlcs = localLCSS.incomingHtlcs.map(IncomingHtlc) ++ localLCSS.outgoingHtlcs.map(OutgoingHtlc)
@@ -276,7 +327,8 @@ abstract class ChannelHosted extends Channel { me =>
     val isBlockDayWrong = isOutOfSync(remoteSU.blockDay)
 
     if (isBlockDayWrong) {
-      localSuspend(hc, ERR_HOSTED_WRONG_BLOCKDAY)
+      // We could suspend, but instead choose to wait for chain wallet to synchronize
+      CommsTower.workers.get(hc.remoteInfo.nodeSpecificPair).foreach(_.disconnect)
     } else if (remoteSU.remoteUpdates < lcss1.localUpdates) {
       // Persist unsigned remote updates to use them on re-sync
       // we do not update runtime data because ours is newer one

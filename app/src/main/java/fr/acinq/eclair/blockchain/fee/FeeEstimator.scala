@@ -17,17 +17,8 @@
 package fr.acinq.eclair.blockchain.fee
 
 
-trait FeeEstimator {
-  def getFeeratePerKw(target: Int): FeeratePerKw
-}
+trait FeeEstimator { def getFeeratePerKw(target: Int): FeeratePerKw }
 
 case class FeeTargets(fundingBlockTarget: Int, commitmentBlockTarget: Int, mutualCloseBlockTarget: Int, claimMainBlockTarget: Int)
 
-case class FeerateTolerance(ratioLow: Double, ratioHigh: Double) {
-  def isFeeDiffTooHigh(networkFeerate: FeeratePerKw, proposedFeerate: FeeratePerKw): Boolean =
-    proposedFeerate < networkFeerate * ratioLow || networkFeerate * ratioHigh < proposedFeerate
-}
-
-case class OnChainFeeConf(feeTargets: FeeTargets, feeEstimator: FeeEstimator, closeOnOfflineMismatch: Boolean, updateFeeMinDiffRatio: Double, feerateTolerance: FeerateTolerance) {
-  def shouldUpdateFee(current: FeeratePerKw, next: FeeratePerKw): Boolean = current.toLong == 0 || Math.abs(current.toLong - next.toLong).toDouble / current.toLong > updateFeeMinDiffRatio
-}
+case class OnChainFeeConf(feeTargets: FeeTargets, feeEstimator: FeeEstimator)

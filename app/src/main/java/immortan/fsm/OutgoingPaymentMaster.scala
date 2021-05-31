@@ -413,13 +413,13 @@ class OutgoingPaymentSender(val fullTag: FullPaymentTag, val listener: OutgoingP
               case None => opm doProcess NodeFailed(nodeId, data.cmd.routerConf.maxStrangeNodeFailures)
             }
 
-            // Record a remote error and keep trying the rest of routes
+            // Record an error and keep trying out the rest of routes
             resolveRemoteFail(data.withRemoteFailure(route, pkt), wait)
 
         } getOrElse {
-          val failure = UnreadableRemoteFailure(route)
+          // Select nodes between peer and payee, they are least likely to send garbage
           val nodesInBetween = route.hops.map(_.nextNodeId).drop(1).dropRight(1)
-          // Select nodes between our peer and payee, they are least likely to send garbage
+          val failure = UnreadableRemoteFailure(route)
 
           if (nodesInBetween.isEmpty) {
             // Garbage is sent by our peer or final payee, fail a payment
@@ -436,7 +436,7 @@ class OutgoingPaymentSender(val fullTag: FullPaymentTag, val listener: OutgoingP
     case (cut: CutIntoHalves, PENDING) =>
       val partOne: MilliSatoshi = cut.amount / 2
       val partTwo: MilliSatoshi = cut.amount - partOne
-      // Run sequentially as this mutates data, both `rightNowSendable` and `data` are updated
+      // Run sequentially as this mutates data, both RightNowSendable and Data are updated
       assignToChans(opm.rightNowSendable(data.cmd.allowedChans, feeLeftover), data, partOne)
       assignToChans(opm.rightNowSendable(data.cmd.allowedChans, feeLeftover), data, partTwo)
 

@@ -22,16 +22,17 @@ import fr.acinq.bitcoin._
 import fr.acinq.eclair.wire._
 import fr.acinq.bitcoin.DeterministicWallet._
 import fr.acinq.eclair.transactions.Transactions._
+import fr.acinq.eclair.transactions.{CommitmentSpec, Transactions}
 import fr.acinq.bitcoin.Crypto.{PrivateKey, PublicKey}
 import scodec.bits.{BitVector, ByteVector}
 import immortan.{LNParams, RemoteNodeInfo}
+
 import fr.acinq.eclair.blockchain.MakeFundingTxResponse
 import fr.acinq.eclair.crypto.Sphinx.PacketAndSecrets
 import fr.acinq.eclair.blockchain.fee.FeeratePerKw
-import fr.acinq.eclair.crypto.Generators
-import fr.acinq.eclair.transactions.{CommitmentSpec, Transactions}
 import fr.acinq.eclair.wire.Onion.FinalPayload
 import fr.acinq.eclair.payment.IncomingPacket
+import fr.acinq.eclair.crypto.Generators
 import immortan.crypto.Tools
 
 
@@ -99,17 +100,13 @@ case class CMD_ADD_HTLC(fullTag: FullPaymentTag, firstAmount: MilliSatoshi, cltv
   }
 }
 
-case object CMD_CHECK_FEERATE extends Command
-case class CMD_UPDATE_FEERATE(channelId: ByteVector32, feeratePerKw: FeeratePerKw) extends Command {
-  val ourFeeRatesUpdate: UpdateFee = UpdateFee(channelId, feeratePerKw)
-}
-
 case object CMD_FORCECLOSE extends Command
 final case class CMD_CLOSE(scriptPubKey: Option[ByteVector] = None) extends Command
 case class CMD_HOSTED_STATE_OVERRIDE(so: StateOverride) extends Command
 case class HC_CMD_RESIZE(delta: Satoshi) extends Command
 case object CMD_SOCKET_OFFLINE extends Command
 case object CMD_SOCKET_ONLINE extends Command
+case object CMD_CHECK_FEERATE extends Command
 case object CMD_SIGN extends Command
 
 
@@ -177,8 +174,8 @@ final case class DATA_WAIT_FOR_FUNDING_CONFIRMED(commitments: NormalCommits, fun
 
 final case class DATA_WAIT_FOR_FUNDING_LOCKED(commitments: NormalCommits, shortChannelId: ShortChannelId, lastSent: FundingLocked) extends ChannelData with HasNormalCommitments
 
-final case class DATA_NORMAL(commitments: NormalCommits, shortChannelId: ShortChannelId, localShutdown: Option[Shutdown] = None,
-                             remoteShutdown: Option[Shutdown] = None) extends ChannelData with HasNormalCommitments
+final case class DATA_NORMAL(commitments: NormalCommits, shortChannelId: ShortChannelId, feeUpdateRequired: Boolean = false,
+                             localShutdown: Option[Shutdown] = None, remoteShutdown: Option[Shutdown] = None) extends ChannelData with HasNormalCommitments
 
 final case class DATA_NEGOTIATING(commitments: NormalCommits, localShutdown: Shutdown,
                                   remoteShutdown: Shutdown, closingTxProposed: List[List[ClosingTxProposed]] = List(Nil),
@@ -322,7 +319,7 @@ case class ChannelReserveTooHigh(channelId: ByteVector32, reserveToFundingRatio:
 }
 
 case class ChannelTransitionFail(channelId: ByteVector32) extends RuntimeException {
-  override def toString: String = s"ChannelTransitionFail"
+  override def toString: String = s"ChannelTransitionFail, details: $getMessage"
 }
 
 case class CMDException(error: RuntimeException, cmd: Command) extends RuntimeException

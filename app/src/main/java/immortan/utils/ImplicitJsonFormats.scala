@@ -2,12 +2,12 @@ package immortan.utils
 
 import immortan._
 import spray.json._
+import fr.acinq.eclair.blockchain.fee._
 import fr.acinq.eclair.wire.CommonCodecs._
 import fr.acinq.eclair.wire.LightningMessageCodecs._
-
-import fr.acinq.bitcoin.{ByteVector32, Satoshi}
 import immortan.utils.FiatRates.{BitpayItemList, CoinGeckoItemMap}
-import fr.acinq.eclair.blockchain.fee.{FeeratePerKB, FeeratesPerKB}
+import fr.acinq.bitcoin.{ByteVector32, Satoshi}
+
 import immortan.utils.PayRequest.AdditionalRoute
 import fr.acinq.eclair.wire.ChannelUpdate
 import fr.acinq.bitcoin.Crypto.PublicKey
@@ -200,5 +200,10 @@ object ImplicitJsonFormats extends DefaultJsonProtocol {
   implicit val feeratesPerKBFmt: JsonFormat[FeeratesPerKB] = jsonFormat[FeeratePerKB, FeeratePerKB, FeeratePerKB, FeeratePerKB, FeeratePerKB, FeeratePerKB, FeeratePerKB, FeeratePerKB, FeeratePerKB,
       FeeratesPerKB](FeeratesPerKB.apply, "mempoolMinFee", "block_1", "blocks_2", "blocks_6", "blocks_12", "blocks_36", "blocks_72", "blocks_144", "blocks_1008")
 
-  implicit val feeRatesInfoFmt: JsonFormat[FeeRatesInfo] = jsonFormat[FeeratesPerKB, Long, FeeRatesInfo](FeeRatesInfo.apply, "perKb", "stamp")
+  implicit val feeratePerKwFmt: JsonFormat[FeeratePerKw] = jsonFormat[Satoshi, FeeratePerKw](FeeratePerKw.apply, "feerate")
+
+  implicit val feeratesPerKwFmt: JsonFormat[FeeratesPerKw] = jsonFormat[FeeratePerKw, FeeratePerKw, FeeratePerKw, FeeratePerKw, FeeratePerKw, FeeratePerKw, FeeratePerKw, FeeratePerKw, FeeratePerKw,
+    FeeratesPerKw](FeeratesPerKw.apply, "mempoolMinFee", "block_1", "blocks_2", "blocks_6", "blocks_12", "blocks_36", "blocks_72", "blocks_144", "blocks_1008")
+
+  implicit val feeRatesInfoFmt: JsonFormat[FeeRatesInfo] = jsonFormat[FeeratesPerKw, List[FeeratesPerKB], Long, FeeRatesInfo](FeeRatesInfo.apply, "smoothed", "history", "stamp")
 }

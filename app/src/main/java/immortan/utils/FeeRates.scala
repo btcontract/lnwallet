@@ -1,6 +1,7 @@
 package immortan.utils
 
 import fr.acinq.bitcoin._
+import immortan.utils.FeeRatesHelpers._
 import fr.acinq.eclair.blockchain.fee._
 import immortan.utils.ImplicitJsonFormats._
 import rx.lang.scala.{Observable, Subscription}
@@ -10,12 +11,49 @@ import immortan.crypto.Tools.none
 import immortan.LNParams
 
 
+object FeeRatesHelpers {
+  val minPerKw: FeeratePerKw = FeeratePerKw(1000L.sat)
+
+  val defaultFeerates: FeeratesPerKB =
+    FeeratesPerKB(
+      mempoolMinFee = FeeratePerKB(5000.sat),
+      block_1 = FeeratePerKB(210000.sat),
+      blocks_2 = FeeratePerKB(180000.sat),
+      blocks_6 = FeeratePerKB(150000.sat),
+      blocks_12 = FeeratePerKB(110000.sat),
+      blocks_36 = FeeratePerKB(50000.sat),
+      blocks_72 = FeeratePerKB(20000.sat),
+      blocks_144 = FeeratePerKB(15000.sat),
+      blocks_1008 = FeeratePerKB(5000.sat)
+    )
+
+  def smoothedFeeratesPerKw(history: List[FeeratesPerKB] = Nil): FeeratesPerKw =
+    FeeratesPerKw(
+      FeeratesPerKB(
+        FeeratePerKB(Statistics.meanBy(history)(_.mempoolMinFee.toLong).toLong.sat),
+        FeeratePerKB(Statistics.meanBy(history)(_.block_1.toLong).toLong.sat),
+        FeeratePerKB(Statistics.meanBy(history)(_.blocks_2.toLong).toLong.sat),
+        FeeratePerKB(Statistics.meanBy(history)(_.blocks_6.toLong).toLong.sat),
+        FeeratePerKB(Statistics.meanBy(history)(_.blocks_12.toLong).toLong.sat),
+        FeeratePerKB(Statistics.meanBy(history)(_.blocks_36.toLong).toLong.sat),
+        FeeratePerKB(Statistics.meanBy(history)(_.blocks_72.toLong).toLong.sat),
+        FeeratePerKB(Statistics.meanBy(history)(_.blocks_144.toLong).toLong.sat),
+        FeeratePerKB(Statistics.meanBy(history)(_.blocks_1008.toLong).toLong.sat)
+      )
+    )
+}
+
 object FeeRates extends CanBeShutDown {
   def reloadData: FeeratesPerKB = fr.acinq.eclair.secureRandom nextInt 4 match {
     case 0 => new EsploraFeeProvider("https://blockstream.info/api/fee-estimates").provide
     case 1 => new EsploraFeeProvider("https://mempool.space/api/fee-estimates").provide
     case 2 => EarnDotComFeeProvider.provide
     case _ => BitgoFeeProvider.provide
+  }
+
+  override def becomeShutDown: Unit = {
+    subscription.unsubscribe
+    listeners = Set.empty
   }
 
   private[this] val periodHours = 12
@@ -26,44 +64,17 @@ object FeeRates extends CanBeShutDown {
   }
 
   var listeners: Set[FeeRatesListener] = Set.empty
-
-  val subscription: Subscription = retryRepeatDelayedCall.subscribe(newRates => {
-    LNParams.feeRatesInfo = FeeRatesInfo(newRates, System.currentTimeMillis)
+  val subscription: Subscription = retryRepeatDelayedCall.subscribe(newPerKB => {
+    val history1 = newPerKB :: LNParams.feeRatesInfo.history diff List(defaultFeerates) take 3
+    LNParams.feeRatesInfo = FeeRatesInfo(smoothedFeeratesPerKw(history1), history1, System.currentTimeMillis)
     for (lst <- listeners) lst.onFeeRates(LNParams.feeRatesInfo)
   }, none)
-
-  val defaultFeerates: FeeratesPerKB =
-    FeeratesPerKB(
-      block_1 = FeeratePerKB(210000.sat),
-      blocks_2 = FeeratePerKB(180000.sat),
-      blocks_6 = FeeratePerKB(150000.sat),
-      blocks_12 = FeeratePerKB(110000.sat),
-      blocks_36 = FeeratePerKB(50000.sat),
-      blocks_72 = FeeratePerKB(20000.sat),
-      blocks_144 = FeeratePerKB(15000.sat),
-      blocks_1008 = FeeratePerKB(5000.sat),
-      mempoolMinFee = FeeratePerKB(5000.sat)
-    )
-
-  override def becomeShutDown: Unit = {
-    subscription.unsubscribe
-    listeners = Set.empty
-  }
 }
 
-case class FeeRatesInfo(perKb: FeeratesPerKB, stamp: Long) {
-  val feeratesPerKw: FeeratesPerKw = FeeratesPerKw(perKb)
-
-  val feeEstimator: FeeEstimator = new FeeEstimator {
-    override def getFeeratePerKw(target: Int): FeeratePerKw =
-      FeeratePerKw(1000.sat) max feeratesPerKw.feePerBlock(target)
-  }
-
-  val onChainFeeConf: OnChainFeeConf = {
-    val feerateTolerance = FeerateTolerance(0.001, 1000)
-    val feeTargets = FeeTargets(fundingBlockTarget = 12, commitmentBlockTarget = 6, mutualCloseBlockTarget = 36, claimMainBlockTarget = 36)
-    OnChainFeeConf(feeTargets, feeEstimator, closeOnOfflineMismatch = false, updateFeeMinDiffRatio = 0.1, feerateTolerance)
-  }
+case class FeeRatesInfo(smoothed: FeeratesPerKw, history: List[FeeratesPerKB], stamp: Long) {
+  private val targets = FeeTargets(fundingBlockTarget = 12, commitmentBlockTarget = 6, mutualCloseBlockTarget = 36, claimMainBlockTarget = 72)
+  private val estimator = new FeeEstimator { override def getFeeratePerKw(target: Int): FeeratePerKw = smoothed.feePerBlock(target) max minPerKw }
+  val onChainFeeConf: OnChainFeeConf = OnChainFeeConf(targets, estimator)
 }
 
 trait FeeRatesListener {

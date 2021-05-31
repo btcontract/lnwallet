@@ -13,6 +13,7 @@ import fr.acinq.bitcoin.{ByteVector32, Satoshi}
 import fr.acinq.bitcoin.Crypto.{PrivateKey, PublicKey}
 import fr.acinq.eclair.transactions.{RemoteFulfill, RemoteReject}
 import immortan.crypto.{CanBeRepliedTo, CanBeShutDown, StateMachine}
+import immortan.fsm.OutgoingPaymentMaster.CMDChanGotOnline
 import java.util.concurrent.atomic.AtomicLong
 import fr.acinq.eclair.payment.IncomingPacket
 import com.google.common.cache.LoadingCache
@@ -242,13 +243,13 @@ class ChannelMaster(val payBag: PaymentBag, val chanBag: ChannelBag, val dataBag
 
     case (_, prevHc: HostedCommits, nextHc: HostedCommits, _, _)
       if prevHc.error.nonEmpty && nextHc.error.isEmpty =>
-      opm process OutgoingPaymentMaster.CMDChanGotOnline
+      opm process CMDChanGotOnline
       next(statusUpdateStream)
 
     case (chan, _, _, WAIT_FUNDING_DONE | SLEEPING, OPEN) =>
-      opm process OutgoingPaymentMaster.CMDChanGotOnline
       // We may get here after getting fresh feerates
       chan process CMD_CHECK_FEERATE
+      opm process CMDChanGotOnline
       next(statusUpdateStream)
   }
 

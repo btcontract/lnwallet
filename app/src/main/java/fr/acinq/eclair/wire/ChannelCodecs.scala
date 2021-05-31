@@ -250,36 +250,37 @@ object ChannelCodecs {
   }.as[DATA_WAIT_FOR_FUNDING_CONFIRMED]
 
   val DATA_WAIT_FOR_FUNDING_LOCKED_Codec = {
-    ("commitments" | commitmentsCodec) ::
-      ("shortChannelId" | shortchannelid) ::
-      ("lastSent" | lengthDelimited(fundingLockedCodec))
+    (commitmentsCodec withContext "commitments") ::
+      (shortchannelid withContext "shortChannelId") ::
+      (lengthDelimited(fundingLockedCodec) withContext "lastSent")
   }.as[DATA_WAIT_FOR_FUNDING_LOCKED]
 
   val DATA_NORMAL_Codec = {
-    ("commitments" | commitmentsCodec) ::
-      ("shortChannelId" | shortchannelid) ::
-      ("localShutdown" | optional(bool8, lengthDelimited(shutdownCodec))) ::
-      ("remoteShutdown" | optional(bool8, lengthDelimited(shutdownCodec)))
+    (commitmentsCodec withContext "commitments") ::
+      (shortchannelid withContext "shortChannelId") ::
+      (bool8 withContext "feeUpdateRequired") ::
+      (optional(bool8, lengthDelimited(shutdownCodec)) withContext "localShutdown") ::
+      (optional(bool8, lengthDelimited(shutdownCodec)) withContext "remoteShutdown")
   }.as[DATA_NORMAL]
 
   val DATA_NEGOTIATING_Codec = {
-    ("commitments" | commitmentsCodec) ::
-      ("localShutdown" | lengthDelimited(shutdownCodec)) ::
-      ("remoteShutdown" | lengthDelimited(shutdownCodec)) ::
-      ("closingTxProposed" | listOfN(uint16, listOfN(uint16, lengthDelimited(closingTxProposedCodec)))) ::
-      ("bestUnpublishedClosingTxOpt" | optional(bool8, txCodec))
+    (commitmentsCodec withContext "commitments") ::
+      (lengthDelimited(shutdownCodec) withContext "localShutdown") ::
+      (lengthDelimited(shutdownCodec) withContext "remoteShutdown") ::
+      (listOfN(uint16, listOfN(uint16, lengthDelimited(closingTxProposedCodec))) withContext "closingTxProposed") ::
+      (optional(bool8, txCodec) withContext "bestUnpublishedClosingTxOpt")
   }.as[DATA_NEGOTIATING]
 
   val DATA_CLOSING_Codec = {
-    ("commitments" | commitmentsCodec) ::
-      ("waitingSince" | int64) ::
-      ("mutualCloseProposed" | listOfN(uint16, txCodec)) ::
-      ("mutualClosePublished" | listOfN(uint16, txCodec)) ::
-      ("localCommitPublished" | optional(bool8, localCommitPublishedCodec)) ::
-      ("remoteCommitPublished" | optional(bool8, remoteCommitPublishedCodec)) ::
-      ("nextRemoteCommitPublished" | optional(bool8, remoteCommitPublishedCodec)) ::
-      ("futureRemoteCommitPublished" | optional(bool8, remoteCommitPublishedCodec)) ::
-      ("revokedCommitPublished" | listOfN(uint16, revokedCommitPublishedCodec))
+    (commitmentsCodec withContext "commitments") ::
+      (int64 withContext "waitingSince") ::
+      (listOfN(uint16, txCodec) withContext "mutualCloseProposed") ::
+      (listOfN(uint16, txCodec) withContext "mutualClosePublished") ::
+      (optional(bool8, localCommitPublishedCodec) withContext "localCommitPublished") ::
+      (optional(bool8, remoteCommitPublishedCodec) withContext "remoteCommitPublished") ::
+      (optional(bool8, remoteCommitPublishedCodec) withContext "nextRemoteCommitPublished") ::
+      (optional(bool8, remoteCommitPublishedCodec) withContext "futureRemoteCommitPublished") ::
+      (listOfN(uint16, revokedCommitPublishedCodec) withContext "revokedCommitPublished")
   }.as[DATA_CLOSING]
 
   val DATA_WAIT_FOR_REMOTE_PUBLISH_FUTURE_COMMITMENT_Codec = {

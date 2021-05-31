@@ -350,7 +350,7 @@ object Transactions {
       }
     }
 
-    outputs.sortWith(CommitmentOutputLink.sort).toSeq
+    outputs.sortWith(CommitmentOutputLink.sort)
   }
 
   def makeCommitTx(commitTxInput: InputInfo,

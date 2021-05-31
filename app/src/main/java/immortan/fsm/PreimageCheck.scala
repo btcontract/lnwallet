@@ -1,11 +1,12 @@
 package immortan.fsm
 
 import scala.concurrent.duration._
-import fr.acinq.eclair.wire.{HostedChannelMessage, Init, QueryPreimages, ReplyPreimages}
-import immortan.{CommsTower, ConnectionListener, KeyPairAndPubKey, RemoteNodeInfo}
-import scala.concurrent.{ExecutionContext, ExecutionContextExecutor}
-import immortan.fsm.PreimageCheck.{FINALIZED, OPERATIONAL}
 import fr.acinq.bitcoin.{ByteVector32, Crypto}
+import immortan.fsm.PreimageCheck.{FINALIZED, OPERATIONAL}
+import scala.concurrent.{ExecutionContext, ExecutionContextExecutor}
+import immortan.{CommsTower, ConnectionListener, KeyPairAndPubKey, RemoteNodeInfo}
+import fr.acinq.eclair.wire.{HostedChannelMessage, Init, QueryPreimages, ReplyPreimages}
+import fr.acinq.eclair.channel.Helpers.HashToPreimage
 import immortan.crypto.Tools.randomKeyPair
 import java.util.concurrent.Executors
 import immortan.crypto.StateMachine
@@ -19,10 +20,10 @@ object PreimageCheck {
   final val CMDCancel = "preimage-check-cmd-cancel"
   case class PeerDisconnected(worker: CommsTower.Worker)
   case class PeerResponse(msg: HostedChannelMessage, worker: CommsTower.Worker)
-  case class CMDStart(hosts: Set[RemoteNodeInfo], hashes: Set[ByteVector32] = Set.empty)
+  case class CMDStart(hashes: Set[ByteVector32], hosts: Set[RemoteNodeInfo] = Set.empty)
 
   case class CheckData(pairs: Map[RemoteNodeInfo, KeyPairAndPubKey], pending: Set[RemoteNodeInfo],
-                       hashes: Set[ByteVector32], hashToPreimage: Map[ByteVector32, ByteVector32] = Map.empty)
+                       hashes: Set[ByteVector32], hashToPreimage: HashToPreimage = Map.empty)
 }
 
 abstract class PreimageCheck extends StateMachine[PreimageCheck.CheckData] { me =>
@@ -30,8 +31,7 @@ abstract class PreimageCheck extends StateMachine[PreimageCheck.CheckData] { me 
   def randomPair(info: RemoteNodeInfo): (RemoteNodeInfo, KeyPairAndPubKey) = info -> KeyPairAndPubKey(randomKeyPair, info.nodeId)
   def process(changeMessage: Any): Unit = scala.concurrent.Future(me doProcess changeMessage)
 
-  def onTimeout(preimages: Map[ByteVector32, ByteVector32] = Map.empty): Unit
-  def onComplete(preimages: Map[ByteVector32, ByteVector32] = Map.empty): Unit
+  def onComplete(preimages: HashToPreimage): Unit
 
   private lazy val listener = new ConnectionListener {
     override def onDisconnect(worker: CommsTower.Worker): Unit = me process PreimageCheck.PeerDisconnected(worker)
@@ -61,7 +61,7 @@ abstract class PreimageCheck extends StateMachine[PreimageCheck.CheckData] { me 
       for (pair <- data.pairs.values) CommsTower forget pair
       become(data, FINALIZED)
 
-    case (PreimageCheck.CMDStart(hosts, hashes), -1) =>
+    case (PreimageCheck.CMDStart(hashes, hosts), -1) =>
       become(PreimageCheck.CheckData(hosts.map(randomPair).toMap, pending = hosts, hashes), OPERATIONAL)
       for (Tuple2(info, pair) <- data.pairs) CommsTower.listen(listeners1 = Set(listener), pair, info)
       Rx.ioQueue.delay(30.seconds).foreach(_ => me doCheck true)
@@ -70,7 +70,7 @@ abstract class PreimageCheck extends StateMachine[PreimageCheck.CheckData] { me 
   }
 
   def doCheck(force: Boolean): Unit = {
-    // Of all peer replies filter our preimages of interest
+    // IMPORTANT: of all peer replies filter our preimages of interest
     val collected = data.hashToPreimage.filterKeys(data.hashes.contains)
 
     if (collected.size == data.hashes.size) {

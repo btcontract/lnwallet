@@ -43,8 +43,13 @@ object LNParams {
   val maxChainConnectionsCount: Int = 5
   val maxAcceptedHtlcs: Int = 483
 
+  val shouldSendUpdateFeerateDiff = 5.0
+  val shouldRejectPaymentFeerateDiff = 15.0
+  val shouldForceClosePaymentFeerateDiff = 25.0
+
   val minInvoiceExpiryDelta: CltvExpiryDelta = CltvExpiryDelta(18) // If payee does not provide an explicit relative CLTV this is what we use by default
-  val minForceClosableIncomingHtlcAmountToFeeRatio = 2 // When incoming HTLC gets (nearly) expired, how much higher than trim threshold should it be for us to force-close
+  val minForceClosableIncomingHtlcAmountToFeeRatio = 3 // When incoming HTLC gets (nearly) expired, how much higher than trim threshold should it be for us to force-close
+  val minForceClosableOutgoingHtlcAmountToFeeRatio = 4 // When outgoing HTLC becomes problematic, how much higher than trim threshold should it be for us to force-close
   val minPayment: MilliSatoshi = MilliSatoshi(1000L) // We can neither send nor receive LN payments which are below this value
   val minFundingSatoshis: Satoshi = Satoshi(200000L) // Proposed channels of capacity less than this are not allowed
   val minDustLimit: Satoshi = Satoshi(546L)
