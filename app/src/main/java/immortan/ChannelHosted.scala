@@ -93,11 +93,11 @@ abstract class ChannelHosted extends Channel { me =>
       // - LOCAL without preimage -> do nothing
 
       val checker = new PreimageCheck {
-        override def onComplete(h2p: HashToPreimage): Unit = {
+        override def onComplete(hash2preimage: HashToPreimage): Unit = {
           val fulfillAndFailSets = Set.empty[UpdateAddHtlc] -> Set.empty[UpdateAddHtlc]
 
           val (fulfills, fails) = sentExpired.values.flatten.foldLeft(fulfillAndFailSets) {
-            case (Tuple2(fulfillSet, failSet), ourAdd) if h2p.contains(ourAdd.paymentHash) => (fulfillSet + ourAdd, failSet)
+            case (Tuple2(fulfillSet, failSet), ourAdd) if hash2preimage.contains(ourAdd.paymentHash) => (fulfillSet + ourAdd, failSet)
             case (Tuple2(fulfillSet, failSet), ourAdd) if ourAdd.fullTag.tag == PaymentTagTlv.TRAMPLOINE_ROUTED => (fulfillSet, failSet + ourAdd)
             case (stateSoFar, _) => stateSoFar
           }
@@ -105,7 +105,7 @@ abstract class ChannelHosted extends Channel { me =>
           if (fulfills.nonEmpty || fails.nonEmpty) {
             val settledHtlcIds = (fulfills ++ fails).map(_.id)
             localSuspend(hc.modify(_.postErrorOutgoingResolvedIds).using(_ ++ settledHtlcIds), ERR_HOSTED_TIMED_OUT_OUTGOING_HTLC)
-            for (add <- fulfills) events fulfillReceived RemoteFulfill(theirPreimage = h2p(add.paymentHash), ourAdd = add)
+            for (add <- fulfills) events fulfillReceived RemoteFulfill(theirPreimage = hash2preimage(add.paymentHash), ourAdd = add)
             for (add <- fails) events localAddRejected InPrincipleNotSendable(localAdd = add)
           }
         }
@@ -121,8 +121,7 @@ abstract class ChannelHosted extends Channel { me =>
       if (sentExpired.nonEmpty) {
         // Our peer might have published a preimage on chain instead of directly sending it to us
         // if it turns out that preimage is not present on chain at this point we can safely fail an HTLC
-        val cmdStart = PreimageCheck.CMDStart(sentExpired.keySet, LNParams.syncParams.phcSyncNodes)
-        checker process cmdStart
+        checker process PreimageCheck.CMDStart(sentExpired.keySet, LNParams.syncParams.phcSyncNodes)
       }
 
 

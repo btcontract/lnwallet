@@ -40,12 +40,19 @@ object LNUrl {
     require(isSSLPlain || isOnion, "URI is neither Plain/HTTPS nor Onion/HTTP request")
     uri
   }
+
+  def level2DataResponse(bld: Uri.Builder): Observable[String] = Rx.ioQueue.map { _ =>
+    val requestWithCacheProtection = bld.appendQueryParameter(randomBytes(4).toHex, new String)
+    val response = HttpRequest.get(requestWithCacheProtection.build.toString, false).header("Connection", "close")
+    guardResponse(response.body)
+  }
 }
 
 case class LNUrl(request: String) {
   val uri: Uri = LNUrl.checkHost(request)
   lazy val k1: Try[String] = Try(uri getQueryParameter "k1")
   lazy val isAuth: Boolean = Try(uri getQueryParameter "tag" equals "login").getOrElse(false)
+  lazy val authAction: String = Try(uri getQueryParameter "action").getOrElse("login")
 
   lazy val fastWithdrawAttempt: Try[WithdrawRequest] = Try {
     require(uri getQueryParameter "tag" equals "withdrawRequest")
@@ -64,12 +71,6 @@ case class LNUrl(request: String) {
 
 trait LNUrlData {
   def checkAgainstParent(lnUrl: LNUrl): Boolean = true
-
-  def level2DataResponse(bld: Uri.Builder): Observable[String] = Rx.ioQueue.map { _ =>
-    val requestWithCacheProtection = bld.appendQueryParameter(randomBytes(4).toHex, new String)
-    val response = HttpRequest.get(requestWithCacheProtection.build.toString, false).header("Connection", "close")
-    LNUrl guardResponse response.body
-  }
 }
 
 case class NormalChannelRequest(uri: String, callback: String, k1: String) extends LNUrlData {
@@ -102,7 +103,7 @@ case class HostedChannelRequest(uri: String, alias: Option[String], k1: String) 
 
 case class WithdrawRequest(callback: String, k1: String, maxWithdrawable: Long, defaultDescription: String, minWithdrawable: Option[Long] = None) extends LNUrlData { me =>
 
-  def requestWithdraw(ext: PaymentRequestExt): Observable[String] = level2DataResponse {
+  def requestWithdraw(ext: PaymentRequestExt): Observable[String] = LNUrl.level2DataResponse {
     callbackUri.buildUpon.appendQueryParameter("pr", ext.raw).appendQueryParameter("k1", k1)
   }
 
@@ -135,7 +136,7 @@ object PayRequest {
 
 case class PayRequest(callback: String, maxSendable: Long, minSendable: Long, metadata: String, commentAllowed: Option[Int] = None) extends LNUrlData { me =>
 
-  def requestFinal(comment: Option[String], amount: MilliSatoshi): Observable[String] = level2DataResponse {
+  def requestFinal(comment: Option[String], amount: MilliSatoshi): Observable[String] = LNUrl.level2DataResponse {
     val base: Uri.Builder = callbackUri.buildUpon.appendQueryParameter("amount", amount.toLong.toString)
     comment match { case Some(text) => base.appendQueryParameter("comment", text) case _ => base }
   }

@@ -15,7 +15,7 @@ import scala.util.{Success, Try}
 import android.view.{MenuItem, View, ViewGroup}
 import rx.lang.scala.{Observable, Subscription}
 import com.androidstudy.networkmanager.{Monitor, Tovuti}
-import fr.acinq.bitcoin.{ByteVector32, Satoshi, SatoshiLong}
+import fr.acinq.bitcoin.{ByteVector32, Crypto, Satoshi, SatoshiLong}
 import fr.acinq.eclair.blockchain.fee.{FeeratePerKw, FeeratePerVByte}
 import fr.acinq.eclair.blockchain.electrum.ElectrumWallet.WalletReady
 import com.lightning.walletapp.BaseActivity.StringOps
@@ -478,8 +478,35 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
     cancellingSnack(contentWindow, obs.subscribe(resolve, onFail), msg)
   }
 
-  def showAuthForm(lnUrl: LNUrl): Unit = {
+  def showAuthForm(lnUrl: LNUrl): Unit = lnUrl.k1.foreach { k1 =>
+    val linkingPrivKey = LNParams.secret.keys.makeLinkingKey(lnUrl.uri.getHost)
+    val linkingPubKey = linkingPrivKey.publicKey.toString
+    val dataToSign = ByteVector32.fromValidHex(k1)
 
+    val (successRes, actionRes) = lnUrl.authAction match {
+      case "register" => (lnurl_auth_register_ok, lnurl_auth_register)
+      case "login" => (lnurl_auth_login_ok, lnurl_auth_login)
+      case "auth" => (lnurl_auth_auth_ok, lnurl_auth_auth)
+      case "link" => (lnurl_auth_link_ok, lnurl_auth_link)
+      case _ => throw new RuntimeException
+    }
+
+    val title = titleBodyAsViewBuilder(s"<big>${lnUrl.uri.getHost}</big>".asColoredView(R.color.cardLightning), null)
+    mkCheckFormNeutral(doAuth, none, displayInfo, title, actionRes, dialog_cancel, dialog_info)
+
+    def displayInfo(alert: AlertDialog): Unit = {
+      val explanation = getString(lnurl_auth_info).format(lnUrl.uri.getHost, linkingPubKey.humanFour).html
+      mkCheckFormNeutral(_.dismiss, none, _ => share(linkingPubKey), new AlertDialog.Builder(me).setMessage(explanation), dialog_ok, -1, dialog_share)
+    }
+
+    def doAuth(alert: AlertDialog): Unit = {
+      val signature = Crypto.sign(dataToSign, linkingPrivKey)
+      val msg = getString(dialog_lnurl_processing).format(lnUrl.uri.getHost).html
+      val uri = lnUrl.uri.buildUpon.appendQueryParameter("sig", Crypto.compact2der(signature).toHex).appendQueryParameter("key", linkingPubKey)
+      val sub = LNUrl.level2DataResponse(uri).doOnTerminate(removeCurrentSnack.run).subscribe(_ => UITask(WalletApp.app quickToast successRes).run, onFail)
+      cancellingSnack(contentWindow, sub, msg)
+      alert.dismiss
+    }
   }
 
   override def onChoiceMade(tag: String, pos: Int): Unit = (tag, pos) match {
