@@ -100,6 +100,11 @@ object Tools {
   def chaChaDecrypt(key: ByteVector32, data: ByteVector): Try[ByteVector] = Try {
     ChaCha20Poly1305.decrypt(key, nonce = data drop 16 take 12, ciphertext = data drop 28, ByteVector.empty, mac = data take 16)
   }
+
+  object ~~ {
+    // Useful for matching nested Tuple2 with less noise
+    def unapply[A, B](t2: (A, B) /* Got a tuple */) = Some(t2)
+  }
 }
 
 trait CanBeShutDown {

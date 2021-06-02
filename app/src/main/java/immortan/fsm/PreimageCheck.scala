@@ -1,15 +1,18 @@
 package immortan.fsm
 
 import scala.concurrent.duration._
+import immortan.utils.ImplicitJsonFormats._
 import fr.acinq.bitcoin.{ByteVector32, Crypto}
+import immortan.crypto.Tools.{none, randomKeyPair}
 import immortan.fsm.PreimageCheck.{FINALIZED, OPERATIONAL}
 import scala.concurrent.{ExecutionContext, ExecutionContextExecutor}
 import immortan.{CommsTower, ConnectionListener, KeyPairAndPubKey, RemoteNodeInfo}
 import fr.acinq.eclair.wire.{HostedChannelMessage, Init, QueryPreimages, ReplyPreimages}
 import fr.acinq.eclair.channel.Helpers.HashToPreimage
-import immortan.crypto.Tools.randomKeyPair
+import com.github.kevinsawicki.http.HttpRequest
 import java.util.concurrent.Executors
 import immortan.crypto.StateMachine
+import immortan.utils.uri.Uri
 import immortan.utils.Rx
 
 
@@ -52,8 +55,12 @@ abstract class PreimageCheck extends StateMachine[PreimageCheck.CheckData] { me 
 
     case (PreimageCheck.PeerResponse(msg: ReplyPreimages, worker), OPERATIONAL) =>
       // One of remote nodes replies, check if we have all preimages of interest collected
-      val hashToPreimage1 = data.hashToPreimage ++ msg.preimages.map(Crypto sha256 _).zip(msg.preimages)
-      become(data.copy(hashToPreimage = hashToPreimage1, pending = data.pending - worker.info), OPERATIONAL)
+      become(merge(data, msg).copy(pending = data.pending - worker.info), OPERATIONAL)
+      doCheck(force = false)
+
+    case (msg: ReplyPreimages, OPERATIONAL) =>
+      // Unwrapped message from side channel
+      become(merge(data, msg), OPERATIONAL)
       doCheck(force = false)
 
     case (PreimageCheck.CMDCancel, OPERATIONAL) =>
@@ -62,9 +69,11 @@ abstract class PreimageCheck extends StateMachine[PreimageCheck.CheckData] { me 
       become(data, FINALIZED)
 
     case (PreimageCheck.CMDStart(hashes, hosts), -1) =>
-      become(PreimageCheck.CheckData(hosts.map(randomPair).toMap, pending = hosts, hashes), OPERATIONAL)
-      for (Tuple2(info, pair) <- data.pairs) CommsTower.listen(listeners1 = Set(listener), pair, info)
+      become(PreimageCheck.CheckData(hosts.map(randomPair).toMap, hosts, hashes), OPERATIONAL)
+      for (Tuple2(info, pair) <- data.pairs) CommsTower.listen(Set(listener), pair, info)
       Rx.ioQueue.delay(30.seconds).foreach(_ => me doCheck true)
+      // Query supporting explorers as a redundancy measure
+      useSideChannel(hashes)
 
     case _ =>
   }
@@ -86,5 +95,17 @@ abstract class PreimageCheck extends StateMachine[PreimageCheck.CheckData] { me 
       me doProcess PreimageCheck.CMDCancel
       onComplete(collected)
     }
+  }
+
+  def merge(data1: PreimageCheck.CheckData, msg: ReplyPreimages): PreimageCheck.CheckData = {
+    val hashToPreimage1 = data1.hashToPreimage ++ msg.preimages.map(Crypto sha256 _).zip(msg.preimages)
+    data1.copy(hashToPreimage = hashToPreimage1)
+  }
+
+  type MempoolResponse = List[String]
+  def useSideChannel(hashes: Set[ByteVector32] = Set.empty): Unit = {
+    val mempoolSpace = Uri.parse("https://mempool.space/api/preimage").buildUpon.appendQueryParameter("hash", hashes mkString ",")
+    val obs = Rx.ioQueue.map(_ => HttpRequest.get(mempoolSpace.build.toString, false).connectTimeout(15000).header("Connection", "close").body)
+    obs.map(raw => to[MempoolResponse](raw) map ByteVector32.fromValidHex).map(ReplyPreimages).foreach(process, none)
   }
 }

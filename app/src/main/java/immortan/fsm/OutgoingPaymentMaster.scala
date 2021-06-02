@@ -454,7 +454,7 @@ class OutgoingPaymentSender(val fullTag: FullPaymentTag, val listener: OutgoingP
     val accumulatorAndLeftover = (Map.empty[ByteVector, PartStatus], amount)
 
     directChansFirst.foldLeft(accumulatorAndLeftover) {
-      case ((accumulator, leftover), (cnc, chanSendable)) if leftover > 0L.msat =>
+      case (accumulator ~~ leftover, cnc ~~ chanSendable) if leftover > 0L.msat =>
         // If leftover becomes less than theoretical sendable minimum then we must bump it upwards
         // Example: channel leftover=500, minSendable=10, chanSendable=200 -> sending 200
         // Example: channel leftover=300, minSendable=10, chanSendable=400 -> sending 300

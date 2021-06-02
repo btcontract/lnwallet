@@ -74,8 +74,8 @@ abstract class ChannelHosted extends Channel { me =>
       if (!isRemoteSigOk) localSuspend(hc, ERR_HOSTED_WRONG_REMOTE_SIG)
       else if (!isLocalSigOk) localSuspend(hc, ERR_HOSTED_WRONG_LOCAL_SIG)
       else {
-        // We may have incoming HTLCs to fail or fulfill
         StoreBecomeSend(hc, OPEN, hc.lastCrossSignedState)
+        // We may have local incoming FSMs to finalize
         events stateUpdated Nil
       }
 
@@ -86,39 +86,24 @@ abstract class ChannelHosted extends Channel { me =>
       val sentExpired = hc.allOutgoing.filter(tip > _.cltvExpiry.toLong).groupBy(_.paymentHash)
       val hasReceivedRevealedExpired = hc.revealedFulfills.exists(tip > _.theirAdd.cltvExpiry.toLong)
 
-      // For each expired outgoing payment:
-      // - ROUTED with preimage -> suspend channel, notify payment success
-      // - LOCAL with preimage -> suspend channel, notify payment success
-      // - ROUTED without preimage -> suspend channel, notify failure
-      // - LOCAL without preimage -> do nothing
-
-      val checker = new PreimageCheck {
-        override def onComplete(hash2preimage: HashToPreimage): Unit = {
-          val fulfillAndFailSets = Set.empty[UpdateAddHtlc] -> Set.empty[UpdateAddHtlc]
-
-          val (fulfills, fails) = sentExpired.values.flatten.foldLeft(fulfillAndFailSets) {
-            case (Tuple2(fulfillSet, failSet), ourAdd) if hash2preimage.contains(ourAdd.paymentHash) => (fulfillSet + ourAdd, failSet)
-            case (Tuple2(fulfillSet, failSet), ourAdd) if ourAdd.fullTag.tag == PaymentTagTlv.TRAMPLOINE_ROUTED => (fulfillSet, failSet + ourAdd)
-            case (stateSoFar, _) => stateSoFar
-          }
-
-          if (fulfills.nonEmpty || fails.nonEmpty) {
-            val settledHtlcIds = (fulfills ++ fails).map(_.id)
-            localSuspend(hc.modify(_.postErrorOutgoingResolvedIds).using(_ ++ settledHtlcIds), ERR_HOSTED_TIMED_OUT_OUTGOING_HTLC)
-            for (add <- fulfills) events fulfillReceived RemoteFulfill(theirPreimage = hash2preimage(add.paymentHash), ourAdd = add)
-            for (add <- fails) events localAddRejected InPrincipleNotSendable(localAdd = add)
-          }
-        }
-      }
-
       if (hasReceivedRevealedExpired) {
-        // We have incoming payments for which we have revealed a preimage but they are still unresolved and completely expired by now
+        // We have incoming payments for which we have revealed a preimage but they are still unresolved and completely expired
         // unless we have published a preimage on chain we can not prove we have revealed a preimage in time at this point
         // at the very least it makes sense to halt further usage of this potentially malicious channel
         localSuspend(hc, ERR_HOSTED_MANUAL_SUSPEND)
       }
 
       if (sentExpired.nonEmpty) {
+        val checker = new PreimageCheck {
+          override def onComplete(hash2preimage: HashToPreimage): Unit = {
+            val settledOutgoingHtlcIds = sentExpired.values.flatten.map(_.id)
+            val (fulfilled, failed) = sentExpired.values.flatten.partition(add => hash2preimage contains add.paymentHash)
+            localSuspend(hc.modify(_.postErrorOutgoingResolvedIds).using(_ ++ settledOutgoingHtlcIds), ERR_HOSTED_TIMED_OUT_OUTGOING_HTLC)
+            for (add <- fulfilled) events fulfillReceived RemoteFulfill(theirPreimage = hash2preimage(add.paymentHash), ourAdd = add)
+            for (add <- failed) events localAddRejected InPrincipleNotSendable(localAdd = add)
+          }
+        }
+
         // Our peer might have published a preimage on chain instead of directly sending it to us
         // if it turns out that preimage is not present on chain at this point we can safely fail an HTLC
         checker process PreimageCheck.CMDStart(sentExpired.keySet, LNParams.syncParams.phcSyncNodes)
@@ -137,6 +122,7 @@ abstract class ChannelHosted extends Channel { me =>
       val (hc1, ourAdd: UpdateAddHtlc) = hc.receiveFulfill(fulfill)
       val filfill = RemoteFulfill(ourAdd, fulfill.paymentPreimage)
       BECOME(data1 = hc1, state1 = state)
+      // Real state update is expected
       events fulfillReceived filfill
 
 
@@ -166,7 +152,7 @@ abstract class ChannelHosted extends Channel { me =>
         case _ if SLEEPING == state => events localAddRejected ChannelOffline(cmd.incompleteAdd)
         case Left(reason) => events localAddRejected reason
 
-        case Right((hc1, updateAddHtlcMsg)) =>
+        case Right(hc1 ~~ updateAddHtlcMsg) =>
           StoreBecomeSend(hc1, OPEN, updateAddHtlcMsg)
           process(CMD_SIGN)
       }
@@ -271,7 +257,8 @@ abstract class ChannelHosted extends Channel { me =>
 
 
     case (hc: HostedCommits, remoteError: Error, WAIT_FOR_ACCEPT | OPEN) if hc.remoteError.isEmpty =>
-      StoreBecomeSend(hc.copy(remoteError = remoteError.asSome), OPEN)
+      StoreBecomeSend(data1 = hc.copy(remoteError = remoteError.asSome), OPEN)
+      throw RemoteErrorException(ErrorExt extractDescription remoteError)
 
 
     case (hc: HostedCommits, remoteSO: StateOverride, OPEN | SLEEPING) if hc.error.isDefined =>
@@ -287,11 +274,11 @@ abstract class ChannelHosted extends Channel { me =>
       val isRemoteSigOk = completeLocalLCSS.verifyRemoteSig(hc.remoteInfo.nodeId)
       val hc1 = restoreCommits(completeLocalLCSS, hc.remoteInfo)
 
-      if (completeLocalLCSS.localBalanceMsat < 0L.msat) throw CMDException(new RuntimeException("Provided updated local balance is larger than capacity"), cmd)
-      if (remoteSO.localUpdates < hc.lastCrossSignedState.remoteUpdates) throw CMDException(new RuntimeException("Provided local update number from remote host is wrong"), cmd)
-      if (remoteSO.remoteUpdates < hc.lastCrossSignedState.localUpdates) throw CMDException(new RuntimeException("Provided remote update number from remote host is wrong"), cmd)
-      if (remoteSO.blockDay < hc.lastCrossSignedState.blockDay) throw CMDException(new RuntimeException("Provided override blockday from remote host is not acceptable"), cmd)
-      if (!isRemoteSigOk) throw CMDException(new RuntimeException("Provided override signature from remote host is wrong"), cmd)
+      if (completeLocalLCSS.localBalanceMsat < 0L.msat) throw CMDException("Provided updated local balance is larger than capacity", cmd)
+      if (remoteSO.localUpdates < hc.lastCrossSignedState.remoteUpdates) throw CMDException("Provided local update number from remote host is wrong", cmd)
+      if (remoteSO.remoteUpdates < hc.lastCrossSignedState.localUpdates) throw CMDException("Provided remote update number from remote host is wrong", cmd)
+      if (remoteSO.blockDay < hc.lastCrossSignedState.blockDay) throw CMDException("Provided override blockday from remote host is not acceptable", cmd)
+      if (!isRemoteSigOk) throw CMDException("Provided override signature from remote host is wrong", cmd)
       StoreBecomeSend(hc1, OPEN, completeLocalLCSS.stateUpdate)
       rejectOverriddenOutgoingAdds(hc, hc1)
 
@@ -302,8 +289,8 @@ abstract class ChannelHosted extends Channel { me =>
   }
 
   def rejectOverriddenOutgoingAdds(hc: HostedCommits, hc1: HostedCommits): Unit = {
-    hc.allOutgoing -- hc1.allOutgoing map InPrincipleNotSendable foreach events.localAddRejected
-    // We have already rejected overridden outgoing HTLCs as if they are not sendable
+    for (add <- hc.allOutgoing -- hc1.allOutgoing) events localAddRejected InPrincipleNotSendable(add)
+    // We may have local incoming FSMs to finalize because pending incoming HTLCs could have also been removed
     events stateUpdated Nil
   }
 
@@ -313,10 +300,9 @@ abstract class ChannelHosted extends Channel { me =>
       localLCSS, nextLocalUpdates = Nil, nextRemoteUpdates = Nil, updateOpt = None, postErrorOutgoingResolvedIds = Set.empty, localError = None, remoteError = None)
   }
 
-  def localSuspend(hc: HostedCommits, errCode: String): Unit = {
-    val localError = Error(hc.channelId, ByteVector fromValidHex errCode)
-    val hc1 = if (hc.localError.isDefined) hc else hc.copy(localError = localError.asSome)
-    StoreBecomeSend(hc1, state, localError)
+  def localSuspend(hc: HostedCommits, errCode: String): Unit = if (hc.localError.isEmpty) {
+    val localError = Error(data = ByteVector.fromValidHex(errCode), channelId = hc.channelId)
+    StoreBecomeSend(hc.copy(localError = localError.asSome), state, localError)
   }
 
   def attemptStateUpdate(remoteSU: StateUpdate, hc: HostedCommits): Unit = {

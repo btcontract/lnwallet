@@ -34,7 +34,7 @@ object LNUrl {
     raw
   }
 
-  def checkHost(host: String): Uri = Uri parse host match { case uri =>
+  def checkHost(host: String): Uri = Uri.parse(host) match { case uri =>
     val isOnion = host.startsWith("http://") && uri.getHost.endsWith(NodeAddress.onionSuffix)
     val isSSLPlain = host.startsWith("https://") && !uri.getHost.endsWith(NodeAddress.onionSuffix)
     require(isSSLPlain || isOnion, "URI is neither Plain/HTTPS nor Onion/HTTP request")
@@ -42,9 +42,8 @@ object LNUrl {
   }
 
   def level2DataResponse(bld: Uri.Builder): Observable[String] = Rx.ioQueue.map { _ =>
-    val requestWithCacheProtection = bld.appendQueryParameter(randomBytes(4).toHex, new String)
-    val response = HttpRequest.get(requestWithCacheProtection.build.toString, false).header("Connection", "close")
-    guardResponse(response.body)
+    val requestWithCacheProtection = bld.appendQueryParameter(randomBytes(4).toHex, new String).build.toString
+    guardResponse(HttpRequest.get(requestWithCacheProtection, false).connectTimeout(15000).header("Connection", "close").body)
   }
 }
 
@@ -62,8 +61,7 @@ case class LNUrl(request: String) {
   }
 
   def level1DataResponse: Observable[LNUrlData] = Rx.ioQueue.map { _ =>
-    val response = HttpRequest.get(uri.toString, false).header("Connection", "close")
-    val lnUrlData = to[LNUrlData](LNUrl guardResponse response.connectTimeout(15000).body)
+    val lnUrlData = to[LNUrlData](LNUrl guardResponse HttpRequest.get(uri.toString, false).connectTimeout(15000).header("Connection", "close").body)
     require(lnUrlData.checkAgainstParent(this), "1st/2nd level callback domain mismatch")
     lnUrlData
   }

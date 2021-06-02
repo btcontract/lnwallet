@@ -100,18 +100,19 @@ object Helpers {
 
   object Closing {
     sealed trait ClosingType
+
     case class MutualClose(tx: Transaction) extends ClosingType
     case class LocalClose(localCommit: LocalCommit, localCommitPublished: LocalCommitPublished) extends ClosingType
-    sealed trait RemoteClose extends ClosingType { def remoteCommit: RemoteCommit; def remoteCommitPublished: RemoteCommitPublished }
+
+    sealed trait RemoteClose extends ClosingType {
+      def remoteCommitPublished: RemoteCommitPublished
+      def remoteCommit: RemoteCommit
+    }
+
     case class CurrentRemoteClose(remoteCommit: RemoteCommit, remoteCommitPublished: RemoteCommitPublished) extends RemoteClose
     case class NextRemoteClose(remoteCommit: RemoteCommit, remoteCommitPublished: RemoteCommitPublished) extends RemoteClose
-    case class RecoveryClose(remoteCommitPublished: RemoteCommitPublished) extends ClosingType
     case class RevokedClose(revokedCommitPublished: RevokedCommitPublished) extends ClosingType
-
-    def nothingAtStake(data: HasNormalCommitments): Boolean =
-      data.commitments.localCommit.index == 0 && data.commitments.localCommit.spec.toLocal == 0.msat &&
-        data.commitments.remoteCommit.index == 0 && data.commitments.remoteCommit.spec.toRemote == 0.msat &&
-        data.commitments.remoteNextCommitInfo.isRight
+    case class RecoveryClose(remoteCommitPublished: RemoteCommitPublished) extends ClosingType
 
     def isClosingTypeAlreadyKnown(c: DATA_CLOSING): Option[ClosingType] = c match {
       case _ if c.localCommitPublished.exists(_.isCommitConfirmed) => LocalClose(c.commitments.localCommit, c.localCommitPublished.get).asSome
@@ -121,15 +122,10 @@ object Helpers {
       case _ => c.revokedCommitPublished.find(_.isCommitConfirmed).map(RevokedClose)
     }
 
-    def isClosed(data: HasNormalCommitments, additionalConfirmedTxOpt: Option[Transaction] = None): Option[ClosingType] = data match {
-      case c: DATA_CLOSING if additionalConfirmedTxOpt.exists(c.mutualClosePublished.contains) => additionalConfirmedTxOpt.map(MutualClose)
-      case c: DATA_CLOSING if c.localCommitPublished.exists(Closing.isLocalCommitDone) => LocalClose(c.commitments.localCommit, c.localCommitPublished.get).asSome
-      case c: DATA_CLOSING if c.remoteCommitPublished.exists(Closing.isRemoteCommitDone) => CurrentRemoteClose(c.commitments.remoteCommit, c.remoteCommitPublished.get).asSome
-      case c: DATA_CLOSING if c.nextRemoteCommitPublished.exists(Closing.isRemoteCommitDone) => NextRemoteClose(c.commitments.remoteNextCommitInfo.left.get.nextRemoteCommit, c.nextRemoteCommitPublished.get).asSome
-      case c: DATA_CLOSING if c.revokedCommitPublished.exists(Closing.isRevokedCommitDone) => c.revokedCommitPublished.find(Closing.isRevokedCommitDone).map(RevokedClose)
-      case c: DATA_CLOSING if c.futureRemoteCommitPublished.exists(Closing.isRemoteCommitDone) => c.futureRemoteCommitPublished.map(RecoveryClose)
-      case _ => None
-    }
+    def isClosed(c: DATA_CLOSING, additionalConfirmedTxOpt: Option[Transaction] = None): Boolean =
+      additionalConfirmedTxOpt.exists(c.mutualClosePublished.contains) || c.localCommitPublished.exists(Closing.isLocalCommitDone) ||
+        c.remoteCommitPublished.exists(Closing.isRemoteCommitDone) || c.nextRemoteCommitPublished.exists(Closing.isRemoteCommitDone) ||
+        c.revokedCommitPublished.exists(Closing.isRevokedCommitDone) || c.futureRemoteCommitPublished.exists(Closing.isRemoteCommitDone)
 
     def isValidFinalScriptPubkey(scriptPubKey: ByteVector): Boolean = Try(Script parse scriptPubKey) match {
       case Success(OP_DUP :: OP_HASH160 :: OP_PUSHDATA(pubkeyHash, _) :: OP_EQUALVERIFY :: OP_CHECKSIG :: Nil) if pubkeyHash.size == 20 => true
@@ -374,20 +370,28 @@ object Helpers {
       matchingHtlcs.zip(matchingTxs).collectFirst { case (add, timeoutTx) if timeoutTx.txid == tx.txid => add }
     }
 
-    def timedoutHtlcs(commitmentFormat: CommitmentFormat, localCommit: LocalCommit, localCommitPublished: LocalCommitPublished, localDustLimit: Satoshi, tx: Transaction): Set[UpdateAddHtlc] = {
-      val untrimmedHtlcs = Transactions.trimOfferedHtlcs(localDustLimit, localCommit.spec, commitmentFormat).map(outgoingFromOurPov => outgoingFromOurPov.add)
-      val finder = findTimedOutHtlc(tx, _: ByteVector, untrimmedHtlcs, Scripts.extractPaymentHashFromHtlcTimeout, localCommitPublished.htlcTimeoutTxs)
+    def timedoutHtlcs(commitmentFormat: CommitmentFormat, localCommit: LocalCommit,
+                      localCommitPublished: LocalCommitPublished, localDustLimit: Satoshi,
+                      tx: Transaction): Set[UpdateAddHtlc] = {
 
-      // Fail dusty HTLCs if it's a commit tx
+      val untrimmedHtlcs = trimOfferedHtlcs(localDustLimit, localCommit.spec, commitmentFormat).map(_.add)
+      val finder = findTimedOutHtlc(tx, _: ByteVector, untrimmedHtlcs, Scripts.extractPaymentHashFromHtlcTimeout,
+        localCommitPublished.htlcTimeoutTxs)
+
+      // Fail dusty HTLCs if it's a commit tx, otherwise find the ones with matching hash
       if (tx.txid == localCommit.publishableTxs.commitTx.tx.txid) localCommit.spec.htlcs.collect(outgoing) -- untrimmedHtlcs
       else tx.txIn.map(_.witness).collect(Scripts.extractPaymentHashFromHtlcTimeout).map(finder).flatten.toSet
     }
 
-    def timedoutHtlcs(commitmentFormat: CommitmentFormat, remoteCommit: RemoteCommit, remoteCommitPublished: RemoteCommitPublished, remoteDustLimit: Satoshi, tx: Transaction): Set[UpdateAddHtlc] = {
-      val untrimmedHtlcs = Transactions.trimReceivedHtlcs(remoteDustLimit, remoteCommit.spec, commitmentFormat).map(incomingFromTheirPov => incomingFromTheirPov.add)
-      val finder = findTimedOutHtlc(tx, _: ByteVector, untrimmedHtlcs, Scripts.extractPaymentHashFromClaimHtlcTimeout, remoteCommitPublished.claimHtlcTimeoutTxs)
+    def timedoutHtlcs(commitmentFormat: CommitmentFormat, remoteCommit: RemoteCommit,
+                      remoteCommitPublished: RemoteCommitPublished, remoteDustLimit: Satoshi,
+                      tx: Transaction): Set[UpdateAddHtlc] = {
 
-      // Fail dusty HTLCs if it's a commit tx
+      val untrimmedHtlcs = trimReceivedHtlcs(remoteDustLimit, remoteCommit.spec, commitmentFormat).map(_.add)
+      val finder = findTimedOutHtlc(tx, _: ByteVector, untrimmedHtlcs, Scripts.extractPaymentHashFromClaimHtlcTimeout,
+        remoteCommitPublished.claimHtlcTimeoutTxs)
+
+      // Fail dusty HTLCs if it's a commit tx, otherwise find the ones with matching hash
       if (tx.txid == remoteCommit.txid) remoteCommit.spec.htlcs.collect(incoming) -- untrimmedHtlcs
       else tx.txIn.map(_.witness).collect(Scripts.extractPaymentHashFromClaimHtlcTimeout).map(finder).flatten.toSet
     }

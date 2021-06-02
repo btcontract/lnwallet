@@ -88,7 +88,7 @@ object CommsTower {
 
         def handleEnterOperationalState: Unit = {
           pinging = Observable.interval(10.seconds) subscribe { _ =>
-            if (lastMessage < System.currentTimeMillis - 50 * 1000L) disconnect
+            if (lastMessage < System.currentTimeMillis - 45 * 1000L) disconnect
             else if (lastMessage < System.currentTimeMillis - 20 * 1000L) sendPing
           }
 

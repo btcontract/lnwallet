@@ -86,7 +86,7 @@ class SQLiteNetwork(val db: DBInterface, val updateTable: ChannelUpdateTable, va
     val shortId2Updates = listChannelUpdates.groupBy(_.update.shortChannelId)
 
     val tuples = listChannelAnnouncements.flatMap { ann =>
-      shortId2Updates get ann.shortChannelId collectFirst {
+      shortId2Updates.get(ann.shortChannelId) collectFirst {
         case List(u1, u2) if ChannelUpdate.POSITION1NODE == u1.update.position => ann.shortChannelId -> PublicChannel(Some(u1), Some(u2), ann)
         case List(u2, u1) if ChannelUpdate.POSITION2NODE == u2.update.position => ann.shortChannelId -> PublicChannel(Some(u1), Some(u2), ann)
         case List(u1) if ChannelUpdate.POSITION1NODE == u1.update.position => ann.shortChannelId -> PublicChannel(Some(u1), None, ann)

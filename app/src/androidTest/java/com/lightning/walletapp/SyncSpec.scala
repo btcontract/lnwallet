@@ -27,6 +27,7 @@ class SyncSpec {
     val (normalStore, _) = DBSpec.getNetworkStores(dbName)
 
     LNParams.chainHash = Block.TestnetGenesisBlock.hash
+    LNParams.ourInit = LNParams.createInit
 
     LNParams.syncParams = new TestNetSyncParams {
       override val maxNodesToSyncFrom = 1

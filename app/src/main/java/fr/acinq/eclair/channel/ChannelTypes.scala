@@ -1,19 +1,3 @@
-/*
- * Copyright 2019 ACINQ SAS
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
-
 package fr.acinq.eclair.channel
 
 import scodec.bits._
@@ -100,8 +84,13 @@ case class CMD_ADD_HTLC(fullTag: FullPaymentTag, firstAmount: MilliSatoshi, cltv
   }
 }
 
-case object CMD_FORCECLOSE extends Command
-final case class CMD_CLOSE(scriptPubKey: Option[ByteVector] = None) extends Command
+object CMD_CLOSE {
+  final val INVALID_CLOSING_PUBKEY = "invalid-closing-pubkey"
+  final val ALREADY_IN_PROGRESS = "already-in-progress"
+  final val CHANNEL_BUSY = "channel-busy"
+}
+
+case class CMD_CLOSE(scriptPubKey: Option[ByteVector], force: Boolean) extends Command
 case class CMD_HOSTED_STATE_OVERRIDE(so: StateOverride) extends Command
 case class HC_CMD_RESIZE(delta: Satoshi) extends Command
 case object CMD_SOCKET_OFFLINE extends Command
@@ -177,9 +166,16 @@ final case class DATA_WAIT_FOR_FUNDING_LOCKED(commitments: NormalCommits, shortC
 final case class DATA_NORMAL(commitments: NormalCommits, shortChannelId: ShortChannelId, feeUpdateRequired: Boolean = false,
                              localShutdown: Option[Shutdown] = None, remoteShutdown: Option[Shutdown] = None) extends ChannelData with HasNormalCommitments
 
+object DATA_NEGOTIATING {
+  type ClosingProposed = List[ClosingTxProposed]
+}
+
 final case class DATA_NEGOTIATING(commitments: NormalCommits, localShutdown: Shutdown,
-                                  remoteShutdown: Shutdown, closingTxProposed: List[List[ClosingTxProposed]] = List(Nil),
-                                  bestUnpublishedClosingTxOpt: Option[Transaction] = None) extends ChannelData with HasNormalCommitments
+                                  remoteShutdown: Shutdown, closingTxProposed: List[DATA_NEGOTIATING.ClosingProposed] = List(Nil),
+                                  bestUnpublishedClosingTxOpt: Option[Transaction] = None) extends ChannelData with HasNormalCommitments {
+
+  def toClosed: DATA_CLOSING = DATA_CLOSING(commitments, System.currentTimeMillis, closingTxProposed.flatten.map(_.unsignedTx), bestUnpublishedClosingTxOpt.toList)
+}
 
 final case class DATA_CLOSING(commitments: NormalCommits, waitingSince: Long, mutualCloseProposed: List[Transaction] = Nil, mutualClosePublished: List[Transaction] = Nil,
                               localCommitPublished: Option[LocalCommitPublished] = None, remoteCommitPublished: Option[RemoteCommitPublished] = None, nextRemoteCommitPublished: Option[RemoteCommitPublished] = None,
@@ -322,4 +318,5 @@ case class ChannelTransitionFail(channelId: ByteVector32) extends RuntimeExcepti
   override def toString: String = s"ChannelTransitionFail, details: $getMessage"
 }
 
-case class CMDException(error: RuntimeException, cmd: Command) extends RuntimeException
+case class CMDException(reason: String, cmd: Command) extends RuntimeException
+case class RemoteErrorException(details: String) extends RuntimeException

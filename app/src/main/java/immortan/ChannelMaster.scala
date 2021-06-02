@@ -8,6 +8,7 @@ import immortan.crypto.Tools._
 import immortan.PaymentStatus._
 import immortan.ChannelMaster._
 import fr.acinq.eclair.channel._
+
 import scala.concurrent.duration._
 import fr.acinq.bitcoin.{ByteVector32, Satoshi}
 import fr.acinq.bitcoin.Crypto.{PrivateKey, PublicKey}
@@ -15,11 +16,13 @@ import fr.acinq.eclair.transactions.{RemoteFulfill, RemoteReject}
 import immortan.crypto.{CanBeRepliedTo, CanBeShutDown, StateMachine}
 import immortan.fsm.OutgoingPaymentMaster.CMDChanGotOnline
 import java.util.concurrent.atomic.AtomicLong
+
 import fr.acinq.eclair.payment.IncomingPacket
 import com.google.common.cache.LoadingCache
-import immortan.ChannelListener.Transition
+import immortan.ChannelListener.{Malfunction, Transition}
 import rx.lang.scala.Subject
 import immortan.utils.Rx
+
 import scala.util.Try
 
 
@@ -229,9 +232,15 @@ class ChannelMaster(val payBag: PaymentBag, val chanBag: ChannelBag, val dataBag
 
   // These are executed in Channel context
 
-  override def localAddRejected(reason: LocalAddRejected): Unit = opm process reason
+  override def onException: PartialFunction[Malfunction, Unit] = {
+    case (chan: ChannelNormal, data: HasNormalCommitments, error: ChannelTransitionFail) =>
+      dataBag.putChanCloseDetails(data.channelId, error.getStackTrace.toList.toString)
+      chan process CMD_CLOSE(scriptPubKey = None, force = true)
 
-  override def fulfillReceived(fulfill: RemoteFulfill): Unit = opm process fulfill
+    case (chan: ChannelHosted, hc: HostedCommits, error: ChannelTransitionFail) =>
+      dataBag.putChanCloseDetails(hc.channelId, error.getStackTrace.toList.toString)
+      chan.localSuspend(hc, ErrorCodes.ERR_HOSTED_MANUAL_SUSPEND)
+  }
 
   override def onBecome: PartialFunction[Transition, Unit] = {
     case (_, _, _, SLEEPING, CLOSING) => next(statusUpdateStream)
@@ -253,7 +262,16 @@ class ChannelMaster(val payBag: PaymentBag, val chanBag: ChannelBag, val dataBag
       next(statusUpdateStream)
   }
 
+  // Used to fail outgoing adds which can not be committed, or not committed any more
+  // also contains invariants which instruct outgoing FSM to abort a payment right away
+  override def localAddRejected(reason: LocalAddRejected): Unit = opm process reason
+
+  // Used to notify about an existance of preimage before new state is committed in origin channel
+  // should always be followed by real or simulated state update to let incoming FSMs finalize properly
+  override def fulfillReceived(fulfill: RemoteFulfill): Unit = opm process fulfill
+
   override def stateUpdated(rejects: Seq[RemoteReject] = Nil): Unit = {
+    // Rejects here are the ones we can safely retry in outgoing FSM since they are not committed any more after last state update
     val allIns = all.values.flatMap(Channel.chanAndCommitsOpt).flatMap(_.commits.crossSignedIncoming).map(initResolveMemo.get)
     allIns.foreach { case finalResolve: FinalResolution => sendTo(finalResolve, finalResolve.theirAdd.channelId) case _ => }
     val reasonableIncoming = allIns.collect { case resolution: ReasonableResolution => resolution }.groupBy(_.fullTag)

@@ -198,6 +198,11 @@ case class NormalCommits(channelFlags: Byte, channelId: ByteVector32, channelVer
     Right(commitments1, completeAdd)
   }
 
+  def sendFulfill(cmd: CMD_FULFILL_HTLC): (NormalCommits, UpdateFulfillHtlc) = {
+    val msg = UpdateFulfillHtlc(channelId, cmd.theirAdd.id, cmd.preimage)
+    (addLocalProposal(msg), msg)
+  }
+
   def receiveAdd(add: UpdateAddHtlc): NormalCommits = {
     if (localParams.htlcMinimum.max(1L.msat) > add.amountMsat) throw ChannelTransitionFail(channelId)
     if (add.id != remoteNextHtlcId) throw ChannelTransitionFail(channelId)

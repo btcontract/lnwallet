@@ -1,20 +1,23 @@
 package immortan.sqlite
 
 import java.lang.{Long => JLong}
-import fr.acinq.bitcoin.{ByteVector32, Crypto}
 import fr.acinq.eclair.{CltvExpiry, ShortChannelId}
+import fr.acinq.bitcoin.{ByteVector32, Crypto, Satoshi}
 import fr.acinq.eclair.channel.PersistentChannelData
 import fr.acinq.eclair.transactions.DirectedHtlc
 import fr.acinq.eclair.wire.ChannelCodecs
 import immortan.ChannelBag
+import scala.util.Try
 
 
-class SQLiteChannel(val db: DBInterface) extends ChannelBag {
-  override def put(data: PersistentChannelData): PersistentChannelData = db txWrap {
-    val rawContent = ChannelCodecs.persistentDataCodec.encode(data).require.toByteArray
-    db.change(ChannelTable.newSql, data.channelId.toHex, rawContent)
-    db.change(ChannelTable.updSql, rawContent, data.channelId.toHex)
-    data
+case class ChannelTxFeesSummary(fees: Satoshi, count: Long)
+
+class SQLiteChannel(val db: DBInterface, channelTxFeesDb: DBInterface) extends ChannelBag {
+  override def put(persistentChannelData: PersistentChannelData): PersistentChannelData = db txWrap {
+    val rawContent = ChannelCodecs.persistentDataCodec.encode(persistentChannelData).require.toByteArray
+    db.change(ChannelTable.newSql, persistentChannelData.channelId.toHex, rawContent)
+    db.change(ChannelTable.updSql, rawContent, persistentChannelData.channelId.toHex)
+    persistentChannelData
   }
 
   override def all: Iterable[PersistentChannelData] =
@@ -42,4 +45,14 @@ class SQLiteChannel(val db: DBInterface) extends ChannelBag {
 
   override def rmHtlcInfos(sid: ShortChannelId): Unit =
     db.change(HtlcInfoTable.killSql, sid.toLong: JLong)
+
+  // Channel related tx fees
+
+  def channelTxFeesSummary: Try[ChannelTxFeesSummary] =
+    channelTxFeesDb.select(ChannelTxFeesTable.selectSummarySql).headTry { rc =>
+      ChannelTxFeesSummary(fees = Satoshi(rc long 0), count = rc long 1)
+    }
+
+  def addChannelTxFee(feePaid: Satoshi, txid: ByteVector32): Unit =
+    channelTxFeesDb.change(ChannelTxFeesTable.newSql, txid.toHex, feePaid.toLong: JLong)
 }

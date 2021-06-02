@@ -75,7 +75,7 @@ class IncomingPaymentReceiver(val fullTag: FullPaymentTag, cm: ChannelMaster) ex
     case (CMDTimeout, null, RECEIVING) =>
       // Too many time has passed since last seen incoming payment
       become(IncomingAborted(PaymentTimeout.asSome), FINALIZING)
-      cm.stateUpdated(Nil)
+      cm stateUpdated Nil
 
     case (inFlight: InFlightPayments, revealed: IncomingRevealed, FINALIZING) =>
       val adds = inFlight.in(fullTag).asInstanceOf[ReasonableLocals]
@@ -199,17 +199,17 @@ class TrampolinePaymentRelayer(val fullTag: FullPaymentTag, cm: ChannelMaster) e
       // We were waiting for all outgoing parts to fail on app restart, try again
       // Note that senderFSM has removed itself on first failure, so we create it again
       become(null, RECEIVING)
-      cm.stateUpdated(Nil)
+      cm stateUpdated Nil
 
     case (data: OutgoingPaymentSenderData, TrampolineStopping(false), SENDING) =>
       // We were waiting for all outgoing parts to fail on app restart, fail incoming
       become(abortedWithError(data.failures, invalidPubKey), FINALIZING)
-      cm.stateUpdated(Nil)
+      cm stateUpdated Nil
 
     case (data: OutgoingPaymentSenderData, processing: TrampolineProcessing, SENDING) =>
       // This was a normal operation where we were trying to deliver a payment to recipient
       become(abortedWithError(data.failures, processing.finalNodeId), FINALIZING)
-      cm.stateUpdated(Nil)
+      cm stateUpdated Nil
 
     case (inFlight: InFlightPayments, null, RECEIVING) =>
       // We have either just got another state update or restored an app with parts present
@@ -233,7 +233,7 @@ class TrampolinePaymentRelayer(val fullTag: FullPaymentTag, cm: ChannelMaster) e
     case (CMDTimeout, null, RECEIVING) =>
       // Sender must not have outgoing payments in this state
       become(TrampolineAborted(PaymentTimeout), FINALIZING)
-      cm.stateUpdated(Nil)
+      cm stateUpdated Nil
 
     case (inFlight: InFlightPayments, revealed: TrampolineRevealed, FINALIZING) =>
       val ins = inFlight.in.getOrElse(fullTag, Nil).asInstanceOf[ReasonableTrampolines]
@@ -284,7 +284,7 @@ class TrampolinePaymentRelayer(val fullTag: FullPaymentTag, cm: ChannelMaster) e
     cm.getPreimageMemo.invalidate(fullTag.paymentHash)
     // Await for subsequent incoming leftovers
     become(revealed, SENDING)
-    cm.stateUpdated(Nil)
+    cm stateUpdated Nil
   }
 
   def becomeFinalRevealed(preimage: ByteVector32, adds: ReasonableTrampolines): Unit = {

@@ -9,7 +9,7 @@ import scala.concurrent.duration._
 import fr.acinq.eclair.blockchain._
 import com.softwaremill.quicklens._
 import fr.acinq.eclair.transactions._
-import fr.acinq.bitcoin.{ByteVector32, ScriptFlags, Transaction}
+import fr.acinq.bitcoin.{ByteVector32, OutPoint, ScriptFlags, Transaction}
 import fr.acinq.eclair.transactions.Transactions.TxOwner
 import fr.acinq.eclair.blockchain.fee.FeeratePerKw
 import fr.acinq.eclair.channel.Helpers.Closing
@@ -32,7 +32,7 @@ object ChannelNormal {
   }
 }
 
-abstract class ChannelNormal(bag: ChannelBag) extends Channel with Handlers { me =>
+abstract class ChannelNormal(bag: ChannelBag) extends Channel { me =>
   val chainWallet: WalletExt
 
   def doProcess(change: Any): Unit =
@@ -175,6 +175,25 @@ abstract class ChannelNormal(bag: ChannelBag) extends Channel with Handlers { me
 
       // MAIN LOOP
 
+      case (some: HasNormalCommitments, WatchEventSpent(BITCOIN_FUNDING_SPENT, tx), OPEN | SLEEPING | CLOSING) =>
+        // Catch all possible closings in one go, account for us receiving various closing txs multiple times
+
+        some match {
+          case closing: DATA_CLOSING if closing.mutualClosePublished.exists(_.txid == tx.txid) =>
+          case closing: DATA_CLOSING if closing.localCommitPublished.exists(_.commitTx.txid == tx.txid) =>
+          case closing: DATA_CLOSING if closing.remoteCommitPublished.exists(_.commitTx.txid == tx.txid) =>
+          case closing: DATA_CLOSING if closing.nextRemoteCommitPublished.exists(_.commitTx.txid == tx.txid) =>
+          case closing: DATA_CLOSING if closing.futureRemoteCommitPublished.exists(_.commitTx.txid == tx.txid) =>
+          case closing: DATA_CLOSING if closing.mutualCloseProposed.exists(_.txid == tx.txid) => handleMutualClose(tx, closing)
+          case negs: DATA_NEGOTIATING if negs.bestUnpublishedClosingTxOpt.exists(_.txid == tx.txid) => handleMutualClose(tx, negs)
+          case negs: DATA_NEGOTIATING if negs.closingTxProposed.flatten.exists(_.unsignedTx.txid == tx.txid) => handleMutualClose(tx, negs)
+          case waitPublishFuture: DATA_WAIT_FOR_REMOTE_PUBLISH_FUTURE_COMMITMENT => handleRemoteSpentFuture(tx, waitPublishFuture.commitments)
+          case _ if some.commitments.remoteNextCommitInfo.left.exists(_.nextRemoteCommit.txid == tx.txid) => handleRemoteSpentNext(tx, some)
+          case _ if tx.txid == some.commitments.remoteCommit.txid => handleRemoteSpentCurrent(tx, some)
+          case _ => handleRemoteSpentOther(tx, some)
+        }
+
+
       case (norm: DATA_NORMAL, CurrentBlockCount(tip), OPEN | SLEEPING) =>
         val sentExpiredRouted = norm.commitments.allOutgoing.exists(add => tip > add.cltvExpiry.toLong && add.fullTag.tag == PaymentTagTlv.TRAMPLOINE_ROUTED)
         val threshold = Transactions.receivedHtlcTrimThreshold(norm.commitments.remoteParams.dustLimit, norm.commitments.latestRemoteCommit.spec, norm.commitments.channelVersion.commitmentFormat)
@@ -217,14 +236,31 @@ abstract class ChannelNormal(bag: ChannelBag) extends Channel with Handlers { me
       // We may schedule shutdown while channel is offline
       case (norm: DATA_NORMAL, cmd: CMD_CLOSE, OPEN | SLEEPING) =>
         val localScriptPubKey = cmd.scriptPubKey.getOrElse(norm.commitments.localParams.defaultFinalScriptPubKey)
-        val isValidFinalScriptPubkey = Helpers.Closing.isValidFinalScriptPubkey(localScriptPubKey)
         val hasLocalHasUnsignedOutgoingHtlcs = norm.commitments.localHasUnsignedOutgoingHtlcs
+        val isValidFinalScriptPubkey = Closing.isValidFinalScriptPubkey(localScriptPubKey)
         val shutdown = Shutdown(norm.channelId, localScriptPubKey)
+        val norm1 = norm.copy(localShutdown = shutdown.asSome)
 
-        if (!isValidFinalScriptPubkey) throw CMDException(new RuntimeException, cmd)
-        else if (norm.localShutdown.isDefined) throw CMDException(new RuntimeException, cmd)
-        else if (hasLocalHasUnsignedOutgoingHtlcs) throw CMDException(new RuntimeException, cmd)
-        else StoreBecomeSend(norm.copy(localShutdown = shutdown.asSome), state, shutdown)
+        if (cmd.force) {
+          if (!isValidFinalScriptPubkey) spendLocalCurrent(norm)
+          else if (norm.localShutdown.isDefined) spendLocalCurrent(norm)
+          else if (hasLocalHasUnsignedOutgoingHtlcs) spendLocalCurrent(norm)
+          else StoreBecomeSend(norm1, state, shutdown)
+        } else {
+          if (!isValidFinalScriptPubkey) throw CMDException(CMD_CLOSE.INVALID_CLOSING_PUBKEY, cmd)
+          else if (norm.localShutdown.isDefined) throw CMDException(CMD_CLOSE.ALREADY_IN_PROGRESS, cmd)
+          else if (hasLocalHasUnsignedOutgoingHtlcs) throw CMDException(CMD_CLOSE.CHANNEL_BUSY, cmd)
+          else StoreBecomeSend(norm1, state, shutdown)
+        }
+
+
+      // In all other states except normal we force-close right away
+      case (some: HasNormalCommitments, _: CMD_CLOSE, OPEN | SLEEPING) =>
+        spendLocalCurrent(some)
+
+
+      case (_: HasNormalCommitments, remote: Error, OPEN | SLEEPING) =>
+        throw RemoteErrorException(ErrorExt extractDescription remote)
 
 
       case (norm: DATA_NORMAL, cmd: CMD_ADD_HTLC, OPEN | SLEEPING) =>
@@ -247,7 +283,7 @@ abstract class ChannelNormal(bag: ChannelBag) extends Channel with Handlers { me
           case Left(reason) =>
             events localAddRejected reason
 
-          case Right((commits1, updateAddHtlcMsg)) =>
+          case Right(commits1 ~~ updateAddHtlcMsg) =>
             BECOME(norm.copy(commitments = commits1), OPEN)
             SEND(msg = updateAddHtlcMsg)
             process(CMD_SIGN)
@@ -262,10 +298,9 @@ abstract class ChannelNormal(bag: ChannelBag) extends Channel with Handlers { me
 
       // CMD_SIGN will be sent from ChannelMaster strictly after outgoing FSM sends this command
       case (norm: DATA_NORMAL, cmd: CMD_FULFILL_HTLC, OPEN) if !norm.commitments.alreadyReplied(cmd.theirAdd.id) =>
-        val msg = UpdateFulfillHtlc(norm.channelId, cmd.theirAdd.id, cmd.preimage)
-        val commits1 = norm.commitments.addLocalProposal(msg)
+        val (commits1, ourFulfillMsg) = norm.commitments.sendFulfill(cmd)
         BECOME(norm.copy(commitments = commits1), OPEN)
-        SEND(msg)
+        SEND(ourFulfillMsg)
 
 
       // CMD_SIGN will be sent from ChannelMaster strictly after outgoing FSM sends this command
@@ -311,6 +346,7 @@ abstract class ChannelNormal(bag: ChannelBag) extends Channel with Handlers { me
         val (commits1, ourAdd) = norm.commitments.receiveFulfill(msg)
         val fulfill = RemoteFulfill(ourAdd, msg.paymentPreimage)
         BECOME(norm.copy(commitments = commits1), OPEN)
+        // Real state update is expected
         events fulfillReceived fulfill
 
 
@@ -359,14 +395,40 @@ abstract class ChannelNormal(bag: ChannelBag) extends Channel with Handlers { me
       // NEGOTIATIONS
 
       case (negs: DATA_NEGOTIATING, remote: ClosingSigned, OPEN) =>
-        handleNegotiations(negs, remote, LNParams.feeRatesInfo.onChainFeeConf)
+        val firstClosingFee = Closing.firstClosingFee(negs.commitments, negs.localShutdown.scriptPubKey, negs.remoteShutdown.scriptPubKey, LNParams.feeRatesInfo.onChainFeeConf)
+        val signedClosingTx = Closing.checkClosingSignature(negs.commitments, negs.localShutdown.scriptPubKey, negs.remoteShutdown.scriptPubKey, remote.feeSatoshis, remote.signature)
+        if (negs.closingTxProposed.last.lastOption.map(_.localClosingSigned.feeSatoshis).contains(remote.feeSatoshis) || negs.closingTxProposed.flatten.size >= LNParams.maxNegotiationIterations) {
+          val negs1 = negs.copy(bestUnpublishedClosingTxOpt = signedClosingTx.asSome)
+          handleMutualClose(signedClosingTx, negs1)
+        } else {
+          val lastLocalClosingFee = negs.closingTxProposed.last.lastOption.map(_.localClosingSigned.feeSatoshis)
+          val nextClosingFee = Closing.nextClosingFee(localClosingFee = lastLocalClosingFee.getOrElse(firstClosingFee), remoteClosingFee = remote.feeSatoshis)
+          val (closingTx, closingSignedMsg) = Closing.makeClosingTx(negs.commitments, negs.localShutdown.scriptPubKey, negs.remoteShutdown.scriptPubKey, nextClosingFee)
+
+          val proposed = ClosingTxProposed(closingTx.tx, closingSignedMsg)
+          val closingTxProposed1 = negs.closingTxProposed match { case prev :+ current => prev :+ (current :+ proposed) map identity }
+          val negs1 = negs.copy(bestUnpublishedClosingTxOpt = Some(signedClosingTx), closingTxProposed = closingTxProposed1)
+
+          if (lastLocalClosingFee contains nextClosingFee) {
+            // Next computed fee is the same than the one we previously sent
+            // this may happen due to rounding, anyway we can close now
+            handleMutualClose(signedClosingTx, negs1)
+          } else if (nextClosingFee == remote.feeSatoshis) {
+            // Our next computed fee matches their, we have converged
+            handleMutualClose(signedClosingTx, negs1)
+            SEND(closingSignedMsg)
+          } else {
+            // Keep negotiating, our closing fees are different
+            StoreBecomeSend(negs1, OPEN, closingSignedMsg)
+          }
+        }
 
       // OFFLINE IN PERSISTENT STATES
 
       case (data1: HasNormalCommitments, CMD_SOCKET_OFFLINE, WAIT_FUNDING_DONE | OPEN) =>
         val (wasUpdated, data2, localProposedAdds) = maybeRevertUnsignedOutgoing(data1)
         if (wasUpdated) StoreBecomeSend(data2, SLEEPING) else BECOME(data1, SLEEPING)
-        localProposedAdds map ChannelOffline foreach events.localAddRejected
+        for (add <- localProposedAdds) events localAddRejected ChannelOffline(add)
 
 
       // REESTABLISHMENT IN PERSISTENT STATES
@@ -379,9 +441,9 @@ abstract class ChannelNormal(bag: ChannelBag) extends Channel with Handlers { me
 
 
       case (data1: HasNormalCommitments, CMD_SOCKET_ONLINE, SLEEPING) =>
-        val myCurrentPerCommitmentPoint = data1.commitments.localParams.keys.commitmentPoint(data1.commitments.localCommit.index)
-        val yourLastPerCommitmentSecret = data1.commitments.remotePerCommitmentSecrets.lastIndex.flatMap(data1.commitments.remotePerCommitmentSecrets.getHash).getOrElse(ByteVector32.Zeroes)
-        val reestablish = ChannelReestablish(data1.channelId, data1.commitments.localCommit.index + 1, data1.commitments.remoteCommit.index, PrivateKey(yourLastPerCommitmentSecret), myCurrentPerCommitmentPoint)
+        val myCurrentPoint = data1.commitments.localParams.keys.commitmentPoint(data1.commitments.localCommit.index)
+        val yourLastSecret = data1.commitments.remotePerCommitmentSecrets.lastIndex.flatMap(data1.commitments.remotePerCommitmentSecrets.getHash).getOrElse(ByteVector32.Zeroes)
+        val reestablish = ChannelReestablish(data1.channelId, data1.commitments.localCommit.index + 1, data1.commitments.remoteCommit.index, PrivateKey(yourLastSecret), myCurrentPoint)
         SEND(reestablish)
 
 
@@ -399,59 +461,57 @@ abstract class ChannelNormal(bag: ChannelBag) extends Channel with Handlers { me
         SEND(wait.lastSent)
 
 
-      case (data1: DATA_NORMAL, reestablish: ChannelReestablish, SLEEPING) =>
-        val pleasePublishError = Error(data1.channelId, "please publish your local commitment")
+      case (norm: DATA_NORMAL, reestablish: ChannelReestablish, SLEEPING) =>
+        val pleasePublishError = Error(norm.channelId, "please publish your local commitment")
 
         reestablish match {
-          case rs if !Helpers.checkLocalCommit(data1, rs.nextRemoteRevocationNumber) =>
+          case rs if !Helpers.checkLocalCommit(norm, rs.nextRemoteRevocationNumber) =>
             // if NextRemoteRevocationNumber is greater than our local commitment index, it means that either we are using an outdated commitment, or they are lying
             // but first we need to make sure that the last PerCommitmentSecret that they claim to have received from us is correct for that NextRemoteRevocationNumber minus 1
-            val peerIsAhead = data1.commitments.localParams.keys.commitmentSecret(rs.nextRemoteRevocationNumber - 1) == rs.yourLastPerCommitmentSecret
-            if (peerIsAhead) StoreBecomeSend(DATA_WAIT_FOR_REMOTE_PUBLISH_FUTURE_COMMITMENT(data1.commitments, rs), CLOSING, pleasePublishError)
-            else throw ChannelTransitionFail(data1.commitments.channelId)
+            val peerIsAhead = norm.commitments.localParams.keys.commitmentSecret(rs.nextRemoteRevocationNumber - 1) == rs.yourLastPerCommitmentSecret
+            if (peerIsAhead) StoreBecomeSend(DATA_WAIT_FOR_REMOTE_PUBLISH_FUTURE_COMMITMENT(norm.commitments, rs), CLOSING, pleasePublishError)
+            else throw ChannelTransitionFail(norm.commitments.channelId)
 
-          case rs if !Helpers.checkRemoteCommit(data1, rs.nextLocalCommitmentNumber) =>
+          case rs if !Helpers.checkRemoteCommit(norm, rs.nextLocalCommitmentNumber) =>
             // if NextRemoteRevocationNumber is more than one more our remote commitment index, it means that either we are using an outdated commitment, or they are lying
             // there is no way to make sure that they are saying the truth, the best thing to do is ask them to publish their commitment right now
             // note that if they don't comply, we could publish our own commitment (it is not stale, otherwise we would be in the case above)
-            StoreBecomeSend(DATA_WAIT_FOR_REMOTE_PUBLISH_FUTURE_COMMITMENT(data1.commitments, rs), CLOSING, pleasePublishError)
+            StoreBecomeSend(DATA_WAIT_FOR_REMOTE_PUBLISH_FUTURE_COMMITMENT(norm.commitments, rs), CLOSING, pleasePublishError)
 
           case rs =>
             var sendQueue = Queue.empty[LightningMessage]
-            if (rs.nextLocalCommitmentNumber == 1 && data1.commitments.localCommit.index == 0) {
-              val nextPerCommitmentPoint = data1.commitments.localParams.keys.commitmentPoint(index = 1L)
-              sendQueue :+= FundingLocked(data1.commitments.channelId, nextPerCommitmentPoint)
+            if (rs.nextLocalCommitmentNumber == 1 && norm.commitments.localCommit.index == 0) {
+              val nextPerCommitmentPoint = norm.commitments.localParams.keys.commitmentPoint(index = 1L)
+              sendQueue :+= FundingLocked(norm.commitments.channelId, nextPerCommitmentPoint)
             }
 
             def resendRevocation: Unit =
-              if (data1.commitments.localCommit.index == rs.nextRemoteRevocationNumber + 1) {
-                val localPerCommitmentSecret = data1.commitments.localParams.keys.commitmentSecret(data1.commitments.localCommit.index - 1)
-                val localNextPerCommitmentPoint = data1.commitments.localParams.keys.commitmentPoint(data1.commitments.localCommit.index + 1)
-                sendQueue :+= RevokeAndAck(data1.channelId, localPerCommitmentSecret, localNextPerCommitmentPoint)
-              } else if (data1.commitments.localCommit.index != rs.nextRemoteRevocationNumber) {
+              if (norm.commitments.localCommit.index == rs.nextRemoteRevocationNumber + 1) {
+                val localPerCommitmentSecret = norm.commitments.localParams.keys.commitmentSecret(norm.commitments.localCommit.index - 1)
+                val localNextPerCommitmentPoint = norm.commitments.localParams.keys.commitmentPoint(norm.commitments.localCommit.index + 1)
+                sendQueue :+= RevokeAndAck(norm.channelId, localPerCommitmentSecret, localNextPerCommitmentPoint)
+              } else if (norm.commitments.localCommit.index != rs.nextRemoteRevocationNumber) {
                 // Sync has failed, no sense to continue normally
-                throw ChannelTransitionFail(data1.channelId)
+                throw ChannelTransitionFail(norm.channelId)
               }
 
-            data1.commitments.remoteNextCommitInfo match {
-              case _ if data1.commitments.remoteNextCommitInfo.isRight && data1.commitments.remoteCommit.index + 1 == rs.nextLocalCommitmentNumber => resendRevocation
+            norm.commitments.remoteNextCommitInfo match {
+              case _ if norm.commitments.remoteNextCommitInfo.isRight && norm.commitments.remoteCommit.index + 1 == rs.nextLocalCommitmentNumber => resendRevocation
               case Left(waitingForRevocation) if waitingForRevocation.nextRemoteCommit.index + 1 == rs.nextLocalCommitmentNumber => resendRevocation
 
               case Left(waitingForRevocation) if waitingForRevocation.nextRemoteCommit.index == rs.nextLocalCommitmentNumber =>
-                if (data1.commitments.localCommit.index <= waitingForRevocation.sentAfterLocalCommitIndex) resendRevocation
-                (data1.commitments.localChanges.signed :+ waitingForRevocation.sent).foreach(change => sendQueue :+= change)
-                if (data1.commitments.localCommit.index > waitingForRevocation.sentAfterLocalCommitIndex) resendRevocation
+                if (norm.commitments.localCommit.index <= waitingForRevocation.sentAfterLocalCommitIndex) resendRevocation
+                (norm.commitments.localChanges.signed :+ waitingForRevocation.sent).foreach(change => sendQueue :+= change)
+                if (norm.commitments.localCommit.index > waitingForRevocation.sentAfterLocalCommitIndex) resendRevocation
 
               case _ =>
                 // Sync has failed, no sense to continue normally
-                throw ChannelTransitionFail(data1.channelId)
+                throw ChannelTransitionFail(norm.channelId)
             }
 
-            // BOLT 2: A node if it has sent a previous shutdown MUST retransmit shutdown
-            data1.localShutdown.foreach(localShutdown => sendQueue :+= localShutdown)
-
-            BECOME(data1, OPEN)
-            SEND(sendQueue:_*)
+            norm.localShutdown.foreach(sendQueue :+= _)
+            BECOME(data1 = norm, state1 = OPEN)
+            SEND(sendQueue: _*)
         }
 
 
@@ -473,32 +533,89 @@ abstract class ChannelNormal(bag: ChannelBag) extends Channel with Handlers { me
 
 
       case (closing: DATA_CLOSING, WatchEventSpent(BITCOIN_OUTPUT_SPENT, tx), CLOSING) =>
+        // One of outputs in local/remote/revoked commit was spent, we should watch it gets confirmed
         chainWallet.watcher ! WatchConfirmed(receiver, tx, BITCOIN_TX_CONFIRMED(tx), LNParams.minDepthBlocks)
-        // Peer might have just used a preimage on chain to claim our outgoing payment's UTXO: consider a payment sent then
-        val remoteFulfills = Helpers.Closing.extractPreimages(closing.commitments.localCommit, tx).map(RemoteFulfill.tupled)
+        // Peer might have just used a preimage on chain to claim our timeout HTLCs UTXO: consider a payment sent then
+        val remoteFulfills = Closing.extractPreimages(closing.commitments.localCommit, tx).map(RemoteFulfill.tupled)
+        val settledOutgoingHtlcIds = remoteFulfills.map(_.ourAdd.id)
 
-        val rev1 = closing.revokedCommitPublished.map { rev =>
-          // This might be an old revoked state which is a violation of contract and allows us to take a whole channel balance right away
-          val (txOpt, rev1) = Helpers.Closing.claimRevokedHtlcTxOutputs(closing.commitments, rev, tx, LNParams.feeRatesInfo.onChainFeeConf.feeEstimator)
+        val rev1 = closing.revokedCommitPublished.map { revokedCommit =>
+          // This might be further spend of success/timeout UTXO from an old revoked state which peer has published previously
+          val (txOpt, rev1) = Closing.claimRevokedHtlcTxOutputs(closing.commitments, revokedCommit, tx, LNParams.feeRatesInfo.onChainFeeConf.feeEstimator)
           for (claimTx <- txOpt) chainWallet.watcher ! WatchSpent(receiver, tx, claimTx.txIn.filter(_.outPoint.txid == tx.txid).head.outPoint.index.toInt, BITCOIN_OUTPUT_SPENT)
           for (claimTx <- txOpt) chainWallet.watcher ! PublishAsap(claimTx)
           rev1
         }
 
-        // First persist a new state, then call an event
-        StoreBecomeSend(closing.copy(revokedCommitPublished = rev1), CLOSING)
-        // Proceed as if we have normally received preimages off chain
+        // Proceed as if we have normally received preimages off chain, mark related outgoing HTLCs as settled
+        val closing1 = closing.modify(_.commitments.postCloseOutgoingResolvedIds).using(_ ++ settledOutgoingHtlcIds)
+        StoreBecomeSend(closing1.copy(revokedCommitPublished = rev1), CLOSING)
         remoteFulfills foreach events.fulfillReceived
+
+
+      case (closing: DATA_CLOSING, confirmed: BITCOIN_TX_CONFIRMED, CLOSING) =>
+        val lcp1Opt = for (lcp <- closing.localCommitPublished) yield Closing.updateLocalCommitPublished(lcp, confirmed.tx)
+        val rcp1Opt = for (rcp <- closing.remoteCommitPublished) yield Closing.updateRemoteCommitPublished(rcp, confirmed.tx)
+        val fcp1Opt = for (fcp <- closing.futureRemoteCommitPublished) yield Closing.updateRemoteCommitPublished(fcp, confirmed.tx)
+        val rcp1NextOpt = for (rcp <- closing.nextRemoteCommitPublished) yield Closing.updateRemoteCommitPublished(rcp, confirmed.tx)
+        val revCp1Opt = for (revokedCp <- closing.revokedCommitPublished) yield Closing.updateRevokedCommitPublished(revokedCp, confirmed.tx)
+        val closing1 = DATA_CLOSING(closing.commitments, closing.waitingSince, closing.mutualCloseProposed, closing.mutualCloseProposed, lcp1Opt, rcp1Opt, rcp1NextOpt, fcp1Opt, revCp1Opt)
+        val overRiddenHtlcs = Closing.overriddenOutgoingHtlcs(closing1, confirmed.tx)
+
+        val format = closing1.commitments.channelVersion.commitmentFormat
+        val timedOutHtlcs = Closing.isClosingTypeAlreadyKnown(closing1) match {
+          case Some(c: Closing.LocalClose) => Closing.timedoutHtlcs(format, c.localCommit, c.localCommitPublished, closing1.commitments.localParams.dustLimit, confirmed.tx)
+          case Some(c: Closing.RemoteClose) => Closing.timedoutHtlcs(format, c.remoteCommit, c.remoteCommitPublished, closing1.commitments.remoteParams.dustLimit, confirmed.tx)
+          case Some(_: Closing.MutualClose | _: Closing.RecoveryClose | _: Closing.RevokedClose) => Set.empty[UpdateAddHtlc] // We can not have pending HTLCs in these states
+          case None => Set.empty[UpdateAddHtlc] // Keep waiting
+        }
+
+        // Update state and notify system about failed HTLCs
+        val settledOutgoingHtlcIds = (overRiddenHtlcs ++ timedOutHtlcs).map(_.id)
+        StoreBecomeSend(closing1.modify(_.commitments.postCloseOutgoingResolvedIds).using(_ ++ settledOutgoingHtlcIds), CLOSING)
+        for (add <- overRiddenHtlcs ++ timedOutHtlcs) events localAddRejected InPrincipleNotSendable(localAdd = add)
+
+        Helpers.chainFeePaid(confirmed.tx, closing1).foreach { chainFee =>
+          // Record a chain tx fee we have paid if fee can be defined
+          bag.addChannelTxFee(chainFee, confirmed.tx.txid)
+        }
+
+        // Finally remove a channel from db if it's closed (will disappear on next restart)
+        val isClosed = Closing.isClosed(closing1, additionalConfirmedTxOpt = confirmed.tx.asSome)
+        if (isClosed) closing1.commitments.updateOpt.map(_.shortChannelId).foreach(bag.rmHtlcInfos)
+        if (isClosed) bag.delete(closing1.channelId)
+
+
+      case (closing: DATA_CLOSING, cmd: CMD_FULFILL_HTLC, CLOSING) if !closing.commitments.alreadyReplied(cmd.theirAdd.id) =>
+        // We get a preimage when channel is already closed, so we need to try to redeem payments on chain
+        val (commits1, ourFulfillMsg) = closing.commitments.sendFulfill(cmd)
+        val conf = LNParams.feeRatesInfo.onChainFeeConf
+
+        val lcp1Opt = for (lcp <- closing.localCommitPublished) yield Closing.claimCurrentLocalCommitTxOutputs(commits1, lcp.commitTx, conf)
+        val rcp1Opt = for (rcp <- closing.remoteCommitPublished) yield Closing.claimRemoteCommitTxOutputs(commits1, commits1.remoteCommit, rcp.commitTx, conf.feeEstimator)
+
+        val rcp1NextOpt = for {
+          rcp <- closing.nextRemoteCommitPublished
+          nextRemoteCommit <- commits1.remoteNextCommitInfo.left.toOption.map(_.nextRemoteCommit)
+        } yield Closing.claimRemoteCommitTxOutputs(commits1, nextRemoteCommit, rcp.commitTx, conf.feeEstimator)
+
+        // Store an updated closing data so this case won't be executed again, publish our chain redeem txs and send preimage off-chain to give them one more chance to obtain it
+        val closing1 = closing.copy(commitments = commits1, localCommitPublished = lcp1Opt, remoteCommitPublished = rcp1Opt, nextRemoteCommitPublished = rcp1NextOpt)
+        StoreBecomeSend(closing1, CLOSING, ourFulfillMsg)
+        rcp1NextOpt.foreach(doPublish)
+        rcp1Opt.foreach(doPublish)
+        lcp1Opt.foreach(doPublish)
+
 
       // RESTORING FROM STORED DATA
 
       case (null, data1: DATA_CLOSING, -1) =>
-        for (close <- data1.mutualClosePublished) doPublish(close)
-        for (close <- data1.localCommitPublished) doPublish(close)
-        for (close <- data1.remoteCommitPublished) doPublish(close)
-        for (close <- data1.revokedCommitPublished) doPublish(close)
-        for (close <- data1.nextRemoteCommitPublished) doPublish(close)
-        for (close <- data1.futureRemoteCommitPublished) doPublish(close)
+        data1.mutualClosePublished.foreach(doPublish)
+        data1.localCommitPublished.foreach(doPublish)
+        data1.remoteCommitPublished.foreach(doPublish)
+        data1.revokedCommitPublished.foreach(doPublish)
+        data1.nextRemoteCommitPublished.foreach(doPublish)
+        data1.futureRemoteCommitPublished.foreach(doPublish)
         BECOME(data1, CLOSING)
 
 
@@ -525,6 +642,16 @@ abstract class ChannelNormal(bag: ChannelBag) extends Channel with Handlers { me
       (true, data4, localProposed)
     } else (false, data1, Nil)
 
+  private def handleChannelForceClosing(prev: HasNormalCommitments)(turnIntoClosing: HasNormalCommitments => DATA_CLOSING): Unit = {
+    val (_, closing1: DATA_CLOSING, localProposedAdds) = turnIntoClosing.andThen(maybeRevertUnsignedOutgoing)(prev)
+    StoreBecomeSend(closing1, CLOSING)
+
+    // Unsigned outgoing HTLCs should be failed right away on any force-closing
+    for (add <- localProposedAdds) events localAddRejected ChannelNotAbleToSend(add)
+    // In case if force-closing happens when we have a cross-signed mutual tx
+    closing1.mutualClosePublished.foreach(doPublish)
+  }
+
   private def startNegotiationsAsFunder(data1: DATA_NORMAL, local: Shutdown, remote: Shutdown): Unit = {
     val (closingTx, closingSigned) = Closing.makeFirstClosingTx(data1.commitments, local.scriptPubKey, remote.scriptPubKey, LNParams.feeRatesInfo.onChainFeeConf)
     val data2 = DATA_NEGOTIATING(data1.commitments, local, remote, List(ClosingTxProposed(closingTx.tx, closingSigned) :: Nil), bestUnpublishedClosingTxOpt = None)
@@ -538,19 +665,123 @@ abstract class ChannelNormal(bag: ChannelBag) extends Channel with Handlers { me
     else startNegotiationsAsFunder(data1, local, remote)
   }
 
-  private def spendLocalCurrent(data1: HasNormalCommitments): Unit = {
-    val currentCommitTx: Transaction = data1.commitments.localCommit.publishableTxs.commitTx.tx
-    val lcp = Helpers.Closing.claimCurrentLocalCommitTxOutputs(data1.commitments, currentCommitTx, LNParams.feeRatesInfo.onChainFeeConf)
+  private def handleMutualClose(closingTx: Transaction, data1: DATA_NEGOTIATING): Unit = {
+    val data2 = data1.toClosed.copy(mutualClosePublished = closingTx :: Nil)
+    BECOME(STORE(data2), CLOSING)
+    doPublish(closingTx)
+  }
 
-    val closing: DATA_CLOSING = data1 match {
-      case some: DATA_CLOSING => some.copy(localCommitPublished = lcp.asSome)
-      case some: DATA_NEGOTIATING => DATA_CLOSING(some.commitments, System.currentTimeMillis, some.closingTxProposed.flatten.map(_.unsignedTx), localCommitPublished = lcp.asSome)
-      case _ => DATA_CLOSING(data1.commitments, waitingSince = System.currentTimeMillis, localCommitPublished = lcp.asSome)
+  private def handleMutualClose(closingTx: Transaction, data1: DATA_CLOSING): Unit = {
+    val data2 = data1.copy(mutualClosePublished = data1.mutualClosePublished :+ closingTx)
+    BECOME(STORE(data2), CLOSING)
+    doPublish(closingTx)
+  }
+
+  private def spendLocalCurrent(data1: HasNormalCommitments): Unit = data1 match {
+    case alreadyClosing: DATA_CLOSING if alreadyClosing.futureRemoteCommitPublished.isDefined =>
+    case _: DATA_WAIT_FOR_REMOTE_PUBLISH_FUTURE_COMMITMENT =>
+
+    case _ =>
+      val commitTx = data1.commitments.localCommit.publishableTxs.commitTx.tx
+      val lcp = Closing.claimCurrentLocalCommitTxOutputs(data1.commitments, commitTx, LNParams.feeRatesInfo.onChainFeeConf)
+
+      handleChannelForceClosing(data1) {
+        case some: DATA_CLOSING => some.copy(localCommitPublished = lcp.asSome)
+        case some: DATA_NEGOTIATING => some.toClosed.copy(localCommitPublished = lcp.asSome)
+        case _ => DATA_CLOSING(data1.commitments, System.currentTimeMillis, localCommitPublished = lcp.asSome)
+      }
+
+      doPublish(lcp)
+  }
+
+  private def handleRemoteSpentCurrent(commitTx: Transaction, data1: HasNormalCommitments): Unit = {
+    val rcp = Closing.claimRemoteCommitTxOutputs(data1.commitments, data1.commitments.remoteCommit, commitTx, LNParams.feeRatesInfo.onChainFeeConf.feeEstimator)
+
+    handleChannelForceClosing(data1) {
+      case some: DATA_CLOSING => some.copy(remoteCommitPublished = rcp.asSome)
+      case some: DATA_NEGOTIATING => some.toClosed.copy(remoteCommitPublished = rcp.asSome)
+      case some: DATA_WAIT_FOR_FUNDING_CONFIRMED => DATA_CLOSING(some.commitments, System.currentTimeMillis, remoteCommitPublished = rcp.asSome)
+      case _ => DATA_CLOSING(data1.commitments, System.currentTimeMillis, remoteCommitPublished = rcp.asSome)
     }
 
-    val (wasUpdated, closing1, localProposedAdds) = maybeRevertUnsignedOutgoing(closing)
-    if (wasUpdated) StoreBecomeSend(closing1, CLOSING) else StoreBecomeSend(closing, CLOSING)
-    localProposedAdds map ChannelNotAbleToSend foreach events.localAddRejected
-    doPublish(lcp)
+    doPublish(rcp)
+  }
+
+  private def handleRemoteSpentNext(commitTx: Transaction, data1: HasNormalCommitments): Unit = {
+    val nextRemoteCommit: RemoteCommit = data1.commitments.remoteNextCommitInfo.left.get.nextRemoteCommit
+    val rcp = Closing.claimRemoteCommitTxOutputs(data1.commitments, nextRemoteCommit, commitTx, LNParams.feeRatesInfo.onChainFeeConf.feeEstimator)
+
+    handleChannelForceClosing(data1) {
+      case some: DATA_CLOSING => some.copy(nextRemoteCommitPublished = rcp.asSome)
+      case some: DATA_NEGOTIATING => some.toClosed.copy(nextRemoteCommitPublished = rcp.asSome)
+      case _ => DATA_CLOSING(data1.commitments, System.currentTimeMillis, nextRemoteCommitPublished = rcp.asSome)
+    }
+
+    doPublish(rcp)
+  }
+
+  private def handleRemoteSpentFuture(commitTx: Transaction, commits: NormalCommits): Unit = {
+    val remoteCommitPublished = RemoteCommitPublished(commitTx, claimMainOutputTx = None, claimHtlcSuccessTxs = Nil, claimHtlcTimeoutTxs = Nil)
+    val closing = DATA_CLOSING(commits, System.currentTimeMillis, futureRemoteCommitPublished = remoteCommitPublished.asSome)
+    StoreBecomeSend(closing, CLOSING)
+  }
+
+  private def handleRemoteSpentOther(tx: Transaction, data1: HasNormalCommitments): Unit =
+    Closing.claimRevokedRemoteCommitTxOutputs(data1.commitments, tx, bag, LNParams.feeRatesInfo.onChainFeeConf.feeEstimator) match {
+      // This is most likely an old revoked state, but it might not be in some kind of exceptional circumstance (private keys leakage, old backup etc)
+
+      case Some(revCp) =>
+        handleChannelForceClosing(data1) {
+          case some: DATA_CLOSING => some.copy(revokedCommitPublished = some.revokedCommitPublished :+ revCp)
+          case _ => DATA_CLOSING(data1.commitments, System.currentTimeMillis, revokedCommitPublished = revCp :: Nil)
+        }
+
+        doPublish(revCp)
+
+      case None =>
+        // It is dagerous to publish our commit here (for example when we restore state from an old backup)
+        // thanks to remote static key we get the rest of channel balance back anyway so it's not too bad
+        handleRemoteSpentFuture(tx, data1.commitments)
+    }
+
+  // Publish handlers
+
+  private def doPublish(closingTx: Transaction): Unit = {
+    val replyEvent: BitcoinEvent = BITCOIN_TX_CONFIRMED(closingTx)
+    chainWallet.watcher ! WatchConfirmed(receiver, closingTx, replyEvent, LNParams.minDepthBlocks)
+    chainWallet.watcher ! PublishAsap(closingTx)
+  }
+
+  private def publishIfNeeded(txes: Iterable[Transaction], irrevocablySpent: Map[OutPoint, ByteVector32] = Map.empty): Unit =
+    txes.filterNot(Closing inputsAlreadySpent irrevocablySpent).map(PublishAsap).foreach(event => chainWallet.watcher ! event)
+
+  // Watch utxos only we can spend to get basically resolved
+  private def watchConfirmedIfNeeded(txes: Iterable[Transaction], irrevocablySpent: Map[OutPoint, ByteVector32] = Map.empty): Unit =
+    txes.filterNot(Closing inputsAlreadySpent irrevocablySpent).map(BITCOIN_TX_CONFIRMED).foreach { replyEvent =>
+      chainWallet.watcher ! WatchConfirmed(receiver, replyEvent.tx, replyEvent, LNParams.minDepthBlocks)
+    }
+
+  // Watch utxos that both we and peer can spend to get triggered (spent, but not confirmed yet)
+  private def watchSpentIfNeeded(parentTx: Transaction, txes: Iterable[Transaction], irrevocablySpent: Map[OutPoint, ByteVector32] = Map.empty): Unit =
+    txes.filterNot(Closing inputsAlreadySpent irrevocablySpent).map(_.txIn.head.outPoint.index.toInt).foreach { outPointIndex =>
+      chainWallet.watcher ! WatchSpent(receiver, parentTx, outPointIndex, BITCOIN_OUTPUT_SPENT)
+    }
+
+  private def doPublish(lcp: LocalCommitPublished): Unit = {
+    publishIfNeeded(List(lcp.commitTx) ++ lcp.claimMainDelayedOutputTx ++ lcp.htlcSuccessTxs ++ lcp.htlcTimeoutTxs ++ lcp.claimHtlcDelayedTxs, lcp.irrevocablySpent)
+    watchConfirmedIfNeeded(List(lcp.commitTx) ++ lcp.claimMainDelayedOutputTx ++ lcp.claimHtlcDelayedTxs, lcp.irrevocablySpent)
+    watchSpentIfNeeded(lcp.commitTx, lcp.htlcSuccessTxs ++ lcp.htlcTimeoutTxs, lcp.irrevocablySpent)
+  }
+
+  private def doPublish(rcp: RemoteCommitPublished): Unit = {
+    publishIfNeeded(rcp.claimMainOutputTx ++ rcp.claimHtlcSuccessTxs ++ rcp.claimHtlcTimeoutTxs, rcp.irrevocablySpent)
+    watchSpentIfNeeded(rcp.commitTx, rcp.claimHtlcTimeoutTxs ++ rcp.claimHtlcSuccessTxs, rcp.irrevocablySpent)
+    watchConfirmedIfNeeded(List(rcp.commitTx) ++ rcp.claimMainOutputTx, rcp.irrevocablySpent)
+  }
+
+  private def doPublish(rcp: RevokedCommitPublished): Unit = {
+    publishIfNeeded(rcp.claimMainOutputTx ++ rcp.mainPenaltyTx ++ rcp.htlcPenaltyTxs ++ rcp.claimHtlcDelayedPenaltyTxs, rcp.irrevocablySpent)
+    watchSpentIfNeeded(rcp.commitTx, rcp.mainPenaltyTx ++ rcp.htlcPenaltyTxs, rcp.irrevocablySpent)
+    watchConfirmedIfNeeded(List(rcp.commitTx) ++ rcp.claimMainOutputTx, rcp.irrevocablySpent)
   }
 }

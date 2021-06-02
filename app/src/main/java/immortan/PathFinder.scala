@@ -19,11 +19,11 @@ import scala.collection.mutable
 
 
 object PathFinder {
-  val RESYNC_PERIOD: Long = 1000L * 3600 * 24 * 2
   val NotifyRejected = "path-finder-notify-rejected"
   val NotifyOperational = "path-finder-notify-operational"
+  val NotifySyncStarted = "path-finder-notify-sync-started"
+  val NotifySyncFinished = "path-finder-notify-sync-finished"
   val CMDLoadGraph = "cmd-load-graph"
-  val CMDResync = "cmd-resync"
 
   val WAITING = 0
   val OPERATIONAL = 1
@@ -35,17 +35,15 @@ object PathFinder {
 
 abstract class PathFinder(val normalBag: NetworkBag, val hostedBag: NetworkBag) extends StateMachine[Data] { me =>
   private val extraEdges = CacheBuilder.newBuilder.expireAfterWrite(1, TimeUnit.DAYS).maximumSize(5000).build[ShortIdAndPosition, GraphEdge]
-
   val extraEdgesMap: mutable.Map[ShortIdAndPosition, GraphEdge] = extraEdges.asMap.asScala
-
   var listeners: Set[CanBeRepliedTo] = Set.empty
-
   var debugMode: Boolean = false
 
   implicit val context: ExecutionContextExecutor = ExecutionContext fromExecutor Executors.newSingleThreadExecutor
-
   def process(changeMessage: Any): Unit = scala.concurrent.Future(me doProcess changeMessage)
 
+  private val CMDResync = "cmd-resync"
+  private val RESYNC_PERIOD: Long = 1000L * 3600 * 24 * 2
   // We don't load routing data on every startup but when user (or system) actually needs it
   become(Data(channels = Map.empty, hostedChannels = Map.empty, graph = DirectedGraph.apply), WAITING)
   // Init resync with persistent delay on startup, then periodically resync every RESYNC_PERIOD days + 1 hour to trigger a full, not just PHC sync
@@ -61,9 +59,9 @@ abstract class PathFinder(val normalBag: NetworkBag, val hostedBag: NetworkBag) 
   def getExtraNodes: Set[RemoteNodeInfo]
 
   def doProcess(change: Any): Unit = (change, state) match {
-    // Graph is loaded but it is empty: likey thsi is first launch or synchronizing
+    // Graph is loaded but it is empty: likely this is first launch or synchronizing
     case (fr: FindRoute, OPERATIONAL) if data.channels.isEmpty => fr.sender process NotifyRejected
-    // In OPERATIONAL state we instruct graph to search through the single pre-selected local channel
+    // In OPERATIONAL state we always instruct graph to search through the single pre-selected local channel
     case (fr: FindRoute, OPERATIONAL) => fr.sender process handleRouteRequest(data.graph replaceEdge fr.request.localEdge, fr.request)
 
     case (fr: FindRoute, WAITING) if debugMode =>
@@ -87,11 +85,12 @@ abstract class PathFinder(val normalBag: NetworkBag, val hostedBag: NetworkBag) 
       val hostedShortIdToPubChan = hostedBag.getRoutingData
       val searchGraph1 = DirectedGraph.makeGraph(normalShortIdToPubChan ++ hostedShortIdToPubChan).addEdges(extraEdgesMap.values)
       become(Data(normalShortIdToPubChan, hostedShortIdToPubChan, searchGraph1), OPERATIONAL)
-      listeners.foreach(_ process NotifyOperational)
+      if (data.channels.nonEmpty) listeners.foreach(_ process NotifyOperational)
 
     case (CMDResync, OPERATIONAL) if System.currentTimeMillis - getLastNormalResyncStamp > RESYNC_PERIOD =>
       // Last normal sync has happened too long ago, start with normal sync, then proceed with PHC sync
       val setupData = SyncMasterShortIdData(LNParams.syncParams.syncNodes, getExtraNodes, Set.empty)
+      listeners.foreach(_ process NotifySyncStarted)
 
       new SyncMaster(normalBag.listExcludedChannels, data) { self =>
         def onChunkSyncComplete(pure: PureRoutingData): Unit = me process pure
@@ -134,6 +133,7 @@ abstract class PathFinder(val normalBag: NetworkBag, val hostedBag: NetworkBag) 
       Rx.ioQueue.foreach(_ => normalBag.removeGhostChannels(ghostIds, oneSideShortIds), none)
       // Update normal checkpoint, if PHC sync fails this time we'll jump to it next time
       updateLastNormalResyncStamp(System.currentTimeMillis)
+      listeners.foreach(_ process NotifySyncFinished)
       listeners.foreach(_ process NotifyOperational)
       // Notify ASAP, then start PHC sync
       startPHCSync

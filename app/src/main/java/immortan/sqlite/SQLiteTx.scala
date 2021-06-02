@@ -25,9 +25,11 @@ class SQLiteTx(val db: DBInterface) {
     ChannelMaster.next(ChannelMaster.txDbStream)
   }
 
-  def txSummary: Try[TxSummary] = db.select(TxTable.selectSummarySql).headTry { rc =>
-    TxSummary(fees = Satoshi(rc long 0), received = Satoshi(rc long 1), sent = Satoshi(rc long 2), count = rc long 3)
-  }
+  def txSummary: Try[TxSummary] =
+    db.select(TxTable.selectSummarySql).headTry { rc =>
+      TxSummary(fees = Satoshi(rc long 0), received = Satoshi(rc long 1),
+        sent = Satoshi(rc long 2), count = rc long 3)
+    }
 
   def replaceTx(tx: Transaction, depth: Long, received: Satoshi, sent: Satoshi, feeOpt: Option[Satoshi],
                 description: TxDescription, isIncoming: Long, balanceSnap: MilliSatoshi, fiatRateSnap: Fiat2Btc): Unit =

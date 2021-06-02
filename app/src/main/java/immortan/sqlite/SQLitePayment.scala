@@ -21,8 +21,6 @@ case class PaymentSummary(fees: MilliSatoshi, chainFees: MilliSatoshi, received:
 class SQLitePayment(db: DBInterface, preimageDb: DBInterface) extends PaymentBag {
   def getPaymentInfo(paymentHash: ByteVector32): Try[PaymentInfo] = db.select(PaymentTable.selectByHashSql, paymentHash.toHex).headTry(toPaymentInfo)
 
-  def getPreimage(hash: ByteVector32): Try[ByteVector32] = preimageDb.select(PreimageTable.selectByHashSql, hash.toHex).headTry(_ string PreimageTable.preimage).map(ByteVector32.fromValidHex)
-
   def addSearchablePayment(search: String, paymentHash: ByteVector32): Unit = db.change(PaymentTable.newVirtualSql, search, paymentHash.toHex)
 
   def searchPayments(rawSearchQuery: String): RichCursor = db.search(PaymentTable.searchSql, rawSearchQuery)
@@ -32,10 +30,6 @@ class SQLitePayment(db: DBInterface, preimageDb: DBInterface) extends PaymentBag
     val expiryHidingThreshold = System.currentTimeMillis - PaymentRequest.OUR_EXPIRY_SECONDS * 1000L
     db.select(PaymentTable.selectRecentSql, expiryHidingThreshold.toString, failedHidingThreshold.toString, limit.toString)
   }
-
-  def listRecentRelays(limit: Int): RichCursor = db.select(RelayTable.selectRecentSql, limit.toString)
-
-  def setPreimage(paymentHash: ByteVector32, preimage: ByteVector32): Unit = preimageDb.change(PreimageTable.newSql, paymentHash.toHex, preimage.toHex)
 
   def updAbortedOutgoing(paymentHash: ByteVector32): Unit = {
     db.change(PaymentTable.updStatusSql, PaymentStatus.ABORTED: JInt, paymentHash.toHex)
@@ -52,11 +46,6 @@ class SQLitePayment(db: DBInterface, preimageDb: DBInterface) extends PaymentBag
     db.change(PaymentTable.updOkIncomingSql, receivedAmount.toLong: JLong, System.currentTimeMillis: JLong, paymentHash.toHex)
     ChannelMaster.hashRevealStream.onNext(value = paymentHash)
     ChannelMaster.next(ChannelMaster.paymentDbStream)
-  }
-
-  def addRelayedPreimageInfo(fullTag: FullPaymentTag, preimage: ByteVector32, relayed: MilliSatoshi, earned: MilliSatoshi): Unit = {
-    db.change(RelayTable.newSql, fullTag.paymentHash.toHex, fullTag.paymentSecret.toHex, preimage.toHex, System.currentTimeMillis: JLong, relayed.toLong: JLong, earned.toLong: JLong)
-    ChannelMaster.next(ChannelMaster.relayDbStream)
   }
 
   def replaceOutgoingPayment(prex: PaymentRequestExt, description: PaymentDescription, action: Option[PaymentAction],
@@ -85,19 +74,36 @@ class SQLitePayment(db: DBInterface, preimageDb: DBInterface) extends PaymentBag
       ChannelMaster.next(ChannelMaster.paymentDbStream)
     }
 
-  def paymentSummary: Try[PaymentSummary] = db.select(PaymentTable.selectSummarySql).headTry { rc =>
-    PaymentSummary(fees = MilliSatoshi(rc long 0), chainFees = MilliSatoshi(rc long 1), received = MilliSatoshi(rc long 2), sent = MilliSatoshi(rc long 3), count = rc long 4)
-  }
-
-  def relaySummary: Try[RelaySummary] = db.select(RelayTable.selectSummarySql).headTry { rc =>
-    RelaySummary(relayed = MilliSatoshi(rc long 0), earned = MilliSatoshi(rc long 1), count = rc long 2)
-  }
+  def paymentSummary: Try[PaymentSummary] =
+    db.select(PaymentTable.selectSummarySql).headTry { rc =>
+      PaymentSummary(fees = MilliSatoshi(rc long 0), chainFees = MilliSatoshi(rc long 1),
+        received = MilliSatoshi(rc long 2), sent = MilliSatoshi(rc long 3), count = rc long 4)
+    }
 
   def toPaymentInfo(rc: RichCursor): PaymentInfo =
     PaymentInfo(rc string PaymentTable.pr, ByteVector32.fromValidHex(rc string PaymentTable.preimage), rc int PaymentTable.status, rc long PaymentTable.seenAt,
       rc string PaymentTable.description, rc string PaymentTable.action, ByteVector32.fromValidHex(rc string PaymentTable.hash), ByteVector32.fromValidHex(rc string PaymentTable.secret),
       MilliSatoshi(rc long PaymentTable.receivedMsat), MilliSatoshi(rc long PaymentTable.sentMsat), MilliSatoshi(rc long PaymentTable.feeMsat), MilliSatoshi(rc long PaymentTable.balanceMsat),
       rc string PaymentTable.fiatRates, MilliSatoshi(rc long PaymentTable.chainFeeMsat), rc long PaymentTable.incoming)
+
+  // Preimage storage
+
+  def getPreimage(hash: ByteVector32): Try[ByteVector32] = preimageDb.select(PreimageTable.selectByHashSql, hash.toHex).headTry(_ string PreimageTable.preimage).map(ByteVector32.fromValidHex)
+
+  def setPreimage(paymentHash: ByteVector32, preimage: ByteVector32): Unit = preimageDb.change(PreimageTable.newSql, paymentHash.toHex, preimage.toHex)
+
+  // Relayed payments
+
+  def listRecentRelays(limit: Int): RichCursor = db.select(RelayTable.selectRecentSql, limit.toString)
+
+  def addRelayedPreimageInfo(fullTag: FullPaymentTag, preimage: ByteVector32, relayed: MilliSatoshi, earned: MilliSatoshi): Unit = {
+    db.change(RelayTable.newSql, fullTag.paymentHash.toHex, fullTag.paymentSecret.toHex, preimage.toHex, System.currentTimeMillis: JLong, relayed.toLong: JLong, earned.toLong: JLong)
+    ChannelMaster.next(ChannelMaster.relayDbStream)
+  }
+
+  def relaySummary: Try[RelaySummary] = db.select(RelayTable.selectSummarySql).headTry { rc =>
+    RelaySummary(relayed = MilliSatoshi(rc long 0), earned = MilliSatoshi(rc long 1), count = rc long 2)
+  }
 
   def toRelayedPreimageInfo(rc: RichCursor): RelayedPreimageInfo =
     RelayedPreimageInfo(rc string RelayTable.hash, rc string RelayTable.secret, rc string RelayTable.preimage,

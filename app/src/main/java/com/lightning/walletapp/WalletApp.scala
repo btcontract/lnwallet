@@ -111,9 +111,9 @@ object WalletApp {
 
     val normalBag = new SQLiteNetwork(graphInterface, NormalChannelUpdateTable, NormalChannelAnnouncementTable, NormalExcludedChannelTable)
     val hostedBag = new SQLiteNetwork(graphInterface, HostedChannelUpdateTable, HostedChannelAnnouncementTable, HostedExcludedChannelTable)
-    val payBag = new SQLitePayment(extDataBag.db, essentialInterface)
+    val payBag = new SQLitePayment(extDataBag.db, preimageDb = essentialInterface)
 
-    val chanBag = new SQLiteChannel(essentialInterface) {
+    val chanBag = new SQLiteChannel(essentialInterface, channelTxFeesDb = extDataBag.db) {
       override def put(data: PersistentChannelData): PersistentChannelData = {
         backupSaveWorker.replaceWork("RESTART-DELAYED-BACKUP-SAVING")
         super.put(data)
