@@ -265,7 +265,7 @@ trait BaseActivity extends AppCompatActivity { me =>
 
   // Rich popup title
 
-  implicit class TitleView(titleText: String) { self =>
+  implicit class TitleView(titleText: String) {
     val view: LinearLayout = getLayoutInflater.inflate(R.layout.frag_top_tip, null).asInstanceOf[LinearLayout]
     val flow: FlowLayout = view.findViewById(R.id.tipExtraTags).asInstanceOf[FlowLayout]
     val title: TextView = clickableTextField(view findViewById R.id.tipTitle)
@@ -281,12 +281,11 @@ trait BaseActivity extends AppCompatActivity { me =>
       view
     }
 
-    def addChipText(chipText: String): TitleView = {
+    def addChipText(chipText: String): Unit = {
       val text = getLayoutInflater.inflate(R.layout.frag_chip_text, flow, false)
       text.asInstanceOf[TextView].setText(chipText.html)
       flow.setVisibility(View.VISIBLE)
       flow.addView(text)
-      self
     }
   }
 

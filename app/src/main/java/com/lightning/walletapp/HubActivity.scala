@@ -13,6 +13,7 @@ import com.lightning.walletapp.R.string._
 import immortan.utils.ImplicitJsonFormats._
 
 import scala.util.{Success, Try}
+import java.lang.{Integer => JInt}
 import android.view.{MenuItem, View, ViewGroup}
 import rx.lang.scala.{Observable, Subscription}
 import com.androidstudy.networkmanager.{Monitor, Tovuti}
@@ -363,7 +364,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
   // Channel errors
 
   private val MAX_ERROR_COUNT_WITHIN_WINDOW = 4
-  private val channelErrors = CacheBuilder.newBuilder.expireAfterAccess(30, TimeUnit.SECONDS).maximumSize(500).build[ByteVector32, Int]
+  private val channelErrors = CacheBuilder.newBuilder.expireAfterAccess(30, TimeUnit.SECONDS).maximumSize(500).build[ByteVector32, JInt]
   private def chanError(neutralRes: Int, neutral: => Unit, channelId: ByteVector32, message: String, remoteInfo: RemoteNodeInfo) = UITask {
     Option(channelErrors getIfPresent channelId).filter(errorCountSoFar => MAX_ERROR_COUNT_WITHIN_WINDOW > errorCountSoFar).foreach { count =>
       val builder = new AlertDialog.Builder(me).setCustomTitle(getString(error_channel).format(remoteInfo.nodeId.toString.take(16).humanFour).asDefView)
@@ -373,17 +374,23 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
   }
 
   override def onException: PartialFunction[Malfunction, Unit] = {
-    case (CMDException(reason, _: CMD_HOSTED_STATE_OVERRIDE), _: ChannelHosted, hc: HostedCommits) =>
-      chanError(neutralRes = -1, none, hc.channelId, reason, hc.remoteInfo).run
-
     case (CMDException(reason, _: CMD_CLOSE), chan: ChannelNormal, data: HasNormalCommitments) =>
       chanError(dialog_force_close, chan process CMD_CLOSE(None, force = true), data.channelId, reason, data.commitments.remoteInfo).run
+
+    case (CMDException(reason, _: CMD_HOSTED_STATE_OVERRIDE), _: ChannelHosted, hc: HostedCommits) =>
+      chanError(neutralRes = -1, none, hc.channelId, reason, hc.remoteInfo).run
 
     case (RemoteErrorException(details), chan: ChannelNormal, data: HasNormalCommitments) =>
       chanError(dialog_force_close, chan process CMD_CLOSE(None, force = true), data.channelId, getString(error_channel_remote).format(details), data.commitments.remoteInfo).run
 
     case (RemoteErrorException(details), _: ChannelHosted, hc: HostedCommits) =>
       chanError(neutralRes = -1, none, hc.channelId, getString(error_channel_remote).format(details), hc.remoteInfo).run
+
+    case (error: ChannelTransitionFail, _: ChannelNormal, data: HasNormalCommitments) =>
+      chanError(neutralRes = -1, none, data.channelId, getString(error_channel_closed) format excToString(error), data.commitments.remoteInfo).run
+
+    case (error: ChannelTransitionFail, _: ChannelHosted, hc: HostedCommits) =>
+      chanError(neutralRes = -1, none, hc.channelId, getString(error_channel_suspended) format excToString(error), hc.remoteInfo).run
 
     case (error, chan: ChannelNormal, data: HasNormalCommitments) =>
       chanError(dialog_force_close, chan process CMD_CLOSE(None, force = true), data.channelId, excToString(error), data.commitments.remoteInfo).run

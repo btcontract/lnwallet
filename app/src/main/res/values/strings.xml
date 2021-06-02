@@ -88,7 +88,10 @@
     <!-- errors -->
 
     <string name="error_channel"><![CDATA[<b>Channel error happened</b><br><br>%1$s]]></string>
-    <string name="error_channel_remote"><![CDATA[<b><b>Error from remote peer</b>:<br><br>%1$s]]></string>
+    <string name="error_channel_remote"><![CDATA[<b>Error from remote peer</b>:<br><br>%1$s]]></string>
+    <string name="error_channel_closed"><![CDATA[<b>Channel has been force-closed by wallet, fatal error details</b>:<br><br>%1$s]]></string>
+    <string name="error_channel_suspended"><![CDATA[<b>Hosted channel has been suspended by wallet, fatal error details</b>:<br><br>%1$s]]></string>
+
     <string name="error_rejected_incoming_public">Rejected public channel offer, only private channels are allowed.</string>
     <string name="error_btc_broadcast_fail">Could not broadcast a transaction, please make sure that wallet has network connection and then try again.</string>
     <string name="error_could_not_decrypt"><![CDATA[<b>Backup decryption failed</b>.<br><br>Make sure that both backup file and recovery phrase are correct.<br><br>Error details:<br><br>%1$s]]></string>

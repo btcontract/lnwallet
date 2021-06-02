@@ -32,7 +32,6 @@ object SQLiteData {
   final val LABEL_BRANDING_PREFIX = "label-branding-node-"
   final val LABEL_SWAP_IN_STATE_PREFIX = "label-swap-in-node-"
   final val LABEL_PAYMENT_REPORT_PREFIX = "label-payment-report-"
-  final val LABEL_CHAN_CLOSE_DETAILS_PREFIX = "label-chan-close-details-"
 
   def byteVecToString(bv: ByteVector): String = new String(bv.toArray, "UTF-8")
 }
@@ -74,15 +73,11 @@ class SQLiteData(val db: DBInterface) extends WalletDb with DataBag {
 
   def tryGetFeeRatesInfo: Try[FeeRatesInfo] = tryGet(LABEL_FEE_RATES).map(SQLiteData.byteVecToString) map to[FeeRatesInfo]
 
-  // Payment reports and channel closing details
+  // Payment reports
 
   def putReport(paymentHash: ByteVector32, report: String): Unit = put(LABEL_PAYMENT_REPORT_PREFIX + paymentHash.toHex, report getBytes "UTF-8")
 
   def tryGetReport(paymentHash: ByteVector32): Try[String] = tryGet(LABEL_PAYMENT_REPORT_PREFIX + paymentHash.toHex).map(byteVecToString)
-
-  def putChanCloseDetails(channelId: ByteVector32, details: String): Unit = put(LABEL_CHAN_CLOSE_DETAILS_PREFIX + channelId.toHex, details getBytes "UTF-8")
-
-  def tryGetChanCloseDetails(channelId: ByteVector32): Try[String] = tryGet(LABEL_CHAN_CLOSE_DETAILS_PREFIX + channelId.toHex).map(byteVecToString)
 
   // HostedChannelBranding
 

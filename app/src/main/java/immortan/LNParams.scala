@@ -259,9 +259,6 @@ trait DataBag {
   def putReport(paymentHash: ByteVector32, report: String)
   def tryGetReport(paymentHash: ByteVector32): Try[String]
 
-  def putChanCloseDetails(channelId: ByteVector32, details: String)
-  def tryGetChanCloseDetails(channelId: ByteVector32): Try[String]
-
   def putBranding(nodeId: PublicKey, branding: HostedChannelBranding)
   def tryGetBranding(nodeId: PublicKey): Try[HostedChannelBranding]
 
