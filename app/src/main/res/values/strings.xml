@@ -51,6 +51,7 @@
     <string name="dialog_ok">OK</string>
     <string name="dialog_cancel">Cancel</string>
     <string name="dialog_receive">Receive</string>
+    <string name="dialog_force_close">Force close</string>
     <string name="dialog_split">Split</string>
     <string name="dialog_share">Share</string>
     <string name="dialog_open">Open</string>
@@ -86,6 +87,8 @@
 
     <!-- errors -->
 
+    <string name="error_channel"><![CDATA[<b>Channel error happened</b><br><br>%1$s]]></string>
+    <string name="error_channel_remote"><![CDATA[<b><b>Error from remote peer</b>:<br><br>%1$s]]></string>
     <string name="error_rejected_incoming_public">Rejected public channel offer, only private channels are allowed.</string>
     <string name="error_btc_broadcast_fail">Could not broadcast a transaction, please make sure that wallet has network connection and then try again.</string>
     <string name="error_could_not_decrypt"><![CDATA[<b>Backup decryption failed</b>.<br><br>Make sure that both backup file and recovery phrase are correct.<br><br>Error details:<br><br>%1$s]]></string>

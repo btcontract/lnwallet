@@ -56,7 +56,7 @@ abstract class NCFunderOpenHandler(info: RemoteNodeInfo, fakeFunding: MakeFundin
     override def onBecome: PartialFunction[Transition, Unit] = {
       case (_, _: DATA_WAIT_FOR_ACCEPT_CHANNEL, data: DATA_WAIT_FOR_FUNDING_INTERNAL, WAIT_FOR_ACCEPT, WAIT_FOR_ACCEPT) =>
         val future = NCFunderOpenHandler.makeFunding(cw, data.initFunder.fakeFunding.fundingAmount, data.initFunder.fundingFeeratePerKw, data.lastSent.fundingPubkey, data.remoteParams.fundingPubKey)
-        future onComplete { case Failure(failureReason) => onException(freshChannel, data, failureReason) case Success(realFundingTx) => freshChannel process realFundingTx }
+        future onComplete { case Failure(failureReason) => onException(failureReason, freshChannel, data) case Success(realFundingTx) => freshChannel process realFundingTx }
 
       case (_, _: DATA_WAIT_FOR_FUNDING_INTERNAL, data: DATA_WAIT_FOR_FUNDING_SIGNED, WAIT_FOR_ACCEPT, WAIT_FOR_ACCEPT) =>
         // Once funding tx becomes known peer will start sending messages using a real channel ID, not a temp one
@@ -73,7 +73,7 @@ abstract class NCFunderOpenHandler(info: RemoteNodeInfo, fakeFunding: MakeFundin
     override def onException: PartialFunction[Malfunction, Unit] = {
       // Something went wrong while trying to establish a new channel
 
-      case (_, _, error: Throwable) =>
+      case (error, _, _) =>
         CommsTower.rmListenerNative(info, me)
         onFailure(error)
     }

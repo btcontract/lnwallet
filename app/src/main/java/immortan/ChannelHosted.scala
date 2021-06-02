@@ -274,11 +274,11 @@ abstract class ChannelHosted extends Channel { me =>
       val isRemoteSigOk = completeLocalLCSS.verifyRemoteSig(hc.remoteInfo.nodeId)
       val hc1 = restoreCommits(completeLocalLCSS, hc.remoteInfo)
 
-      if (completeLocalLCSS.localBalanceMsat < 0L.msat) throw CMDException("Provided updated local balance is larger than capacity", cmd)
-      if (remoteSO.localUpdates < hc.lastCrossSignedState.remoteUpdates) throw CMDException("Provided local update number from remote host is wrong", cmd)
-      if (remoteSO.remoteUpdates < hc.lastCrossSignedState.localUpdates) throw CMDException("Provided remote update number from remote host is wrong", cmd)
-      if (remoteSO.blockDay < hc.lastCrossSignedState.blockDay) throw CMDException("Provided override blockday from remote host is not acceptable", cmd)
-      if (!isRemoteSigOk) throw CMDException("Provided override signature from remote host is wrong", cmd)
+      if (completeLocalLCSS.localBalanceMsat < 0L.msat) throw CMDException("Override impossible: new local balance is larger than capacity", cmd)
+      if (remoteSO.localUpdates < hc.lastCrossSignedState.remoteUpdates) throw CMDException("Override impossible: new local update number from remote host is wrong", cmd)
+      if (remoteSO.remoteUpdates < hc.lastCrossSignedState.localUpdates) throw CMDException("Override impossible: new remote update number from remote host is wrong", cmd)
+      if (remoteSO.blockDay < hc.lastCrossSignedState.blockDay) throw CMDException("Override impossible: new override blockday from remote host is not acceptable", cmd)
+      if (!isRemoteSigOk) throw CMDException("Override impossible: new override signature from remote host is wrong", cmd)
       StoreBecomeSend(hc1, OPEN, completeLocalLCSS.stateUpdate)
       rejectOverriddenOutgoingAdds(hc, hc1)
 

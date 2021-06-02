@@ -47,7 +47,7 @@ abstract class HCOpenHandler(info: RemoteNodeInfo, peerSpecificSecret: ByteVecto
     override def onException: PartialFunction[Malfunction, Unit] = {
       // Something went wrong while trying to establish a channel
 
-      case (_, _, error: Throwable) =>
+      case (error, _, _) =>
         CommsTower.rmListenerNative(info, me)
         onFailure(error)
     }

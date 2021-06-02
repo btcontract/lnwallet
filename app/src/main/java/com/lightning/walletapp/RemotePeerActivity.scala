@@ -93,7 +93,7 @@ class RemotePeerActivity extends BaseActivity with ExternalDataChecker { me =>
   def activateInfo(remoteInfo: RemoteNodeInfo): Unit = {
     whenBackPressed = UITask(CommsTower disconnectNative remoteInfo)
     CommsTower.listenNative(Set(viewUpdatingListener, incomingAcceptingListener), remoteInfo)
-    peerNodeKey.setText(remoteInfo.nodeId.toString.humanFour)
+    peerNodeKey.setText(remoteInfo.nodeId.toString.take(16).humanFour)
     peerIpAddress.setText(remoteInfo.address.toString)
     remoteNodeInfo = remoteInfo
   }

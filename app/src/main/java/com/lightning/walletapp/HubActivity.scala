@@ -5,6 +5,7 @@ import immortan.utils._
 import android.widget._
 import fr.acinq.eclair._
 import immortan.crypto.Tools._
+import fr.acinq.eclair.channel._
 import scala.concurrent.duration._
 import com.softwaremill.quicklens._
 import com.lightning.walletapp.Colors._
@@ -26,17 +27,20 @@ import com.github.mmin18.widget.RealtimeBlurView
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.slider.Slider
 import androidx.transition.TransitionManager
+import com.google.common.cache.CacheBuilder
+import immortan.ChannelListener.Malfunction
 import fr.acinq.eclair.blockchain.TxAndFee
 import com.indicator.ChannelIndicatorLine
 import androidx.appcompat.app.AlertDialog
 import fr.acinq.eclair.wire.PaymentTagTlv
+import java.util.concurrent.TimeUnit
 import immortan.sqlite.Table
 import org.ndeftools.Message
 import java.util.TimerTask
 import android.os.Bundle
 
 
-class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataChecker with ChoiceReceiver { me =>
+class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataChecker with ChoiceReceiver with ChannelListener { me =>
   def lnBalance: MilliSatoshi = LNParams.cm.all.values.filter(Channel.isOperationalOrWaiting).map(Channel.estimateBalance).sum
 
   private[this] lazy val bottomBlurringArea = findViewById(R.id.bottomBlurringArea).asInstanceOf[RealtimeBlurView]
@@ -356,7 +360,39 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
     runInFutureProcessOnUI(InputParser recordValue ndefMessageString(nfcMessage),
       _ => WalletApp.app quickToast error_nothing_useful)(_ => me checkExternalData noneRunnable)
 
-  // IMPLEMENTATIONS
+  // Channel errors
+
+  private val MAX_ERROR_COUNT_WITHIN_WINDOW = 4
+  private val channelErrors = CacheBuilder.newBuilder.expireAfterAccess(30, TimeUnit.SECONDS).maximumSize(500).build[ByteVector32, Int]
+  private def chanError(neutralRes: Int, neutral: => Unit, channelId: ByteVector32, message: String, remoteInfo: RemoteNodeInfo) = UITask {
+    Option(channelErrors getIfPresent channelId).filter(errorCountSoFar => MAX_ERROR_COUNT_WITHIN_WINDOW > errorCountSoFar).foreach { count =>
+      val builder = new AlertDialog.Builder(me).setCustomTitle(getString(error_channel).format(remoteInfo.nodeId.toString.take(16).humanFour).asDefView)
+      mkCheckFormNeutral(none, share(message), alert => runAnd(alert.dismiss)(neutral), builder.setMessage(message.html), dialog_ok, dialog_share, neutralRes)
+      channelErrors.put(channelId, count + 1)
+    }
+  }
+
+  override def onException: PartialFunction[Malfunction, Unit] = {
+    case (CMDException(reason, _: CMD_HOSTED_STATE_OVERRIDE), _: ChannelHosted, hc: HostedCommits) =>
+      chanError(neutralRes = -1, none, hc.channelId, reason, hc.remoteInfo).run
+
+    case (CMDException(reason, _: CMD_CLOSE), chan: ChannelNormal, data: HasNormalCommitments) =>
+      chanError(dialog_force_close, chan process CMD_CLOSE(None, force = true), data.channelId, reason, data.commitments.remoteInfo).run
+
+    case (RemoteErrorException(details), chan: ChannelNormal, data: HasNormalCommitments) =>
+      chanError(dialog_force_close, chan process CMD_CLOSE(None, force = true), data.channelId, getString(error_channel_remote).format(details), data.commitments.remoteInfo).run
+
+    case (RemoteErrorException(details), _: ChannelHosted, hc: HostedCommits) =>
+      chanError(neutralRes = -1, none, hc.channelId, getString(error_channel_remote).format(details), hc.remoteInfo).run
+
+    case (error, chan: ChannelNormal, data: HasNormalCommitments) =>
+      chanError(dialog_force_close, chan process CMD_CLOSE(None, force = true), data.channelId, excToString(error), data.commitments.remoteInfo).run
+
+    case (error, _: ChannelHosted, hc: HostedCommits) =>
+      chanError(neutralRes = -1, none, hc.channelId, excToString(error), hc.remoteInfo).run
+  }
+
+  // Lifecycle methods
 
   override def onResume: Unit = {
     checkExternalData(noneRunnable)
@@ -370,15 +406,17 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
     preimageSubscription.foreach(_.unsubscribe)
 
     LNParams.chainWallet.eventsCatcher ! WalletEventsCatcher.Remove(chainListener)
+    for (channel <- LNParams.cm.all.values) channel.listeners -= me
     FiatRates.listeners -= fiatRatesListener
     Tovuti.from(me).stop
     super.onDestroy
   }
 
-  override def onBackPressed: Unit =
+  override def onBackPressed: Unit = {
     if (walletCards.searchWrap.getVisibility == View.VISIBLE) cancelSearch(null)
     else if (currentSnackbar.isDefined) removeCurrentSnack.run
     else super.onBackPressed
+  }
 
   override def checkExternalData(whenNone: Runnable): Unit = InputParser.checkAndMaybeErase {
     case bitcoinUri: BitcoinUri if bitcoinUri.isValid => bringSendBitcoinPopup(bitcoinUri)
@@ -517,6 +555,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
   def INIT(state: Bundle): Unit =
     if (WalletApp.isAlive && LNParams.isOperational) {
       setContentView(com.lightning.walletapp.R.layout.activity_hub)
+      for (channel <- LNParams.cm.all.values) channel.listeners += me
       LNParams.chainWallet.eventsCatcher ! chainListener
       FiatRates.listeners += fiatRatesListener
       Tovuti.from(me).monitor(netListener)

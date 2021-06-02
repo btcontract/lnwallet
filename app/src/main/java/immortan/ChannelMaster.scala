@@ -233,12 +233,12 @@ class ChannelMaster(val payBag: PaymentBag, val chanBag: ChannelBag, val dataBag
   // These are executed in Channel context
 
   override def onException: PartialFunction[Malfunction, Unit] = {
-    case (chan: ChannelNormal, data: HasNormalCommitments, error: ChannelTransitionFail) =>
-      dataBag.putChanCloseDetails(data.channelId, error.getStackTrace.toList.toString)
+    case (error: ChannelTransitionFail, chan: ChannelNormal, data: HasNormalCommitments) =>
+      dataBag.putChanCloseDetails(details = excToString(error), channelId = data.channelId)
       chan process CMD_CLOSE(scriptPubKey = None, force = true)
 
-    case (chan: ChannelHosted, hc: HostedCommits, error: ChannelTransitionFail) =>
-      dataBag.putChanCloseDetails(hc.channelId, error.getStackTrace.toList.toString)
+    case (error: ChannelTransitionFail, chan: ChannelHosted, hc: HostedCommits) =>
+      dataBag.putChanCloseDetails(details = excToString(error), channelId = hc.channelId)
       chan.localSuspend(hc, ErrorCodes.ERR_HOSTED_MANUAL_SUSPEND)
   }
 
