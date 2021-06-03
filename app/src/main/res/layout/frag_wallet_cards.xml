@@ -23,13 +23,23 @@
                 style="@style/FillingView"/>
 
             <TextView
+                style="@style/ChipTextGrayMargin"
+                android:background="@drawable/border_yellow"
+                android:layout_toStartOf="@id/rateTeaser"
+                android:layout_centerVertical="true"
+                android:id="@+id/offlineIndicator"
+                android:text="@string/offline"
+                android:visibility="gone"/>
+
+            <TextView
                 android:id="@+id/rateTeaser"
                 android:text="@string/rate_us"
                 android:onClick="bringRateDialog"
                 android:background="@drawable/border_green"
                 android:layout_toStartOf="@id/settingsButton"
                 android:layout_centerVertical="true"
-                style="@style/ChipTextGray"/>
+                style="@style/ChipTextGray"
+                android:visibility="gone"/>
 
             <ImageButton
                 android:padding="6dp"
@@ -82,31 +92,20 @@
 
                 <TextView
                     android:layout_marginEnd="3dp"
-                    android:layout_centerVertical="true"
                     android:textColor="@color/colorAccent"
                     android:text="@string/bitcoin_wallet"
-                    android:id="@+id/unusedAnchorId"
+                    android:id="@+id/unusedAnchorId1"
                     style="@style/BoundedView"/>
 
                 <TextView
                     style="@style/ChipTextGrayMargin"
                     android:textColor="@color/colorAccent"
                     android:background="@drawable/border_yellow"
-                    android:layout_toEndOf="@id/unusedAnchorId"
+                    android:layout_toEndOf="@id/unusedAnchorId1"
                     android:layout_centerVertical="true"
-                    android:id="@+id/offlineIndicator"
-                    android:text="@string/offline"
-                    android:visibility="gone"
-                    android:textSize="12sp"/>
-
-                <TextView
-                    style="@style/ChipTextGrayMargin"
-                    android:textColor="@color/colorAccent"
-                    android:background="@drawable/border_yellow"
-                    android:layout_toEndOf="@id/offlineIndicator"
-                    android:layout_centerVertical="true"
-                    android:id="@+id/syncIndicator"
+                    android:id="@+id/btcSyncIndicator"
                     android:text="@string/sync"
+                    android:visibility="gone"
                     android:textSize="12sp"/>
 
                 <TextView
@@ -139,9 +138,21 @@
                 style="@style/FillingView">
 
                 <TextView
+                    android:layout_marginEnd="3dp"
                     android:textColor="@color/colorAccent"
                     android:text="@string/lightning_wallet"
+                    android:id="@+id/unusedAnchorId2"
                     style="@style/BoundedView"/>
+
+                <TextView
+                    style="@style/ChipTextGrayMargin"
+                    android:textColor="@color/colorAccent"
+                    android:layout_toEndOf="@id/unusedAnchorId2"
+                    android:layout_centerVertical="true"
+                    android:id="@+id/lnSyncIndicator"
+                    android:text="@string/sync"
+                    android:visibility="gone"
+                    android:textSize="12sp"/>
 
                 <TextView
                     android:id="@+id/totalLightningBalance"

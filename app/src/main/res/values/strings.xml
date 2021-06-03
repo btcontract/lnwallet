@@ -99,8 +99,8 @@
     <string name="error_wrong_phrase"><![CDATA[<b>A phrase must be 12 or 24 words long</b>.<br><br><b>All words must be different</b>.]]></string>
     <string name="error_nothing_useful">Nothing useful is found.</string>
 
-    <string name="error_ln_no_chans"><![CDATA[Can\'t proceed because no open payment channels are present.]]></string>
-    <string name="error_ln_waiting"><![CDATA[Can\'t proceed because none of your channels is open yet, please wait for more funding confirmations.]]></string>
+    <string name="error_ln_no_chans"><![CDATA[Can neither send nor receive Lightning payments because no open channels are present.]]></string>
+    <string name="error_ln_waiting"><![CDATA[Can neither send nor receive Lightning payments because none of your channels is open yet, please wait for more funding confirmations.]]></string>
 
     <string name="error_ln_receive_no_update"><![CDATA[Can\'t request Lightning payments because receiving parameters are not yet available, please wait for more funding confirmations.]]></string>
     <string name="error_ln_receive_reserve"><![CDATA[Can\'t request Lightning payments yet because first you need to spend at least <b>%1$s</b> to make some space for receiving.]]></string>

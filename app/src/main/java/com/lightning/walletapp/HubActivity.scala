@@ -34,6 +34,7 @@ import fr.acinq.eclair.blockchain.TxAndFee
 import com.indicator.ChannelIndicatorLine
 import androidx.appcompat.app.AlertDialog
 import fr.acinq.eclair.wire.PaymentTagTlv
+import immortan.crypto.CanBeRepliedTo
 import java.util.concurrent.TimeUnit
 import android.content.Intent
 import immortan.sqlite.Table
@@ -43,7 +44,7 @@ import android.os.Bundle
 import android.net.Uri
 
 
-class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataChecker with ChoiceReceiver with ChannelListener { me =>
+class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataChecker with ChoiceReceiver with ChannelListener with CanBeRepliedTo { me =>
   def lnBalance: MilliSatoshi = LNParams.cm.all.values.filter(Channel.isOperationalOrWaiting).map(Channel.estimateBalance).sum
 
   private[this] lazy val bottomBlurringArea = findViewById(R.id.bottomBlurringArea).asInstanceOf[RealtimeBlurView]
@@ -252,11 +253,12 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
     val totalBitcoinBalance: TextView = view.findViewById(R.id.totalBitcoinBalance).asInstanceOf[TextView]
     val receiveBitcoinTip: ImageView = view.findViewById(R.id.receiveBitcoinTip).asInstanceOf[ImageView]
     val offlineIndicator: TextView = view.findViewById(R.id.offlineIndicator).asInstanceOf[TextView]
-    val syncIndicator: TextView = view.findViewById(R.id.syncIndicator).asInstanceOf[TextView]
+    val btcSyncIndicator: TextView = view.findViewById(R.id.btcSyncIndicator).asInstanceOf[TextView]
 
     val totalLightningBalance: TextView = view.findViewById(R.id.totalLightningBalance).asInstanceOf[TextView]
     val channelStateIndicators: LinearLayout = view.findViewById(R.id.channelStateIndicators).asInstanceOf[LinearLayout]
     val channelIndicator: ChannelIndicatorLine = view.findViewById(R.id.channelIndicator).asInstanceOf[ChannelIndicatorLine]
+    val lnSyncIndicator: TextView = view.findViewById(R.id.lnSyncIndicator).asInstanceOf[TextView]
 
     val inFlightIncoming: TextView = view.findViewById(R.id.inFlightIncoming).asInstanceOf[TextView]
     val inFlightOutgoing: TextView = view.findViewById(R.id.inFlightOutgoing).asInstanceOf[TextView]
@@ -281,7 +283,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
 
       TransitionManager.beginDelayedTransition(view)
       setVis(allChannels.nonEmpty, channelStateIndicators)
-      setVis(WalletApp.lastChainBalance.isTooLongAgo, syncIndicator)
+      setVis(WalletApp.lastChainBalance.isTooLongAgo, btcSyncIndicator)
       totalFiatBalance setText WalletApp.currentMsatInFiatHuman(walletBalance).html
       totalBalance setText LNParams.denomination.parsedWithSign(walletBalance, totalZero).html
       channelIndicator.createIndicators(allChannels.toArray)
@@ -401,6 +403,12 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
       chanError(neutralRes = -1, none, hc.channelId, error.stackTraceAsString, hc.remoteInfo).run
   }
 
+  override def process(reply: Any): Unit = reply match {
+    case PathFinder.NotifySyncStarted => UITask(walletCards.lnSyncIndicator setVisibility View.VISIBLE).run
+    case PathFinder.NotifySyncFinished => UITask(walletCards.lnSyncIndicator setVisibility View.GONE).run
+    case _ =>
+  }
+
   // Lifecycle methods
 
   override def onResume: Unit = {
@@ -417,6 +425,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
     LNParams.chainWallet.eventsCatcher ! WalletEventsCatcher.Remove(chainListener)
     for (channel <- LNParams.cm.all.values) channel.listeners -= me
     FiatRates.listeners -= fiatRatesListener
+    LNParams.cm.pf.listeners -= me
     Tovuti.from(me).stop
     super.onDestroy
   }
@@ -568,6 +577,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
       LNParams.chainWallet.eventsCatcher ! chainListener
       FiatRates.listeners += fiatRatesListener
       Tovuti.from(me).monitor(netListener)
+      LNParams.cm.pf.listeners += me
 
       bottomActionBar post UITask {
         bottomBlurringArea.setHeightTo(bottomActionBar)
