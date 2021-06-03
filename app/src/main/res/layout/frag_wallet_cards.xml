@@ -22,9 +22,19 @@
                 android:layout_centerVertical="true"
                 style="@style/FillingView"/>
 
+            <TextView
+                android:id="@+id/rateTeaser"
+                android:text="@string/rate_us"
+                android:onClick="bringRateDialog"
+                android:background="@drawable/border_green"
+                android:layout_toStartOf="@id/settingsButton"
+                android:layout_centerVertical="true"
+                style="@style/ChipTextGray"/>
+
             <ImageButton
                 android:padding="6dp"
                 android:onClick="bringMenu"
+                android:id="@+id/settingsButton"
                 android:layout_alignParentEnd="true"
                 android:src="@drawable/baseline_more_horiz_24"
                 android:background="?android:selectableItemBackground"

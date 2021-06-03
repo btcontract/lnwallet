@@ -241,6 +241,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
   class WalletCardsViewHolder {
     val view: LinearLayout = getLayoutInflater.inflate(R.layout.frag_wallet_cards, null).asInstanceOf[LinearLayout]
     val defaultHeader: LinearLayout = view.findViewById(R.id.defaultHeader).asInstanceOf[LinearLayout]
+    val rateTeaser: TextView = view.findViewById(R.id.rateTeaser).asInstanceOf[TextView]
 
     val totalBalance: TextView = view.findViewById(R.id.totalBalance).asInstanceOf[TextView]
     val totalFiatBalance: TextView = view.findViewById(R.id.totalFiatBalance).asInstanceOf[TextView]
@@ -601,6 +602,10 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
     }
 
   // VIEW HANDLERS
+
+  def bringRateDialog(view: View): Unit = {
+
+  }
 
   def bringMenu(view: View): Unit = {
     val popupMenu = new PopupMenu(me, view)

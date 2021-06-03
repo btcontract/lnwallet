@@ -1,6 +1,7 @@
 <resources>
     <string name="lang">eng</string>
     <string name="app_name">BLW</string>
+    <string name="rate_us">&#9825; Rate us!</string>
 
     <string name="sync">SYNC</string>
     <string name="offline">OFFLINE</string>
@@ -174,18 +175,6 @@
     <string name="orbot_action_skip">Proceed without Tor</string>
 
     <!-- /orbot -->
-
-    <!-- rating dialog -->
-
-    <string name="rating_dialog_suggestions">Suggest us what went wrong and we\'ll work on it!</string>
-    <string name="rating_dialog_experience">How was your experience with us?</string>
-    <string name="rating_dialog_feedback_title">Feedback</string>
-    <string name="rating_dialog_maybe_later">Maybe later</string>
-    <string name="rating_dialog_submit">Submit</string>
-    <string name="rating_dialog_cancel">Cancel</string>
-    <string name="rating_dialog_never">Never</string>
-
-    <!-- /rating dialog -->
 
     <!-- Remote peer activity -->
 

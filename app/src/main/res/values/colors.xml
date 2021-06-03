@@ -31,6 +31,9 @@
     <color name="buttonGrayRipple">#868899</color>
     <color name="buttonGrayBorder">#494949</color>
 
+    <color name="white">#FFFFFF</color>
+    <color name="almostBlack">#1A1A1A</color>
+
     <!-- nachos -->
 
     <color name="chip_default_text_color">#DE000000</color>
@@ -48,13 +51,4 @@
     <color name="colorBottomNavigationInactiveColored">#50FFFFFF</color>
     <color name="colorBottomNavigationSelectedBackground">#17000000</color>
     <color name="colorBottomNavigationNotification">#F63D2B</color>
-
-    <!-- rating dialog -->
-
-    <color name="grey_500">#9E9E9E</color>
-    <color name="grey_200">#EEEEEE</color>
-    <color name="grey_400">#BDBDBD</color>
-    <color name="white">#FFFFFF</color>
-    <color name="almostBlack">#1A1A1A</color>
-    <color name="ratingAccent">#ec2045</color>
 </resources>

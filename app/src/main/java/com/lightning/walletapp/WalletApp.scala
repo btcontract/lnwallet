@@ -59,6 +59,7 @@ object WalletApp {
   final val CAP_LN_FEE_TO_CHAIN = "capLNFeeToChain"
   final val LAST_TOTAL_GOSSIP_SYNC = "lastTotalGossipSync"
   final val LAST_NORMAL_GOSSIP_SYNC = "lastNormalGossipSync"
+  final val SHOW_RATE_US = "showRateUs"
 
   def useAuth: Boolean = app.prefs.getBoolean(USE_AUTH, false)
   def fiatCode: String = app.prefs.getString(FIAT_CODE, "usd")
@@ -66,6 +67,7 @@ object WalletApp {
   def useSatDenom: Boolean = app.prefs.getBoolean(USE_SAT_DENOM, true)
   def makeChanBackup: Boolean = app.prefs.getBoolean(MAKE_CHAN_BACKUP, true)
   def capLNFeeToChain: Boolean = app.prefs.getBoolean(CAP_LN_FEE_TO_CHAIN, false)
+  def showRateUs: Boolean = app.prefs.getBoolean(SHOW_RATE_US, true)
 
   // Due to Android specifics any of these may be nullified at runtime, must check for liveness on every entry
   def isAlive: Boolean = null != extDataBag && null != txDataBag && null != lastChainBalance && null != usedAddons && null != app
