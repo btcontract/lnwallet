@@ -35,10 +35,12 @@ import com.indicator.ChannelIndicatorLine
 import androidx.appcompat.app.AlertDialog
 import fr.acinq.eclair.wire.PaymentTagTlv
 import java.util.concurrent.TimeUnit
+import android.content.Intent
 import immortan.sqlite.Table
 import org.ndeftools.Message
 import java.util.TimerTask
 import android.os.Bundle
+import android.net.Uri
 
 
 class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataChecker with ChoiceReceiver with ChannelListener { me =>
@@ -572,8 +574,12 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
         itemsList.setPadding(0, 0, 0, bottomActionBar.getHeight)
       }
 
-      walletCards.searchField addTextChangedListener onTextChange(searchWorker.addWork)
-      runInFutureProcessOnUI(loadRecentInfos, none) { _ => updatePaymentList }
+      runInFutureProcessOnUI(loadRecentInfos, none) { _ =>
+        // We suggest user to rate us if: no rate attempt has been made before, LN payments were successful, user had been using an app for certain period
+        setVis(WalletApp.showRateUs && paymentInfos.forall(_.status == PaymentStatus.SUCCEEDED) && allInfos.size > 4 && allInfos.size < 8, walletCards.rateTeaser)
+        walletCards.searchField addTextChangedListener onTextChange(searchWorker.addWork)
+        updatePaymentList
+      }
 
       itemsList.addHeaderView(walletCards.view)
       itemsList.setAdapter(paymentsAdapter)
@@ -604,7 +610,10 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
   // VIEW HANDLERS
 
   def bringRateDialog(view: View): Unit = {
-
+    val marketUri = Uri.parse(s"market://details?id=$getPackageName")
+    WalletApp.app.prefs.edit.putBoolean(WalletApp.SHOW_RATE_US, false)
+    me startActivity new Intent(Intent.ACTION_VIEW, marketUri)
+    view.setVisibility(View.GONE)
   }
 
   def bringMenu(view: View): Unit = {
