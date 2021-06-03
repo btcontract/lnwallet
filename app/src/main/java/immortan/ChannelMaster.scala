@@ -12,7 +12,7 @@ import scala.concurrent.duration._
 import fr.acinq.bitcoin.{ByteVector32, Satoshi}
 import fr.acinq.bitcoin.Crypto.{PrivateKey, PublicKey}
 import immortan.ChannelListener.{Malfunction, Transition}
-import fr.acinq.eclair.transactions.{RemoteFulfill, RemoteReject}
+import fr.acinq.eclair.transactions.{LocalFulfill, RemoteFulfill, RemoteReject}
 import immortan.fsm.OutgoingPaymentMaster.CMDChanGotOnline
 import java.util.concurrent.atomic.AtomicLong
 import fr.acinq.eclair.payment.IncomingPacket
@@ -26,12 +26,12 @@ import scala.util.Try
 object ChannelMaster {
   type PreimageTry = Try[ByteVector32]
   type PaymentInfoTry = Try[PaymentInfo]
+  type RevealedLocalFulfills = Iterable[LocalFulfill]
 
   type OutgoingAdds = Iterable[UpdateAddHtlc]
   type ReasonableResolutions = Iterable[ReasonableResolution]
   type ReasonableTrampolines = Iterable[ReasonableTrampoline]
   type ReasonableLocals = Iterable[ReasonableLocal]
-
 
   final val updateCounter = new AtomicLong(0)
 
@@ -47,14 +47,10 @@ object ChannelMaster {
 
   def next(stream: Subject[Long] = null): Unit = stream.onNext(updateCounter.incrementAndGet)
 
-
   final val hashRevealStream: Subject[ByteVector32] = Subject[ByteVector32]
-
   final val remoteFulfillStream: Subject[RemoteFulfill] = Subject[RemoteFulfill]
 
-
   final val NO_PREIMAGE = ByteVector32.One
-
   final val NO_SECRET = ByteVector32.Zeroes
 
   def initResolve(ext: UpdateAddHtlcExt): IncomingResolution = IncomingPacket.decrypt(ext.theirAdd, ext.remoteInfo.nodeSpecificPrivKey) match {
@@ -78,6 +74,9 @@ object ChannelMaster {
     case packet: IncomingPacket.NodeRelayPacket => CMD_FAIL_HTLC(Right(LNParams incorrectDetails packet.add.amountMsat), secret, packet.add)
     case packet: IncomingPacket.FinalPacket => CMD_FAIL_HTLC(Right(LNParams incorrectDetails packet.add.amountMsat), secret, packet.add)
   }
+
+  def dangerousHCRevealed(revealed: Map[ByteVector32, RevealedLocalFulfills], tip: Long, hash: ByteVector32): Iterable[LocalFulfill] =
+    revealed.getOrElse(hash, Iterable.empty).filter(tip > _.theirAdd.cltvExpiry.toLong - LNParams.hcFulfillSafetyBlocks)
 }
 
 case class InFlightPayments(out: Map[FullPaymentTag, OutgoingAdds], in: Map[FullPaymentTag, ReasonableResolutions] = Map.empty) {
@@ -185,9 +184,9 @@ class ChannelMaster(val payBag: PaymentBag, val chanBag: ChannelBag, val dataBag
   def closingsPublished: Iterable[ForceCloseCommitPublished] = all.values.map(_.data).collect { case closing: DATA_CLOSING => closing.forceCloseCommitPublished }.flatten
   def pendingRefundsAmount(publishes: Iterable[ForceCloseCommitPublished] = Nil): Satoshi = publishes.flatMap(_.delayedRefundsLeft).map(_.txOut.head.amount).sum
 
-  def fromNode(nodeId: PublicKey): Iterable[ChanAndCommits] = all.values.flatMap(Channel.chanAndCommitsOpt).filter(_.commits.remoteInfo.nodeId == nodeId)
+  def allHosted: Iterable[ChanAndCommits] = all.values.collect { case chan: ChannelHosted => chan }.flatMap(Channel.chanAndCommitsOpt)
   def hostedFromNode(nodeId: PublicKey): Option[ChannelHosted] = fromNode(nodeId).collectFirst { case ChanAndCommits(chan: ChannelHosted, _) => chan }
-  def allHosted: Map[ByteVector32, ChannelHosted] = all.collect { case (channelId, hostedChannel: ChannelHosted) => channelId -> hostedChannel }
+  def fromNode(nodeId: PublicKey): Iterable[ChanAndCommits] = all.values.flatMap(Channel.chanAndCommitsOpt).filter(_.commits.remoteInfo.nodeId == nodeId)
   var sendTo: (Any, ByteVector32) => Unit = (change, channelId) => all.get(channelId).foreach(_ process change)
 
   // RECEIVE/SEND UTILITIES

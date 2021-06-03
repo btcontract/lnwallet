@@ -25,8 +25,6 @@ case class RemoteChanges(proposed: List[UpdateMessage], acked: List[UpdateMessag
   lazy val all: List[UpdateMessage] = proposed ++ signed ++ acked
 }
 
-case class Changes(ourChanges: LocalChanges, theirChanges: RemoteChanges)
-
 case class HtlcTxAndSigs(txinfo: TransactionWithInputInfo, localSig: ByteVector64, remoteSig: ByteVector64)
 
 case class PublishableTxs(commitTx: CommitTx, htlcTxsAndSigs: List[HtlcTxAndSigs] = Nil)

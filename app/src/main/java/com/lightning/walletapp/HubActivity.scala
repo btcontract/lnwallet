@@ -17,11 +17,13 @@ import java.lang.{Integer => JInt}
 import android.view.{MenuItem, View, ViewGroup}
 import rx.lang.scala.{Observable, Subscription}
 import com.androidstudy.networkmanager.{Monitor, Tovuti}
+import fr.acinq.eclair.wire.{FullPaymentTag, PaymentTagTlv}
 import fr.acinq.bitcoin.{ByteVector32, Crypto, Satoshi, SatoshiLong}
 import fr.acinq.eclair.blockchain.fee.{FeeratePerKw, FeeratePerVByte}
 import fr.acinq.eclair.blockchain.electrum.ElectrumWallet.WalletReady
 import com.lightning.walletapp.BaseActivity.StringOps
 import org.ndeftools.util.activity.NfcReaderActivity
+import immortan.ChannelMaster.RevealedLocalFulfills
 import concurrent.ExecutionContext.Implicits.global
 import fr.acinq.eclair.transactions.RemoteFulfill
 import com.github.mmin18.widget.RealtimeBlurView
@@ -33,9 +35,9 @@ import immortan.ChannelListener.Malfunction
 import fr.acinq.eclair.blockchain.TxAndFee
 import com.indicator.ChannelIndicatorLine
 import androidx.appcompat.app.AlertDialog
-import fr.acinq.eclair.wire.PaymentTagTlv
 import immortan.crypto.CanBeRepliedTo
 import java.util.concurrent.TimeUnit
+import immortan.fsm.InFlightInfo
 import android.content.Intent
 import immortan.sqlite.Table
 import org.ndeftools.Message
@@ -45,6 +47,7 @@ import android.net.Uri
 
 
 class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataChecker with ChoiceReceiver with ChannelListener with CanBeRepliedTo { me =>
+  def inFlightOutgoingForTag(fullTag: FullPaymentTag): Seq[InFlightInfo] = LNParams.cm.opm.data.payments.get(fullTag).toList.flatMap(_.data.inFlightParts)
   def lnBalance: MilliSatoshi = LNParams.cm.all.values.filter(Channel.isOperationalOrWaiting).map(Channel.estimateBalance).sum
 
   private[this] lazy val bottomBlurringArea = findViewById(R.id.bottomBlurringArea).asInstanceOf[RealtimeBlurView]
@@ -68,21 +71,27 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
   private var txInfos = Iterable.empty[TxInfo]
   private var paymentInfos = Iterable.empty[PaymentInfo]
   private var relayedPreimageInfos = Iterable.empty[RelayedPreimageInfo]
+  private var hashToReveals = Map.empty[ByteVector32, RevealedLocalFulfills]
   private var allInfos = List.empty[TransactionDetails]
 
   def reloadTxInfos: Unit = txInfos = WalletApp.txDataBag.listRecentTxs(Table.DEFAULT_LIMIT.get).map(WalletApp.txDataBag.toTxInfo)
   def reloadPaymentInfos: Unit = paymentInfos = LNParams.cm.payBag.listRecentPayments(Table.DEFAULT_LIMIT.get).map(LNParams.cm.payBag.toPaymentInfo)
   def reloadRelayedPreimageInfos: Unit = relayedPreimageInfos = LNParams.cm.payBag.listRecentRelays(Table.DEFAULT_LIMIT.get).map(LNParams.cm.payBag.toRelayedPreimageInfo)
-  def updAllInfos: Unit = allInfos = (paymentInfos ++ relayedPreimageInfos ++ txInfos).toList.sortBy(_.seenAt)(Ordering[Long].reverse)
 
-  def loadRecentInfos: Unit = WalletApp.txDataBag.db.txWrap {
-    reloadRelayedPreimageInfos
-    reloadPaymentInfos
-    reloadTxInfos
-    updAllInfos
+  def updAllInfos: Unit = {
+    hashToReveals = LNParams.cm.allHosted.flatMap(_.commits.revealedFulfills).groupBy(_.theirAdd.paymentHash)
+    allInfos = (paymentInfos ++ relayedPreimageInfos ++ txInfos).toList.sortBy(_.seenAt)(Ordering[Long].reverse)
   }
 
-  def loadSearchInfos(query: String): Unit = WalletApp.txDataBag.db.txWrap {
+  def loadRecent: Unit =
+    WalletApp.txDataBag.db.txWrap {
+      reloadRelayedPreimageInfos
+      reloadPaymentInfos
+      reloadTxInfos
+      updAllInfos
+    }
+
+  def loadSearch(query: String): Unit = WalletApp.txDataBag.db.txWrap {
     txInfos = WalletApp.txDataBag.searchTransactions(query).map(WalletApp.txDataBag.toTxInfo)
     paymentInfos = LNParams.cm.payBag.searchPayments(query).map(LNParams.cm.payBag.toPaymentInfo)
     relayedPreimageInfos = Nil
@@ -90,8 +99,8 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
   }
 
   val searchWorker: ThrottledWork[String, Unit] = new ThrottledWork[String, Unit] {
-    def work(query: String): Observable[Unit] = Rx.ioQueue.map(_ => if (query.nonEmpty) loadSearchInfos(query) else loadRecentInfos)
-    def process(query: String, searchLoadResultEffect: Unit): Unit = UITask(searchLoadResultEffect).run
+    def work(query: String): Observable[Unit] = Rx.ioQueue.map(_ => if (query.nonEmpty) loadSearch(query) else loadRecent)
+    def process(query: String, searchLoadResultEffect: Unit): Unit = UITask(updatePaymentList).run
   }
 
   val paymentsAdapter: BaseAdapter = new BaseAdapter {
@@ -108,8 +117,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
           holder.labelIcon setVisibility View.GONE
           holder.detailsAndStatus setVisibility View.GONE
           holder.amount setText LNParams.denomination.directedWithSign(info.earned, 0L.msat, cardZero, isPlus = true).html
-          if (LNParams.cm.inProcessors contains info.fullTag) holder.cardContainer setBackgroundResource R.drawable.panel_payment_active_bg
-          else holder.cardContainer setBackgroundResource R.drawable.panel_payment_passive_bg
+          holder.cardContainer setBackgroundResource paymentBackground(info.fullTag)
           holder.meta setText WalletApp.app.when(info.date).html
           holder.setVisibleIcon(id = R.id.lnRouted)
 
@@ -118,7 +126,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
           holder.description setText txDescription(info).html
           setVis(info.description.label.isDefined, holder.labelIcon)
           holder.amount setText LNParams.denomination.directedWithSign(info.receivedSat.toMilliSatoshi, info.sentSat.toMilliSatoshi, cardZero, info.isIncoming).html
-          holder.cardContainer setBackgroundResource R.drawable.panel_payment_passive_bg
+          holder.cardContainer setBackgroundResource R.drawable.border_dark_gray
           holder.statusIcon setImageResource txStatusIcon(info)
           holder.meta setText txMeta(info).html
           setTxTypeIcon(holder, info)
@@ -128,7 +136,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
           holder.description setText paymentDescription(info).html
           setVis(info.description.label.isDefined, holder.labelIcon)
           holder.amount setText LNParams.denomination.directedWithSign(info.received, info.sent, cardZero, info.isIncoming).html
-          holder.cardContainer setBackgroundResource paymentBackground(info)
+          holder.cardContainer setBackgroundResource paymentBackground(info.fullTag)
           holder.statusIcon setImageResource paymentStatusIcon(info)
           holder.meta setText paymentMeta(info).html
           setPaymentTypeIcon(holder, info)
@@ -200,11 +208,10 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
       else if (PaymentStatus.ABORTED == info.status) R.drawable.baseline_block_24
       else R.drawable.baseline_hourglass_empty_24
 
-    private def paymentBackground(info: PaymentInfo): Int = info.isIncoming match {
-      case true if LNParams.cm.inProcessors.contains(info.fullTag) => R.drawable.panel_payment_active_bg
-      case false if LNParams.cm.opm.data.payments.contains(info.fullTag) => R.drawable.panel_payment_active_bg
-      case _ => R.drawable.panel_payment_passive_bg
-    }
+    private def paymentBackground(fullTag: FullPaymentTag): Int =
+      if (ChannelMaster.dangerousHCRevealed(hashToReveals, LNParams.blockCount.get, fullTag.paymentHash).nonEmpty) R.drawable.border_red
+      else if (LNParams.cm.inProcessors.contains(fullTag) || inFlightOutgoingForTag(fullTag).nonEmpty) R.drawable.border_blue
+      else R.drawable.border_dark_gray
 
     private def paymentMeta(info: PaymentInfo): String = if (info.isIncoming) {
       val valueHuman = LNParams.cm.inProcessors.get(info.fullTag).map(info.receivedRatio).map(WalletApp.app plurOrZero pctCollected)
@@ -212,9 +219,10 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
       else if (PaymentStatus.SUCCEEDED == info.status) WalletApp.app.when(info.date) // Payment has been cleared in channels, show timestamp
       else valueHuman getOrElse pctCollected.head // Show either value collected so far or that we are still waiting
     } else {
-      val partsHuman = LNParams.cm.opm.data.payments.get(info.fullTag).map(_.data.inFlightParts.size.toLong).map(WalletApp.app plurOrZero partsInFlight)
-      if (PaymentStatus.PENDING == info.status) partsHuman getOrElse partsInFlight.head // Show either in-flight parts or that we are still preparing
-      else partsHuman getOrElse WalletApp.app.when(info.date) // Payment has succeeded or failed, show either in-flight part leftovers or timestamp
+      val currentInFlight = inFlightOutgoingForTag(info.fullTag)
+      val isActive = PaymentStatus.PENDING == info.status || currentInFlight.nonEmpty
+      if (isActive) WalletApp.app.plurOrZero(partsInFlight)(num = currentInFlight.size) // Show either number of parts or that we are still preparing
+      else WalletApp.app.when(info.date) // Payment has either succeeded or failed AND no leftovers are present in FSM, show timestamp
     }
   }
 
@@ -331,9 +339,12 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
   }
 
   private val chainListener = new WalletEventsListener {
-    override def onChainSynchronized(event: WalletReady): Unit = {
-      // Check if any of pending chain txs got confirmations
-      UITask(walletCards.updateView).run
+    override def onChainSynchronized(event: WalletReady): Unit = UITask {
+      // First, refresh bitcoin card balance which might have been updated by chain txs while we were offline
+      // Second, update payments to highlight nearly expired revealed incoming now that chain tip it known
+      // Third, check if any of unconfirmed chain transactions became confirmed or double-spent
+      walletCards.updateView
+      updatePaymentList
 
       for {
         transactionInfo <- txInfos if !transactionInfo.isDeeplyBuried && !transactionInfo.isDoubleSpent
@@ -342,7 +353,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
         _ = WalletApp.txDataBag.updStatus(transactionInfo.txid, newDepth, newDoubleSpent)
         // Trigger preimage revealed using a txid to throttle multiple vibrations
       } ChannelMaster.hashRevealStream.onNext(transactionInfo.txid)
-    }
+    }.run
   }
 
   private val fiatRatesListener = new FiatRatesListener {
@@ -363,44 +374,30 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
 
   def readNdefMessage(nfcMessage: Message): Unit =
     runInFutureProcessOnUI(InputParser recordValue ndefMessageString(nfcMessage),
-      _ => WalletApp.app quickToast error_nothing_useful)(_ => me checkExternalData noneRunnable)
+      _ => readEmptyNdefMessage)(_ => me checkExternalData noneRunnable)
 
   // Channel errors
 
   private val MAX_ERROR_COUNT_WITHIN_WINDOW = 4
   private val channelErrors = CacheBuilder.newBuilder.expireAfterAccess(30, TimeUnit.SECONDS).maximumSize(500).build[ByteVector32, JInt]
-  private def chanError(neutralRes: Int, neutral: => Unit, channelId: ByteVector32, message: String, remoteInfo: RemoteNodeInfo) = UITask {
+
+  private def chanError(channelId: ByteVector32, message: String, remoteInfo: RemoteNodeInfo) = UITask {
     Option(channelErrors getIfPresent channelId).filter(errorCountSoFar => MAX_ERROR_COUNT_WITHIN_WINDOW > errorCountSoFar).foreach { count =>
       val builder = new AlertDialog.Builder(me).setCustomTitle(getString(error_channel).format(remoteInfo.nodeId.toString.take(16).humanFour).asDefView)
-      mkCheckFormNeutral(none, share(message), alert => runAnd(alert.dismiss)(neutral), builder.setMessage(message.html), dialog_ok, dialog_share, neutralRes)
+      mkCheckForm(none, share(message), builder.setMessage(message.html), dialog_ok, dialog_share)
       channelErrors.put(channelId, count + 1)
     }
   }
 
   override def onException: PartialFunction[Malfunction, Unit] = {
-    case (CMDException(reason, _: CMD_CLOSE), chan: ChannelNormal, data: HasNormalCommitments) =>
-      chanError(dialog_force_close, chan process CMD_CLOSE(None, force = true), data.channelId, reason, data.commitments.remoteInfo).run
-
-    case (CMDException(reason, _: CMD_HOSTED_STATE_OVERRIDE), _: ChannelHosted, hc: HostedCommits) =>
-      chanError(neutralRes = -1, none, hc.channelId, reason, hc.remoteInfo).run
-
-    case (RemoteErrorException(details), chan: ChannelNormal, data: HasNormalCommitments) =>
-      chanError(dialog_force_close, chan process CMD_CLOSE(None, force = true), data.channelId, getString(error_channel_remote).format(details), data.commitments.remoteInfo).run
-
-    case (RemoteErrorException(details), _: ChannelHosted, hc: HostedCommits) if hc.error.isEmpty =>
-      chanError(neutralRes = -1, none, hc.channelId, getString(error_channel_remote).format(details), hc.remoteInfo).run
-
-    case (error: ChannelTransitionFail, _: ChannelNormal, data: HasNormalCommitments) =>
-      chanError(neutralRes = -1, none, data.channelId, getString(error_channel_closed).format(error.stackTraceAsString), data.commitments.remoteInfo).run
-
-    case (error: ChannelTransitionFail, _: ChannelHosted, hc: HostedCommits) if hc.error.isEmpty =>
-      chanError(neutralRes = -1, none, hc.channelId, getString(error_channel_suspended).format(error.stackTraceAsString), hc.remoteInfo).run
-
-    case (error, chan: ChannelNormal, data: HasNormalCommitments) =>
-      chanError(dialog_force_close, chan process CMD_CLOSE(None, force = true), data.channelId, error.stackTraceAsString, data.commitments.remoteInfo).run
-
-    case (error, _: ChannelHosted, hc: HostedCommits) =>
-      chanError(neutralRes = -1, none, hc.channelId, error.stackTraceAsString, hc.remoteInfo).run
+    case (error: ChannelTransitionFail, _, data: HasNormalCommitments) => chanError(data.channelId, getString(error_channel_closed).format(error.stackTraceAsString), data.commitments.remoteInfo).run
+    case (error: ChannelTransitionFail, _, hc: HostedCommits) if hc.error.isEmpty => chanError(hc.channelId, getString(error_channel_suspended).format(error.stackTraceAsString), hc.remoteInfo).run
+    case (RemoteErrorException(details), _, data: HasNormalCommitments) => chanError(data.channelId, getString(error_channel_remote).format(details), data.commitments.remoteInfo).run
+    case (RemoteErrorException(details), _, hc: HostedCommits) if hc.error.isEmpty => chanError(hc.channelId, getString(error_channel_remote).format(details), hc.remoteInfo).run
+    case (CMDException(reason, _: CMD_CLOSE), _, data: HasNormalCommitments) => chanError(data.channelId, reason, data.commitments.remoteInfo).run
+    case (CMDException(reason, _: CMD_HOSTED_STATE_OVERRIDE), _, hc: HostedCommits) => chanError(hc.channelId, reason, hc.remoteInfo).run
+    case (error, _, data: HasNormalCommitments) => chanError(data.channelId, error.stackTraceAsString, data.commitments.remoteInfo).run
+    case (error, _, hc: HostedCommits) => chanError(hc.channelId, error.stackTraceAsString, hc.remoteInfo).run
   }
 
   override def process(reply: Any): Unit = reply match {
@@ -584,7 +581,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
         itemsList.setPadding(0, 0, 0, bottomActionBar.getHeight)
       }
 
-      runInFutureProcessOnUI(loadRecentInfos, none) { _ =>
+      runInFutureProcessOnUI(loadRecent, none) { _ =>
         // We suggest user to rate us if: no rate attempt has been made before, LN payments were successful, user had been using an app for certain period
         setVis(WalletApp.showRateUs && paymentInfos.forall(_.status == PaymentStatus.SUCCEEDED) && allInfos.size > 4 && allInfos.size < 8, walletCards.rateTeaser)
         walletCards.searchField addTextChangedListener onTextChange(searchWorker.addWork)
@@ -854,7 +851,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
     case data: UrlAction => mkCheckFormNeutral(_ => browse(data.url), none, _ => share(data.url), actionPopup(data.finalMessage.html, data), dialog_open, dialog_cancel, dialog_share)
     case data: AESAction =>
       decodeAesAction(preimage, data) match {
-        case Success(sad) => mkCheckFormNeutral(_.dismiss, none, _ => share(sad.secret), actionPopup(sad.msg, data), dialog_ok, dialog_cancel, dialog_share)
+        case Success(secret ~~ msg) => mkCheckFormNeutral(_.dismiss, none, _ => share(secret), actionPopup(msg, data), dialog_ok, dialog_cancel, dialog_share)
         case _ => mkCheckForm(_.dismiss, none, actionPopup(getString(dialog_lnurl_decrypt_fail), data), dialog_ok, -1)
       }
   }
@@ -865,11 +862,9 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
     new AlertDialog.Builder(me).setCustomTitle(title).setMessage(msg)
   }
 
-  case class SecretAndDescription(secret: String, msg: CharSequence)
-
   private def decodeAesAction(preimage: ByteVector32, aes: AESAction) = Try {
     val secret = new String(AES.decode(data = aes.ciphertextBytes, key = preimage.toArray, initVector = aes.ivBytes).toArray, "UTF-8")
     val msg = if (secret.length > 36) s"${aes.finalMessage}<br><br><tt>$secret</tt><br>" else s"${aes.finalMessage}<br><br><tt><big>$secret</big></tt><br>"
-    SecretAndDescription(secret, msg.html)
+    (secret, msg.html)
   }
 }

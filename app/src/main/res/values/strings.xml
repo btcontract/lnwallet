@@ -52,7 +52,6 @@
     <string name="dialog_ok">OK</string>
     <string name="dialog_cancel">Cancel</string>
     <string name="dialog_receive">Receive</string>
-    <string name="dialog_force_close">Force close</string>
     <string name="dialog_split">Split</string>
     <string name="dialog_share">Share</string>
     <string name="dialog_open">Open</string>

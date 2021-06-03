@@ -11,14 +11,16 @@ object WalletEventsCatcher {
 }
 
 class WalletEventsCatcher extends Actor {
-  var listeners: Set[WalletEventsListener] = Set.empty
+  // Not using a set to ensure insertion order
+  var listeners: List[WalletEventsListener] = Nil
+
   context.system.eventStream.subscribe(channel = classOf[WalletEvent], subscriber = self)
   context.system.eventStream.subscribe(channel = classOf[ElectrumEvent], subscriber = self)
 
   override def receive: Receive = {
-    case listener: WalletEventsListener => listeners += listener
+    case listener: WalletEventsListener => listeners = (listeners :+ listener).distinct
 
-    case WalletEventsCatcher.Remove(listener) => listeners -= listener
+    case WalletEventsCatcher.Remove(listener) => listeners = listeners diff List(listener)
 
     case event: WalletReady => for (lst <- listeners) lst.onChainSynchronized(event)
 

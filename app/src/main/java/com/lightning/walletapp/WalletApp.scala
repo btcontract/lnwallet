@@ -47,7 +47,7 @@ object WalletApp {
 
   val backupSaveWorker: ThrottledWork[String, Any] = new ThrottledWork[String, Any] {
     private def attemptStore: Unit = LocalBackup.encryptAndWritePlainBackup(app, dbFileNameEssential, LNParams.chainHash, LNParams.secret.seed)
-    def process(cmd: String, result: Any): Unit = if (makeChanBackup) try attemptStore catch none
+    def process(cmd: String, afterDelay: Any): Unit = if (makeChanBackup) try attemptStore catch none
     def work(cmd: String): Observable[Any] = Rx.ioQueue.delay(4.seconds)
   }
 
@@ -136,7 +136,7 @@ object WalletApp {
       override def updateLastTotalResyncStamp(stamp: Long): Unit = app.prefs.edit.putLong(LAST_TOTAL_GOSSIP_SYNC, stamp).commit
       override def updateLastNormalResyncStamp(stamp: Long): Unit = app.prefs.edit.putLong(LAST_NORMAL_GOSSIP_SYNC, stamp).commit
       override def getExtraNodes: Set[RemoteNodeInfo] = LNParams.cm.all.values.flatMap(Channel.chanAndCommitsOpt).map(_.commits.remoteInfo).toSet
-      override def getPHCExtraNodes: Set[RemoteNodeInfo] = LNParams.cm.allHosted.values.flatMap(Channel.chanAndCommitsOpt).map(_.commits.remoteInfo).toSet
+      override def getPHCExtraNodes: Set[RemoteNodeInfo] = LNParams.cm.allHosted.map(_.commits.remoteInfo).toSet
     }
 
     ElectrumClientPool.loadFromChainHash = {
