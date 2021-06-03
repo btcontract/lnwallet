@@ -1,7 +1,7 @@
 package com.lightning.walletapp
 
 import java.lang.Thread.UncaughtExceptionHandler
-import immortan.crypto.Tools.excToString
+import immortan.crypto.Tools.ThrowableOps
 import android.content.Intent
 import android.app.Activity
 
@@ -14,9 +14,8 @@ class UncaughtHandler(ctxt: Activity) extends UncaughtExceptionHandler {
   def uncaughtException(thread: Thread, exception: Throwable): Unit = {
     val emergencyActivity = classOf[EmergencyActivity]
     val intent = new Intent(ctxt, emergencyActivity)
-    val content = excToString(exception)
 
-    ctxt startActivity intent.putExtra(UncaughtHandler.ERROR_REPORT, content)
+    ctxt startActivity intent.putExtra(UncaughtHandler.ERROR_REPORT, exception.stackTraceAsString)
     android.os.Process killProcess android.os.Process.myPid
     System exit 10
   }

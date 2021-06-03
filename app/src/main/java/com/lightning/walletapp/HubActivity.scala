@@ -88,8 +88,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
 
   val searchWorker: ThrottledWork[String, Unit] = new ThrottledWork[String, Unit] {
     def work(query: String): Observable[Unit] = Rx.ioQueue.map(_ => if (query.nonEmpty) loadSearchInfos(query) else loadRecentInfos)
-    def process(query: String, searchLoadResult: Unit): Unit = UITask(updatePaymentList).run
-    def error(exc: Throwable): Unit = none
+    def process(query: String, searchLoadResultEffect: Unit): Unit = UITask(searchLoadResultEffect).run
   }
 
   val paymentsAdapter: BaseAdapter = new BaseAdapter {
@@ -383,20 +382,20 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
     case (RemoteErrorException(details), chan: ChannelNormal, data: HasNormalCommitments) =>
       chanError(dialog_force_close, chan process CMD_CLOSE(None, force = true), data.channelId, getString(error_channel_remote).format(details), data.commitments.remoteInfo).run
 
-    case (RemoteErrorException(details), _: ChannelHosted, hc: HostedCommits) =>
+    case (RemoteErrorException(details), _: ChannelHosted, hc: HostedCommits) if hc.error.isEmpty =>
       chanError(neutralRes = -1, none, hc.channelId, getString(error_channel_remote).format(details), hc.remoteInfo).run
 
     case (error: ChannelTransitionFail, _: ChannelNormal, data: HasNormalCommitments) =>
-      chanError(neutralRes = -1, none, data.channelId, getString(error_channel_closed) format excToString(error), data.commitments.remoteInfo).run
+      chanError(neutralRes = -1, none, data.channelId, getString(error_channel_closed).format(error.stackTraceAsString), data.commitments.remoteInfo).run
 
-    case (error: ChannelTransitionFail, _: ChannelHosted, hc: HostedCommits) =>
-      chanError(neutralRes = -1, none, hc.channelId, getString(error_channel_suspended) format excToString(error), hc.remoteInfo).run
+    case (error: ChannelTransitionFail, _: ChannelHosted, hc: HostedCommits) if hc.error.isEmpty =>
+      chanError(neutralRes = -1, none, hc.channelId, getString(error_channel_suspended).format(error.stackTraceAsString), hc.remoteInfo).run
 
     case (error, chan: ChannelNormal, data: HasNormalCommitments) =>
-      chanError(dialog_force_close, chan process CMD_CLOSE(None, force = true), data.channelId, excToString(error), data.commitments.remoteInfo).run
+      chanError(dialog_force_close, chan process CMD_CLOSE(None, force = true), data.channelId, error.stackTraceAsString, data.commitments.remoteInfo).run
 
     case (error, _: ChannelHosted, hc: HostedCommits) =>
-      chanError(neutralRes = -1, none, hc.channelId, excToString(error), hc.remoteInfo).run
+      chanError(neutralRes = -1, none, hc.channelId, error.stackTraceAsString, hc.remoteInfo).run
   }
 
   // Lifecycle methods
@@ -706,7 +705,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
     lazy val worker = new ThrottledWork[Satoshi, TxAndFee] {
       def work(amount: Satoshi): Observable[TxAndFee] = Rx fromFutureOnIo LNParams.chainWallet.wallet.sendPayment(amount, uri.address, feeView.rate)
       def process(amount: Satoshi, txAndFee: TxAndFee): Unit = feeView.update(feeOpt = Some(txAndFee.fee.toMilliSatoshi), showIssue = false)
-      def error(exc: Throwable): Unit = feeView.update(feeOpt = None, showIssue = manager.resultSat >= LNParams.minDustLimit)
+      override def error(exc: Throwable): Unit = feeView.update(feeOpt = None, showIssue = manager.resultSat >= LNParams.minDustLimit)
     }
 
     feeView.customFeerate addOnChangeListener new Slider.OnChangeListener {

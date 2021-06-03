@@ -95,7 +95,7 @@ case class UpdateAddHtlc(channelId: ByteVector32, id: Long,
                          amountMsat: MilliSatoshi, paymentHash: ByteVector32, cltvExpiry: CltvExpiry, onionRoutingPacket: OnionRoutingPacket,
                          tlvStream: PaymentTagTlv.EncryptedSecretStream = TlvStream.empty) extends HtlcMessage with HasChannelId with UpdateMessage {
 
-  // Important: LNParams.format must be defined
+  // Important: LNParams.secret must be defined
   private[this] lazy val fullTagOpt: Option[FullPaymentTag] = for {
     EncryptedPaymentSecret(cipherBytes) <- tlvStream.get[EncryptedPaymentSecret]
     plainBytes <- Tools.chaChaDecrypt(LNParams.secret.keys.ourNodePrivateKey.value, cipherBytes).toOption

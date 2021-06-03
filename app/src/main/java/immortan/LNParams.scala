@@ -80,7 +80,7 @@ object LNParams {
   def isOperational: Boolean =
     null != chainHash && null != secret && null != chainWallet && null != syncParams &&
       null != trampoline && null != feeRatesInfo && null != fiatRatesInfo && null != denomination &&
-      null != cm && null != cm.inProcessors && null != routerConf && null != ourInit
+      null != cm && null != cm.inProcessors && null != cm.sendTo && null != routerConf && null != ourInit
 
   implicit val timeout: Timeout = Timeout(30.seconds)
   implicit val system: ActorSystem = ActorSystem("immortan-actor-system")
@@ -170,8 +170,7 @@ class TestNetSyncParams extends SyncParams {
   override val acceptThreshold = 0
 }
 
-// Important: LNParams.format must be defined
-
+// Important: LNParams.secret must be defined
 case class RemoteNodeInfo(nodeId: PublicKey, address: NodeAddress, alias: String) {
   lazy val nodeSpecificExtendedKey: DeterministicWallet.ExtendedPrivateKey = LNParams.secret.keys.ourFakeNodeIdKey(nodeId)
   lazy val nodeSpecificPair: KeyPairAndPubKey = KeyPairAndPubKey(KeyPair(nodeSpecificPubKey.value, nodeSpecificPrivKey.value), nodeId)

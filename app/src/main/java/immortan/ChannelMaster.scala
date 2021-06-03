@@ -8,21 +8,18 @@ import immortan.crypto.Tools._
 import immortan.PaymentStatus._
 import immortan.ChannelMaster._
 import fr.acinq.eclair.channel._
-
 import scala.concurrent.duration._
 import fr.acinq.bitcoin.{ByteVector32, Satoshi}
 import fr.acinq.bitcoin.Crypto.{PrivateKey, PublicKey}
+import immortan.ChannelListener.{Malfunction, Transition}
 import fr.acinq.eclair.transactions.{RemoteFulfill, RemoteReject}
-import immortan.crypto.{CanBeRepliedTo, CanBeShutDown, StateMachine}
 import immortan.fsm.OutgoingPaymentMaster.CMDChanGotOnline
 import java.util.concurrent.atomic.AtomicLong
-
 import fr.acinq.eclair.payment.IncomingPacket
 import com.google.common.cache.LoadingCache
-import immortan.ChannelListener.{Malfunction, Transition}
+import immortan.crypto.CanBeShutDown
 import rx.lang.scala.Subject
 import immortan.utils.Rx
-
 import scala.util.Try
 
 
@@ -55,14 +52,6 @@ object ChannelMaster {
 
   final val remoteFulfillStream: Subject[RemoteFulfill] = Subject[RemoteFulfill]
 
-
-  var NO_CHANNEL: StateMachine[ChannelData] with CanBeRepliedTo =
-  // It's possible that user removes an HC from system at runtime
-  // or peer sends a message targeted to non-exiting local channel
-    new StateMachine[ChannelData] with CanBeRepliedTo {
-      def process(change: Any): Unit = doProcess(change)
-      def doProcess(change: Any): Unit = none
-    }
 
   final val NO_PREIMAGE = ByteVector32.One
 
@@ -168,6 +157,7 @@ class ChannelMaster(val payBag: PaymentBag, val chanBag: ChannelBag, val dataBag
     // Outgoing FSMs won't receive anything without channel listeners
     for (channel <- all.values) channel.listeners = Set.empty
     for (fsm <- inProcessors.values) fsm.becomeShutDown
+    pf.subscription.unsubscribe
     pf.listeners = Set.empty
   }
 
@@ -198,7 +188,7 @@ class ChannelMaster(val payBag: PaymentBag, val chanBag: ChannelBag, val dataBag
   def fromNode(nodeId: PublicKey): Iterable[ChanAndCommits] = all.values.flatMap(Channel.chanAndCommitsOpt).filter(_.commits.remoteInfo.nodeId == nodeId)
   def hostedFromNode(nodeId: PublicKey): Option[ChannelHosted] = fromNode(nodeId).collectFirst { case ChanAndCommits(chan: ChannelHosted, _) => chan }
   def allHosted: Map[ByteVector32, ChannelHosted] = all.collect { case (channelId, hostedChannel: ChannelHosted) => channelId -> hostedChannel }
-  def sendTo(change: Any, chanId: ByteVector32): Unit = all.getOrElse(chanId, NO_CHANNEL) process change
+  var sendTo: (Any, ByteVector32) => Unit = (change, channelId) => all.get(channelId).foreach(_ process change)
 
   // RECEIVE/SEND UTILITIES
 
@@ -236,7 +226,7 @@ class ChannelMaster(val payBag: PaymentBag, val chanBag: ChannelBag, val dataBag
     case (_: ChannelTransitionFail, chan: ChannelNormal, _: HasNormalCommitments) =>
       chan process CMD_CLOSE(scriptPubKey = None, force = true)
 
-    case (_: ChannelTransitionFail, chan: ChannelHosted, hc: HostedCommits) =>
+    case (_: ChannelTransitionFail, chan: ChannelHosted, hc: HostedCommits) if hc.error.isEmpty =>
       chan.localSuspend(hc, ErrorCodes.ERR_HOSTED_MANUAL_SUSPEND)
   }
 

@@ -174,7 +174,7 @@ class RemotePeerActivity extends BaseActivity with ExternalDataChecker { me =>
     lazy val worker = new ThrottledWork[Satoshi, MakeFundingTxResponse] {
       def work(amount: Satoshi): Observable[MakeFundingTxResponse] = Rx fromFutureOnIo NCFunderOpenHandler.makeFunding(LNParams.chainWallet, amount, feeView.rate)
       def process(amount: Satoshi, res: MakeFundingTxResponse): Unit = feeView.update(feeOpt = Some(res.fee.toMilliSatoshi), showIssue = false)
-      def error(exc: Throwable): Unit = feeView.update(feeOpt = None, showIssue = manager.resultSat >= LNParams.minFundingSatoshis)
+      override def error(exc: Throwable): Unit = feeView.update(feeOpt = None, showIssue = manager.resultSat >= LNParams.minFundingSatoshis)
     }
 
     manager.inputAmount addTextChangedListener onTextChange { _ =>

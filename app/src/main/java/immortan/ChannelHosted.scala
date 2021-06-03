@@ -110,30 +110,31 @@ abstract class ChannelHosted extends Channel { me =>
       }
 
 
-    // We specifically do not accept remote adds when channel is in error state
     case (hc: HostedCommits, theirAdd: UpdateAddHtlc, OPEN) if hc.error.isEmpty =>
       val theirAddExt = UpdateAddHtlcExt(theirAdd, hc.remoteInfo)
       BECOME(hc.receiveAdd(theirAdd), OPEN)
       events addReceived theirAddExt
 
 
-    // Relaxed constraints for receiveng preimages over HCs
-    case (hc: HostedCommits, fulfill: UpdateFulfillHtlc, OPEN | SLEEPING) =>
-      val (hc1, ourAdd: UpdateAddHtlc) = hc.receiveFulfill(fulfill)
-      val filfill = RemoteFulfill(ourAdd, fulfill.paymentPreimage)
-      BECOME(data1 = hc1, state1 = state)
-      // Real state update is expected
-      events fulfillReceived filfill
+    case (hc: HostedCommits, msg: UpdateFulfillHtlc, OPEN | SLEEPING) if hc.error.isEmpty =>
+      val remoteFulfill = hc.makeRemoteFulfill(msg)
+      BECOME(hc.addRemoteProposal(msg), state)
+      events fulfillReceived remoteFulfill
 
 
-    // We specifically do not accept remote fails when channel is in error state
-    case (hc: HostedCommits, fail: UpdateFailHtlc, OPEN) if hc.error.isEmpty =>
-      BECOME(hc.receiveFail(fail), OPEN)
+    case (hc: HostedCommits, msg: UpdateFulfillHtlc, OPEN | SLEEPING) if hc.error.isDefined =>
+      // We may get into error state with this HTLC not expired yet so they may fulfill it afterwards
+      val hc1 = hc.modify(_.postErrorOutgoingResolvedIds).using(_ + msg.id)
+      // This will throw if HTLC has already been settled post-error
+      val remoteFulfill = hc.makeRemoteFulfill(msg)
+      BECOME(hc1.addRemoteProposal(msg), state)
+      events fulfillReceived remoteFulfill
 
 
-    // We specifically do not accept remote fails when channel is in error state
-    case (hc: HostedCommits, malform: UpdateFailMalformedHtlc, OPEN) if hc.error.isEmpty =>
-      BECOME(hc.receiveFailMalformed(malform), OPEN)
+    case (hc: HostedCommits, msg: UpdateFailHtlc, OPEN) if hc.error.isEmpty => BECOME(hc.receiveFail(msg), OPEN)
+
+
+    case (hc: HostedCommits, msg: UpdateFailMalformedHtlc, OPEN) if hc.error.isEmpty => BECOME(hc.receiveFailMalformed(msg), OPEN)
 
 
     case (hc: HostedCommits, CMD_SIGN, OPEN) if (hc.nextLocalUpdates.nonEmpty || hc.resizeProposal.isDefined) && hc.error.isEmpty =>
@@ -167,19 +168,19 @@ abstract class ChannelHosted extends Channel { me =>
     // CMD_SIGN will be sent from ChannelMaster strictly after outgoing FSM sends this command
     case (hc: HostedCommits, cmd: CMD_FULFILL_HTLC, OPEN) if !hc.alreadyReplied(cmd.theirAdd.id) =>
       val msg = UpdateFulfillHtlc(hc.channelId, cmd.theirAdd.id, cmd.preimage)
-      StoreBecomeSend(hc.addLocalProposal(msg), state, msg)
+      StoreBecomeSend(hc.addLocalProposal(msg), OPEN, msg)
 
 
     // CMD_SIGN will be sent from ChannelMaster strictly after outgoing FSM sends this command
     case (hc: HostedCommits, cmd: CMD_FAIL_HTLC, OPEN) if !hc.alreadyReplied(cmd.theirAdd.id) =>
       val msg = OutgoingPacket.buildHtlcFailure(cmd, theirAdd = cmd.theirAdd)
-      StoreBecomeSend(hc.addLocalProposal(msg), state, msg)
+      StoreBecomeSend(hc.addLocalProposal(msg), OPEN, msg)
 
 
     // CMD_SIGN will be sent from ChannelMaster strictly after outgoing FSM sends this command
     case (hc: HostedCommits, cmd: CMD_FAIL_MALFORMED_HTLC, OPEN) if !hc.alreadyReplied(cmd.theirAdd.id) =>
       val msg = UpdateFailMalformedHtlc(hc.channelId, cmd.theirAdd.id, cmd.onionHash, cmd.failureCode)
-      StoreBecomeSend(hc.addLocalProposal(msg), state, msg)
+      StoreBecomeSend(hc.addLocalProposal(msg), OPEN, msg)
 
 
     case (hc: HostedCommits, CMD_SOCKET_ONLINE, OPEN | SLEEPING) =>
@@ -194,47 +195,10 @@ abstract class ChannelHosted extends Channel { me =>
     case (hc: HostedCommits, _: InitHostedChannel, SLEEPING) => SEND(hc.lastCrossSignedState)
 
 
-    case (hc: HostedCommits, remoteLCSS: LastCrossSignedState, SLEEPING) if hc.error.isEmpty =>
-      val hc1 = hc.resizeProposal.filter(_ isRemoteResized remoteLCSS).map(hc.withResize).getOrElse(hc) // They may have a resized LCSS
-      val weAreEven = hc.lastCrossSignedState.remoteUpdates == remoteLCSS.localUpdates && hc.lastCrossSignedState.localUpdates == remoteLCSS.remoteUpdates
-      val weAreAhead = hc.lastCrossSignedState.remoteUpdates > remoteLCSS.localUpdates || hc.lastCrossSignedState.localUpdates > remoteLCSS.remoteUpdates
-      val isLocalSigOk = remoteLCSS.verifyRemoteSig(hc1.remoteInfo.nodeSpecificPubKey)
-      val isRemoteSigOk = remoteLCSS.reverse.verifyRemoteSig(hc1.remoteInfo.nodeId)
-
-      if (!isRemoteSigOk) localSuspend(hc1, ERR_HOSTED_WRONG_REMOTE_SIG)
-      else if (!isLocalSigOk) localSuspend(hc1, ERR_HOSTED_WRONG_LOCAL_SIG)
-      else if (weAreAhead || weAreEven) {
-        SEND(List(hc.lastCrossSignedState) ++ hc1.resizeProposal ++ hc1.nextLocalUpdates:_*)
-        // Forget about their unsigned updates, they are expected to resend
-        BECOME(hc1.copy(nextRemoteUpdates = Nil), OPEN)
-        process(CMD_SIGN)
-      } else {
-        val localUpdatesAcked = remoteLCSS.remoteUpdates - hc1.lastCrossSignedState.localUpdates
-        val remoteUpdatesAcked = remoteLCSS.localUpdates - hc1.lastCrossSignedState.remoteUpdates
-
-        val remoteUpdatesAccounted = hc1.nextRemoteUpdates take remoteUpdatesAcked.toInt
-        val localUpdatesAccounted = hc1.nextLocalUpdates take localUpdatesAcked.toInt
-        val localUpdatesLeftover = hc1.nextLocalUpdates drop localUpdatesAcked.toInt
-
-        val hc2 = hc1.copy(nextLocalUpdates = localUpdatesAccounted, nextRemoteUpdates = remoteUpdatesAccounted)
-        val syncedLCSS = hc2.nextLocalUnsignedLCSS(remoteLCSS.blockDay).copy(localSigOfRemote = remoteLCSS.remoteSigOfLocal, remoteSigOfLocal = remoteLCSS.localSigOfRemote)
-
-        if (syncedLCSS.reverse == remoteLCSS) {
-          // We have fallen behind a bit but have all the data required to successfully synchronize such that an updated state is reached
-          val hc3 = hc2.copy(lastCrossSignedState = syncedLCSS, localSpec = hc2.nextLocalSpec, nextLocalUpdates = localUpdatesLeftover, nextRemoteUpdates = Nil)
-          StoreBecomeSend(hc3, OPEN, List(syncedLCSS) ++ hc2.resizeProposal ++ localUpdatesLeftover:_*)
-          process(CMD_SIGN)
-        } else {
-          // We are too far behind, restore from their future data
-          val hc3 = restoreCommits(remoteLCSS.reverse, hc2.remoteInfo)
-          StoreBecomeSend(hc3, OPEN, remoteLCSS.reverse)
-          rejectOverriddenOutgoingAdds(hc1, hc3)
-        }
-      }
+    case (hc: HostedCommits, remoteLCSS: LastCrossSignedState, SLEEPING) if hc.error.isEmpty => attemptInitResync(hc, remoteLCSS)
 
 
-    case (hc: HostedCommits, remoteInfo: RemoteNodeInfo, SLEEPING) if hc.remoteInfo.nodeId == remoteInfo.nodeId =>
-      StoreBecomeSend(hc.copy(remoteInfo = remoteInfo), SLEEPING)
+    case (hc: HostedCommits, remoteInfo: RemoteNodeInfo, SLEEPING) if hc.remoteInfo.nodeId == remoteInfo.nodeId => StoreBecomeSend(hc.copy(remoteInfo = remoteInfo), SLEEPING)
 
 
     case (hc: HostedCommits, upd: ChannelUpdate, OPEN | SLEEPING) if hc.updateOpt.forall(_.timestamp < upd.timestamp) && hc.error.isEmpty =>
@@ -303,6 +267,45 @@ abstract class ChannelHosted extends Channel { me =>
   def localSuspend(hc: HostedCommits, errCode: String): Unit = if (hc.localError.isEmpty) {
     val localError = Error(data = ByteVector.fromValidHex(errCode), channelId = hc.channelId)
     StoreBecomeSend(hc.copy(localError = localError.asSome), state, localError)
+  }
+
+  def attemptInitResync(hc: HostedCommits, remoteLCSS: LastCrossSignedState): Unit = {
+    val hc1 = hc.resizeProposal.filter(_ isRemoteResized remoteLCSS).map(hc.withResize).getOrElse(hc) // They may have a resized LCSS
+    val weAreEven = hc.lastCrossSignedState.remoteUpdates == remoteLCSS.localUpdates && hc.lastCrossSignedState.localUpdates == remoteLCSS.remoteUpdates
+    val weAreAhead = hc.lastCrossSignedState.remoteUpdates > remoteLCSS.localUpdates || hc.lastCrossSignedState.localUpdates > remoteLCSS.remoteUpdates
+    val isLocalSigOk = remoteLCSS.verifyRemoteSig(hc1.remoteInfo.nodeSpecificPubKey)
+    val isRemoteSigOk = remoteLCSS.reverse.verifyRemoteSig(hc1.remoteInfo.nodeId)
+
+    if (!isRemoteSigOk) localSuspend(hc1, ERR_HOSTED_WRONG_REMOTE_SIG)
+    else if (!isLocalSigOk) localSuspend(hc1, ERR_HOSTED_WRONG_LOCAL_SIG)
+    else if (weAreAhead || weAreEven) {
+      SEND(List(hc.lastCrossSignedState) ++ hc1.resizeProposal ++ hc1.nextLocalUpdates:_*)
+      // Forget about their unsigned updates, they are expected to resend
+      BECOME(hc1.copy(nextRemoteUpdates = Nil), OPEN)
+      process(CMD_SIGN)
+    } else {
+      val localUpdatesAcked = remoteLCSS.remoteUpdates - hc1.lastCrossSignedState.localUpdates
+      val remoteUpdatesAcked = remoteLCSS.localUpdates - hc1.lastCrossSignedState.remoteUpdates
+
+      val remoteUpdatesAccounted = hc1.nextRemoteUpdates take remoteUpdatesAcked.toInt
+      val localUpdatesAccounted = hc1.nextLocalUpdates take localUpdatesAcked.toInt
+      val localUpdatesLeftover = hc1.nextLocalUpdates drop localUpdatesAcked.toInt
+
+      val hc2 = hc1.copy(nextLocalUpdates = localUpdatesAccounted, nextRemoteUpdates = remoteUpdatesAccounted)
+      val syncedLCSS = hc2.nextLocalUnsignedLCSS(remoteLCSS.blockDay).copy(localSigOfRemote = remoteLCSS.remoteSigOfLocal, remoteSigOfLocal = remoteLCSS.localSigOfRemote)
+
+      if (syncedLCSS.reverse == remoteLCSS) {
+        // We have fallen behind a bit but have all the data required to successfully synchronize such that an updated state is reached
+        val hc3 = hc2.copy(lastCrossSignedState = syncedLCSS, localSpec = hc2.nextLocalSpec, nextLocalUpdates = localUpdatesLeftover, nextRemoteUpdates = Nil)
+        StoreBecomeSend(hc3, OPEN, List(syncedLCSS) ++ hc2.resizeProposal ++ localUpdatesLeftover:_*)
+        process(CMD_SIGN)
+      } else {
+        // We are too far behind, restore from their future data
+        val hc3 = restoreCommits(remoteLCSS.reverse, hc2.remoteInfo)
+        StoreBecomeSend(hc3, OPEN, remoteLCSS.reverse)
+        rejectOverriddenOutgoingAdds(hc1, hc3)
+      }
+    }
   }
 
   def attemptStateUpdate(remoteSU: StateUpdate, hc: HostedCommits): Unit = {

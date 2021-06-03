@@ -4,7 +4,6 @@ import fr.acinq.eclair._
 import fr.acinq.bitcoin._
 import scala.concurrent.duration._
 import immortan.crypto.StateMachine._
-import immortan.crypto.Tools.{none, runAnd}
 import immortan.utils.{FeeRatesInfo, ThrottledWork}
 import fr.acinq.bitcoin.Crypto.{PrivateKey, PublicKey}
 import fr.acinq.eclair.{CltvExpiryDelta, MilliSatoshi, ShortChannelId}
@@ -20,6 +19,7 @@ import immortan.crypto.Noise.KeyPair
 import java.util.concurrent.TimeUnit
 import java.io.ByteArrayInputStream
 import language.implicitConversions
+import immortan.crypto.Tools.runAnd
 import scala.collection.mutable
 import rx.lang.scala.Observable
 import scodec.bits.ByteVector
@@ -41,6 +41,14 @@ object Tools {
     def asRight: Right[Nothing, T] = Right(underlying)
     def asSome: Option[T] = Some(underlying)
     def asList: List[T] = List(underlying)
+  }
+
+  implicit class ThrowableOps(error: Throwable) {
+    def stackTraceAsString: String = {
+      val stackTraceWriter = new java.io.StringWriter
+      error printStackTrace new java.io.PrintWriter(stackTraceWriter)
+      stackTraceWriter.toString
+    }
   }
 
   def ratio(bigger: MilliSatoshi, lesser: MilliSatoshi): Long =
@@ -101,12 +109,6 @@ object Tools {
     ChaCha20Poly1305.decrypt(key, nonce = data drop 16 take 12, ciphertext = data drop 28, ByteVector.empty, mac = data take 16)
   }
 
-  def excToString(exc: Throwable): String = {
-    val stackTraceWriter = new java.io.StringWriter
-    exc printStackTrace new java.io.PrintWriter(stackTraceWriter)
-    stackTraceWriter.toString
-  }
-
   object ~~ {
     // Useful for matching nested Tuple2 with less noise
     def unapply[A, B](t2: (A, B) /* Got a tuple */) = Some(t2)
@@ -138,13 +140,16 @@ abstract class StateMachine[T] { me =>
   var state: Int = -1
   var data: T = _
 
-  lazy val delayedCMDWorker: ThrottledWork[String, Long] = new ThrottledWork[String, Long] {
-    def work(cmd: String): Observable[Long] = Observable.interval(1.second).doOnSubscribe { secondsLeft = INTERVAL }
-    def error(canNotHappen: Throwable): Unit = none
+  lazy val delayedCMDWorker: ThrottledWork[String, Long] =
+    new ThrottledWork[String, Long] {
+      def work(cmd: String): Observable[Long] = {
+        val tickIncrease = Observable.interval(1.second)
+        tickIncrease.doOnSubscribe { secondsLeft = INTERVAL }
+      }
 
-    def process(cmd: String, tickInterval: Long): Unit = {
-      secondsLeft = INTERVAL - math.min(INTERVAL, tickInterval + 1)
-      if (secondsLeft <= 0L) runAnd(unsubscribeCurrentWork)(me doProcess cmd)
+      def process(cmd: String, tickInterval: Long): Unit = {
+        secondsLeft = INTERVAL - math.min(INTERVAL, tickInterval + 1)
+        if (secondsLeft <= 0L) runAnd(unsubscribeCurrentWork)(me doProcess cmd)
+      }
     }
-  }
 }

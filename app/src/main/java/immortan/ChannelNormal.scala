@@ -346,17 +346,16 @@ abstract class ChannelNormal(bag: ChannelBag) extends Channel { me =>
         val (commits1, ourAdd) = norm.commitments.receiveFulfill(msg)
         val fulfill = RemoteFulfill(ourAdd, msg.paymentPreimage)
         BECOME(norm.copy(commitments = commits1), OPEN)
-        // Real state update is expected
         events fulfillReceived fulfill
 
 
-      case (norm: DATA_NORMAL, fail: UpdateFailHtlc, OPEN) =>
-        val commits1 = norm.commitments.receiveFail(fail)
+      case (norm: DATA_NORMAL, msg: UpdateFailHtlc, OPEN) =>
+        val commits1 = norm.commitments.receiveFail(msg)
         BECOME(norm.copy(commitments = commits1), OPEN)
 
 
-      case (norm: DATA_NORMAL, malformed: UpdateFailMalformedHtlc, OPEN) =>
-        val commits1 = norm.commitments.receiveFailMalformed(malformed)
+      case (norm: DATA_NORMAL, msg: UpdateFailMalformedHtlc, OPEN) =>
+        val commits1 = norm.commitments.receiveFailMalformed(msg)
         BECOME(norm.copy(commitments = commits1), OPEN)
 
 

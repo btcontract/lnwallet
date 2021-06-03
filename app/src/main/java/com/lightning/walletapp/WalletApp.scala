@@ -46,14 +46,9 @@ object WalletApp {
   final val dbFileNameEssential = "essential3.db" // TODO: put back
 
   val backupSaveWorker: ThrottledWork[String, Any] = new ThrottledWork[String, Any] {
-    def process(cmd: String, result: Any): Unit = if (makeChanBackup && LocalBackup.isExternalStorageWritable) {
-      try LocalBackup.encryptAndWritePlainBackup(app, dbFileNameEssential, LNParams.chainHash, LNParams.secret.seed)
-      catch none
-    }
-
-    // File saving gets delayed in case of frequent rapid updates
+    private def attemptStore: Unit = LocalBackup.encryptAndWritePlainBackup(app, dbFileNameEssential, LNParams.chainHash, LNParams.secret.seed)
+    def process(cmd: String, result: Any): Unit = if (makeChanBackup && LocalBackup.isExternalStorageWritable) try attemptStore catch none
     def work(cmd: String): Observable[Any] = Rx.ioQueue.delay(4.seconds)
-    def error(canNotHappen: Throwable): Unit = none
   }
 
   final val USE_AUTH = "useAuth"

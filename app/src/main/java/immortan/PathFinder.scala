@@ -15,6 +15,7 @@ import fr.acinq.eclair.router.Router.{Data, PublicChannel, RouteRequest}
 import fr.acinq.eclair.router.Graph.GraphStructure.{DirectedGraph, GraphEdge}
 import fr.acinq.eclair.router.RouteCalculation.handleRouteRequest
 import com.google.common.cache.CacheBuilder
+import rx.lang.scala.Subscription
 import scala.collection.mutable
 
 
@@ -45,9 +46,15 @@ abstract class PathFinder(val normalBag: NetworkBag, val hostedBag: NetworkBag) 
   private val CMDResync = "cmd-resync"
   private val RESYNC_PERIOD: Long = 1000L * 3600 * 24 * 2
   // We don't load routing data on every startup but when user (or system) actually needs it
-  become(Data(channels = Map.empty, hostedChannels = Map.empty, graph = DirectedGraph.apply), WAITING)
-  // Init resync with persistent delay on startup, then periodically resync every RESYNC_PERIOD days + 1 hour to trigger a full, not just PHC sync
-  Rx.initDelay(Rx.repeat(Rx.ioQueue, Rx.incHour, 49 to Int.MaxValue by 49), getLastTotalResyncStamp, RESYNC_PERIOD).foreach(_ => me process CMDResync)
+  become(Data(channels = Map.empty, hostedChannels = Map.empty, DirectedGraph.apply), WAITING)
+
+  val subscription: Subscription = {
+    // Init first resync with persistent delay on startup
+    // resync every RESYNC_PERIOD days + 1 hour to trigger a full, not just PHC sync
+    val repeat = Rx.repeat(Rx.ioQueue, Rx.incHour, 49 to Int.MaxValue by 49)
+    val delay = Rx.initDelay(repeat, getLastTotalResyncStamp, RESYNC_PERIOD)
+    delay.subscribe(_ => me process CMDResync)
+  }
 
   def getLastTotalResyncStamp: Long
   def getLastNormalResyncStamp: Long
