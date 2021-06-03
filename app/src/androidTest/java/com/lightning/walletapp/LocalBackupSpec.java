@@ -2,16 +2,14 @@ package com.lightning.walletapp;
 
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 import com.lightning.walletapp.utils.LocalBackup;
-import androidx.test.rule.GrantPermissionRule;
 import fr.acinq.bitcoin.ByteVector32;
 import com.google.common.io.Files;
 import org.junit.runner.RunWith;
 import fr.acinq.eclair.package$;
 import fr.acinq.bitcoin.Block;
-import immortan.LNParams;
 import scodec.bits.ByteVector;
+import immortan.LNParams;
 import org.junit.Assert;
-import org.junit.Rule;
 import org.junit.Test;
 import java.io.File;
 
@@ -19,14 +17,11 @@ import java.io.File;
 @RunWith(AndroidJUnit4.class)
 public class LocalBackupSpec {
 
-    @Rule
-    public GrantPermissionRule mRuntimePermissionRule = GrantPermissionRule.grant(android.Manifest.permission.WRITE_EXTERNAL_STORAGE);
-    
     @Test
     public void readAndWriteLocalBackup() {
-        ByteVector fileContents = package$.MODULE$.randomBytes(1024 * 128);
+        ByteVector fileContents = package$.MODULE$.randomBytes(1024 * 128 * 100);
         ByteVector32 chainHash = Block.LivenetGenesisBlock().hash();
-        ByteVector seed = package$.MODULE$.randomBytes(32);
+        ByteVector seed = ByteVector32.Zeroes().bytes();
         String dbFileName = "essential.db";
 
         try {
