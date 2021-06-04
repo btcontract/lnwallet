@@ -522,7 +522,7 @@ trait BaseActivity extends AppCompatActivity { me =>
 
 trait HasTypicalChainFee {
   lazy val typicalChainTxFee: MilliSatoshi = {
-    val target = LNParams.feeRates.info.onChainFeeConf.feeTargets.fundingBlockTarget
+    val target = LNParams.feeRates.info.onChainFeeConf.feeTargets.mutualCloseBlockTarget
     val feerate = LNParams.feeRates.info.onChainFeeConf.feeEstimator.getFeeratePerKw(target)
     // Should not be used by long-lived instances since this info is getting outdated
     Transactions.weight2fee(feerate, weight = 600).toMilliSatoshi

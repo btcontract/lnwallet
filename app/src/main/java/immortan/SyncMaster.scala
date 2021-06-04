@@ -6,9 +6,10 @@ import immortan.crypto.Tools._
 import scala.concurrent.duration._
 import com.softwaremill.quicklens._
 import QueryShortChannelIdsTlv.QueryFlagType._
-import scala.concurrent.{ExecutionContext, ExecutionContextExecutor}
-import immortan.crypto.{CanBeRepliedTo, StateMachine, Tools}
 import fr.acinq.eclair.router.{Announcements, Sync}
+import immortan.crypto.{CanBeRepliedTo, StateMachine, Tools}
+import scala.concurrent.{ExecutionContext, ExecutionContextExecutor}
+import fr.acinq.eclair.Features.ChannelRangeQueriesExtended
 import fr.acinq.eclair.router.Router.Data
 import fr.acinq.bitcoin.Crypto.PublicKey
 import java.util.concurrent.Executors
@@ -97,9 +98,11 @@ case class SyncWorker(master: CanBeRepliedTo, keyPair: KeyPair, remoteInfo: Remo
     override def onMessage(worker: CommsTower.Worker, msg: LightningMessage): Unit = me process msg
 
     override def onDisconnect(worker: CommsTower.Worker): Unit = {
-      // Remove this listener and remove an object itself from master
+      val supportsExtQueries = worker.theirInit.forall { theirInit =>
+        LNParams.isPeerSupports(theirInit)(ChannelRangeQueriesExtended)
+      }
+
       // This disconnect is unexpected, normal shoutdown removes listener
-      val supportsExtQueries = worker.theirInit.forall(LNParams.peerSupportsExtQueries)
       master process SyncDisconnected(me, removePeer = !supportsExtQueries)
       CommsTower.listeners(worker.pair) -= listener
     }

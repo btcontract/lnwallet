@@ -8,16 +8,16 @@ import fr.acinq.eclair.Features._
 import com.lightning.walletapp.R.string._
 
 import android.view.{View, ViewGroup}
-import immortan.utils.{InputParser, Rx, ThrottledWork}
+import fr.acinq.bitcoin.{ByteVector32, Satoshi}
 import android.widget.{LinearLayout, ProgressBar, TextView}
 import immortan.fsm.{HCOpenHandler, NCFundeeOpenHandler, NCFunderOpenHandler}
+import immortan.utils.{HasRemoteInfo, HasRemoteInfoWrap, HostedChannelRequest, InputParser, NormalChannelRequest, Rx, ThrottledWork}
 import fr.acinq.eclair.blockchain.MakeFundingTxResponse
 import com.lightning.walletapp.BaseActivity.StringOps
 import concurrent.ExecutionContext.Implicits.global
 import androidx.appcompat.app.AlertDialog
 import com.ornach.nobobutton.NoboButton
 import rx.lang.scala.Observable
-import fr.acinq.bitcoin.Satoshi
 import android.os.Bundle
 
 
@@ -63,11 +63,11 @@ class RemotePeerActivity extends BaseActivity with ExternalDataChecker { me =>
 
   private lazy val viewUpdatingListener = new ConnectionListener {
     override def onOperational(worker: CommsTower.Worker, theirInit: Init): Unit = UITask {
-      val checkFeature = Features.canUseFeature(LNParams.ourInit.features, theirInit.features, _: Feature)
-      val criticalSupportAvailable = criticalFeatures.forall(checkFeature)
+      val isPeerSupports: Feature => Boolean = LNParams.isPeerSupports(theirInit)
+      val criticalSupportAvailable = criticalFeatures.forall(isPeerSupports)
 
       featureTextViewMap foreach {
-        case (feature, view) if checkFeature(feature) =>
+        case (feature, view) if isPeerSupports(feature) =>
           view.setBackgroundResource(R.drawable.border_green)
           view.setText(feature.rfcName)
 
@@ -80,34 +80,50 @@ class RemotePeerActivity extends BaseActivity with ExternalDataChecker { me =>
           view.setText(feature.rfcName)
       }
 
-      switchView(showProgress = false)
+      hasInfo match {
+        case nc: NormalChannelRequest if criticalSupportAvailable => nc.requestChannel.foreach(none, revertAndInform)
+        case hc: HostedChannelRequest if criticalSupportAvailable && isPeerSupports(HostedChannels) => UITask(me askHostedChannel hc.secret).run
+        case _: HasRemoteInfoWrap => switchView(showProgress = false)
+        case _ => whenBackPressed.run
+      }
+
       setVis(!criticalSupportAvailable, viewNoFeatureSupport)
       setVis(criticalSupportAvailable, viewYesFeatureSupport)
-      setVis(checkFeature(HostedChannels), optionHostedChannel)
+      setVis(isPeerSupports(HostedChannels), optionHostedChannel)
     }.run
   }
 
   private var whenBackPressed: Runnable = UITask(finish)
-  private var remoteNodeInfo: RemoteNodeInfo = _
+  private var hasInfo: HasRemoteInfo = _
 
-  def activateInfo(remoteInfo: RemoteNodeInfo): Unit = {
-    whenBackPressed = UITask(CommsTower disconnectNative remoteInfo)
-    CommsTower.listenNative(Set(viewUpdatingListener, incomingAcceptingListener), remoteInfo)
-    peerNodeKey.setText(remoteInfo.nodeId.toString.take(16).humanFour)
-    peerIpAddress.setText(remoteInfo.address.toString)
-    remoteNodeInfo = remoteInfo
+  def activateInfo(info: HasRemoteInfo): Unit = {
+    peerNodeKey.setText(info.remoteInfo.nodeId.toString.take(16).humanFour)
+    peerIpAddress.setText(info.remoteInfo.address.toString)
+    hasInfo = info
+
+    whenBackPressed = UITask {
+      // Disconnect and clear up if anything goes wrong
+      CommsTower.disconnectNative(info.remoteInfo)
+      info.cancel
+    }
+
+    // Try to connect after assigning vars since listener may fire immediately
+    val listeners = Set(viewUpdatingListener, incomingAcceptingListener)
+    CommsTower.listenNative(listeners, info.remoteInfo)
   }
 
   override def checkExternalData(whenNone: Runnable): Unit = InputParser.checkAndMaybeErase {
-    case remoteNodeInfo: RemoteNodeInfo => activateInfo(remoteNodeInfo)
-    case _ => finish
+    case remoteInfo: RemoteNodeInfo => me activateInfo HasRemoteInfoWrap(remoteInfo)
+    case normalChannel: NormalChannelRequest => me activateInfo normalChannel
+    case hostedChannel: HostedChannelRequest => me activateInfo hostedChannel
+    case _ => whenNone.run
   }
 
   override def onBackPressed: Unit =
     whenBackPressed.run
 
   override def onResume: Unit = {
-    checkExternalData(noneRunnable)
+    checkExternalData(whenBackPressed)
     super.onResume
   }
 
@@ -122,7 +138,7 @@ class RemotePeerActivity extends BaseActivity with ExternalDataChecker { me =>
   // BUTTON ACTIONS
 
   def acceptIncomingChannel(theirOpen: OpenChannel): Unit = {
-    new NCFundeeOpenHandler(remoteNodeInfo, theirOpen, LNParams.cm) {
+    new NCFundeeOpenHandler(hasInfo.remoteInfo, theirOpen, LNParams.cm) {
       override def onEstablished(chan: ChannelNormal): Unit = disconnectListenersAndFinish
       override def onFailure(reason: Throwable): Unit = revertAndInform(reason)
     }
@@ -139,7 +155,7 @@ class RemotePeerActivity extends BaseActivity with ExternalDataChecker { me =>
 
     def attempt(alert: AlertDialog): Unit = {
       NCFunderOpenHandler.makeFunding(LNParams.chainWallet, manager.resultSat, feeView.rate) foreach { fakeFunding =>
-        new NCFunderOpenHandler(remoteNodeInfo, fakeFunding, feeView.rate, LNParams.chainWallet, LNParams.cm) {
+        new NCFunderOpenHandler(hasInfo.remoteInfo, fakeFunding, feeView.rate, LNParams.chainWallet, LNParams.cm) {
           override def onEstablished(chan: ChannelNormal): Unit = disconnectListenersAndFinish
           override def onFailure(reason: Throwable): Unit = revertAndInform(reason)
         }
@@ -187,26 +203,29 @@ class RemotePeerActivity extends BaseActivity with ExternalDataChecker { me =>
   }
 
   def sharePeerSpecificNodeId(view: View): Unit = {
-    share(remoteNodeInfo.nodeSpecificPubKey.toString)
-    println(remoteNodeInfo.nodeSpecificPubKey.toString)
+    share(hasInfo.remoteInfo.nodeSpecificPubKey.toString)
+    println(hasInfo.remoteInfo.nodeSpecificPubKey.toString)
   }
 
-  def requestHostedChannel(view: View): Unit = {
+  def requestHostedChannel(view: View): Unit =
+    me askHostedChannel randomBytes32
+
+  def askHostedChannel(secret: ByteVector32): Unit = {
     val builder = new AlertDialog.Builder(me).setTitle(rpa_request_hc).setMessage(getString(rpa_hc_warn).html)
-    mkCheckForm(doRequestHostedChannel, none, builder, dialog_ok, dialog_cancel)
-  }
+    mkCheckForm(doAskHostedChannel, none, builder, dialog_ok, dialog_cancel)
 
-  private def doRequestHostedChannel(alert: AlertDialog): Unit = {
-    // Important: switch view first here since HC may throw immediately
-    switchView(showProgress = true)
-    stopAcceptingIncomingOffers
-    alert.dismiss
+    def doAskHostedChannel(alert: AlertDialog): Unit = {
+      // Switch view first since HC may throw immediately
+      switchView(showProgress = true)
+      stopAcceptingIncomingOffers
+      alert.dismiss
 
-    // We only need local params to extract defaultFinalScriptPubKey
-    val localParams = LNParams.makeChannelParams(LNParams.chainWallet, isFunder = false, LNParams.minFundingSatoshis)
-    new HCOpenHandler(remoteNodeInfo, peerSpecificSecret = randomBytes32, localParams.defaultFinalScriptPubKey, LNParams.cm) {
-      def onEstablished(channel: ChannelHosted): Unit = disconnectListenersAndFinish
-      def onFailure(reason: Throwable): Unit = revertAndInform(reason)
+      // We only need local params to extract defaultFinalScriptPubKey
+      val localParams = LNParams.makeChannelParams(LNParams.chainWallet, isFunder = false, LNParams.minFundingSatoshis)
+      new HCOpenHandler(hasInfo.remoteInfo, secret, localParams.defaultFinalScriptPubKey, LNParams.cm) {
+        def onEstablished(channel: ChannelHosted): Unit = disconnectListenersAndFinish
+        def onFailure(reason: Throwable): Unit = revertAndInform(reason)
+      }
     }
   }
 
@@ -217,20 +236,20 @@ class RemotePeerActivity extends BaseActivity with ExternalDataChecker { me =>
 
   def revertAndInform(reason: Throwable): Unit = {
     // Whatever the reason for this to happen we may accept new incoming offers
-    CommsTower.listenNative(Set(incomingAcceptingListener), remoteNodeInfo)
+    CommsTower.listenNative(Set(incomingAcceptingListener), hasInfo.remoteInfo)
     switchView(showProgress = false)
     onFail(reason)
   }
 
   def stopAcceptingIncomingOffers: Unit = {
-    CommsTower.listenNative(Set(incomingIgnoringListener), remoteNodeInfo)
-    CommsTower.rmListenerNative(remoteNodeInfo, incomingAcceptingListener)
+    CommsTower.listenNative(Set(incomingIgnoringListener), hasInfo.remoteInfo)
+    CommsTower.rmListenerNative(hasInfo.remoteInfo, incomingAcceptingListener)
   }
 
   def disconnectListenersAndFinish: Unit = {
-    CommsTower.rmListenerNative(remoteNodeInfo, incomingAcceptingListener)
-    CommsTower.rmListenerNative(remoteNodeInfo, incomingIgnoringListener)
-    CommsTower.rmListenerNative(remoteNodeInfo, viewUpdatingListener)
+    CommsTower.rmListenerNative(hasInfo.remoteInfo, incomingAcceptingListener)
+    CommsTower.rmListenerNative(hasInfo.remoteInfo, incomingIgnoringListener)
+    CommsTower.rmListenerNative(hasInfo.remoteInfo, viewUpdatingListener)
     finish
   }
 }

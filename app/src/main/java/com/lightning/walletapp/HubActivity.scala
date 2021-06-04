@@ -523,6 +523,8 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
     val resolve: PartialFunction[LNUrlData, Unit] = {
       case pay: PayRequest => UITask(me bringPayPopup pay).run
       case withdraw: WithdrawRequest => UITask(me bringWithdrawPopup withdraw).run
+      case nc: NormalChannelRequest => runAnd { InputParser.value = nc } { me goTo ClassNames.remotePeerActivityClass }
+      case hc: HostedChannelRequest => runAnd { InputParser.value = hc } { me goTo ClassNames.remotePeerActivityClass }
       case _ => UITask(WalletApp.app quickToast error_nothing_useful).run
     }
 

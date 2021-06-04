@@ -67,13 +67,32 @@ case class LNUrl(request: String) {
   }
 }
 
-trait LNUrlData {
+sealed trait LNUrlData {
   def checkAgainstParent(lnUrl: LNUrl): Boolean = true
 }
 
-case class NormalChannelRequest(uri: String, callback: String, k1: String) extends LNUrlData {
+// LNURL-CHANNEL
+
+sealed trait HasRemoteInfo {
+  val remoteInfo: RemoteNodeInfo
+  def cancel: Unit = none
+}
+
+case class HasRemoteInfoWrap(remoteInfo: RemoteNodeInfo) extends HasRemoteInfo
+
+case class NormalChannelRequest(uri: String, callback: String, k1: String) extends LNUrlData with HasRemoteInfo {
 
   override def checkAgainstParent(lnUrl: LNUrl): Boolean = lnUrl.uri.getHost == callbackUri.getHost
+
+  def requestChannel: Observable[String] = LNUrl.level2DataResponse {
+    val withOurNodeId = callbackUri.buildUpon.appendQueryParameter("remoteid", remoteInfo.nodeSpecificPubKey.toString)
+    withOurNodeId.appendQueryParameter("k1", k1).appendQueryParameter("private", "1")
+  }
+
+  override def cancel: Unit = LNUrl.level2DataResponse {
+    val withOurNodeId = callbackUri.buildUpon.appendQueryParameter("remoteid", remoteInfo.nodeSpecificPubKey.toString)
+    withOurNodeId.appendQueryParameter("k1", k1).appendQueryParameter("cancel", "1")
+  }.foreach(none, none)
 
   val InputParser.nodeLink(nodeKey, hostAddress, portNumber) = uri
 
@@ -86,9 +105,9 @@ case class NormalChannelRequest(uri: String, callback: String, k1: String) exten
   val callbackUri: Uri = LNUrl.checkHost(callback)
 }
 
-case class HostedChannelRequest(uri: String, alias: Option[String], k1: String) extends LNUrlData {
+case class HostedChannelRequest(uri: String, alias: Option[String], k1: String) extends LNUrlData with HasRemoteInfo {
 
-  val secret: ByteVector = ByteVector fromValidHex k1
+  val secret: ByteVector32 = ByteVector32.fromValidHex(k1)
 
   val InputParser.nodeLink(nodeKey, hostAddress, portNumber) = uri
 
@@ -98,6 +117,8 @@ case class HostedChannelRequest(uri: String, alias: Option[String], k1: String) 
 
   val remoteInfo: RemoteNodeInfo = RemoteNodeInfo(pubKey, address, hostAddress)
 }
+
+// LNURL-WITHDRAW
 
 case class WithdrawRequest(callback: String, k1: String, maxWithdrawable: Long, defaultDescription: String, minWithdrawable: Option[Long] = None) extends LNUrlData { me =>
 
@@ -118,6 +139,7 @@ case class WithdrawRequest(callback: String, k1: String, maxWithdrawable: Long, 
   require(minCanReceive <= maxWithdrawable.msat, s"$maxWithdrawable is less than min $minCanReceive")
 }
 
+// LNURL-PAY
 
 object PayRequest {
   type TagAndContent = List[String]

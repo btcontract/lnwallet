@@ -135,7 +135,7 @@ object LNParams {
 
   def incorrectDetails(amount: MilliSatoshi): FailureMessage = IncorrectOrUnknownPaymentDetails(amount, blockCount.get)
 
-  def peerSupportsExtQueries(theirInit: Init): Boolean = Features.canUseFeature(ourInit.features, theirInit.features, ChannelRangeQueriesExtended)
+  def isPeerSupports(theirInit: Init)(feature: Feature): Boolean = Features.canUseFeature(ourInit.features, theirInit.features, feature)
 }
 
 class SyncParams {
