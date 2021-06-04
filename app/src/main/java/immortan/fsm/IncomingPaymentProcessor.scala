@@ -75,7 +75,7 @@ class IncomingPaymentReceiver(val fullTag: FullPaymentTag, cm: ChannelMaster) ex
     case (CMDTimeout, null, RECEIVING) =>
       // Too many time has passed since last seen incoming payment
       become(IncomingAborted(PaymentTimeout.asSome), FINALIZING)
-      cm stateUpdated Nil
+      cm.notifyResolvers
 
     case (inFlight: InFlightPayments, revealed: IncomingRevealed, FINALIZING) =>
       val adds = inFlight.in(fullTag).asInstanceOf[ReasonableLocals]
@@ -94,8 +94,8 @@ class IncomingPaymentReceiver(val fullTag: FullPaymentTag, cm: ChannelMaster) ex
     for (local <- adds) cm.sendTo(CMD_FULFILL_HTLC(preimage, local.add), local.add.channelId)
 
   def abort(data1: IncomingAborted, adds: ReasonableLocals): Unit = data1.failure match {
-    case None => for (local <- adds) cm.sendTo(CMD_FAIL_HTLC(Right(LNParams incorrectDetails local.add.amountMsat), local.secret, local.add), local.add.channelId)
-    case Some(specificLocalFail) => for (local <- adds) cm.sendTo(CMD_FAIL_HTLC(Right(specificLocalFail), local.secret, local.add), local.add.channelId)
+    case None => for (local <- adds) cm.sendTo(CMD_FAIL_HTLC(LNParams.incorrectDetails(local.add.amountMsat).asRight, local.secret, local.add), local.add.channelId)
+    case Some(specificLocalFail) => for (local <- adds) cm.sendTo(CMD_FAIL_HTLC(specificLocalFail.asRight, local.secret, local.add), local.add.channelId)
   }
 
   def becomeAborted(data1: IncomingAborted, adds: ReasonableLocals): Unit = {
@@ -199,17 +199,17 @@ class TrampolinePaymentRelayer(val fullTag: FullPaymentTag, cm: ChannelMaster) e
       // We were waiting for all outgoing parts to fail on app restart, try again
       // Note that senderFSM has removed itself on first failure, so we create it again
       become(null, RECEIVING)
-      cm stateUpdated Nil
+      cm.notifyResolvers
 
     case (data: OutgoingPaymentSenderData, TrampolineStopping(false), SENDING) =>
       // We were waiting for all outgoing parts to fail on app restart, fail incoming
       become(abortedWithError(data.failures, invalidPubKey), FINALIZING)
-      cm stateUpdated Nil
+      cm.notifyResolvers
 
     case (data: OutgoingPaymentSenderData, processing: TrampolineProcessing, SENDING) =>
       // This was a normal operation where we were trying to deliver a payment to recipient
       become(abortedWithError(data.failures, processing.finalNodeId), FINALIZING)
-      cm stateUpdated Nil
+      cm.notifyResolvers
 
     case (inFlight: InFlightPayments, null, RECEIVING) =>
       // We have either just got another state update or restored an app with parts present
@@ -233,7 +233,7 @@ class TrampolinePaymentRelayer(val fullTag: FullPaymentTag, cm: ChannelMaster) e
     case (CMDTimeout, null, RECEIVING) =>
       // Sender must not have outgoing payments in this state
       become(TrampolineAborted(PaymentTimeout), FINALIZING)
-      cm stateUpdated Nil
+      cm.notifyResolvers
 
     case (inFlight: InFlightPayments, revealed: TrampolineRevealed, FINALIZING) =>
       val ins = inFlight.in.getOrElse(fullTag, Nil).asInstanceOf[ReasonableTrampolines]
@@ -250,7 +250,7 @@ class TrampolinePaymentRelayer(val fullTag: FullPaymentTag, cm: ChannelMaster) e
     for (local <- adds) cm.sendTo(CMD_FULFILL_HTLC(preimage, local.add), local.add.channelId)
 
   def abort(data1: TrampolineAborted, adds: ReasonableTrampolines): Unit =
-    for (local <- adds) cm.sendTo(CMD_FAIL_HTLC(Right(data1.failure), local.secret, local.add), local.add.channelId)
+    for (local <- adds) cm.sendTo(CMD_FAIL_HTLC(data1.failure.asRight, local.secret, local.add), local.add.channelId)
 
   def becomeSendingOrAborted(adds: ReasonableTrampolines): Unit = {
     require(adds.nonEmpty, "A set of incoming HTLCs must be non-empty here")
@@ -284,7 +284,7 @@ class TrampolinePaymentRelayer(val fullTag: FullPaymentTag, cm: ChannelMaster) e
     cm.getPreimageMemo.invalidate(fullTag.paymentHash)
     // Await for subsequent incoming leftovers
     become(revealed, SENDING)
-    cm stateUpdated Nil
+    cm.notifyResolvers
   }
 
   def becomeFinalRevealed(preimage: ByteVector32, adds: ReasonableTrampolines): Unit = {

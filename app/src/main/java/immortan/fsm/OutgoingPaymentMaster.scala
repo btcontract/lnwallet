@@ -12,7 +12,7 @@ import immortan.crypto.{CanBeRepliedTo, StateMachine}
 import fr.acinq.bitcoin.Crypto.{PrivateKey, PublicKey}
 import fr.acinq.eclair.router.{Announcements, ChannelUpdateExt}
 import fr.acinq.eclair.router.Graph.GraphStructure.{DescAndCapacity, GraphEdge}
-import fr.acinq.eclair.channel.{CMD_ADD_HTLC, ChannelOffline, InPrincipleNotSendable, LocalAddRejected}
+import fr.acinq.eclair.channel.{CMD_ADD_HTLC, ChannelOffline, InPrincipleNotSendable, LocalReject}
 import fr.acinq.eclair.transactions.{RemoteFulfill, RemoteReject, RemoteUpdateFail, RemoteUpdateMalform}
 import fr.acinq.eclair.crypto.Sphinx.PacketAndSecrets
 import fr.acinq.eclair.payment.OutgoingPacket
@@ -172,7 +172,7 @@ class OutgoingPaymentMaster(val cm: ChannelMaster) extends StateMachine[Outgoing
     // this won't be the case with failed/fulfilled leftovers in channels on app restart
     // so it has to be made sure that all relevalnt FSMs are manually re-initialized on startup
 
-    case (reject: LocalAddRejected, EXPECTING_PAYMENTS | WAITING_FOR_ROUTE) =>
+    case (reject: LocalReject, EXPECTING_PAYMENTS | WAITING_FOR_ROUTE) =>
       data.payments.get(reject.localAdd.fullTag).foreach(_ doProcess reject)
       me process CMDAskForRoute
 
@@ -281,7 +281,7 @@ class OutgoingPaymentSender(val fullTag: FullPaymentTag, val listener: OutgoingP
     case (reject: RemoteReject, SUCCEEDED) if reject.ourAdd.paymentHash == fullTag.paymentHash => become(data.withoutPartId(reject.ourAdd.partId), SUCCEEDED)
     case (fulfill: RemoteFulfill, SUCCEEDED) if fulfill.ourAdd.paymentHash == fullTag.paymentHash => become(data.withoutPartId(fulfill.ourAdd.partId), SUCCEEDED)
     case (bag: InFlightPayments, SUCCEEDED) if data.inFlightParts.isEmpty && !bag.out.contains(fullTag) => listener.wholePaymentSucceeded(data)
-    case (reject: LocalAddRejected, ABORTED) => me abortMaybeNotify data.withoutPartId(reject.localAdd.partId)
+    case (reject: LocalReject, ABORTED) => me abortMaybeNotify data.withoutPartId(reject.localAdd.partId)
 
     case (cmd: SendMultiPart, INIT | ABORTED) =>
       val chans = opm.rightNowSendable(cmd.allowedChans, cmd.totalFeeReserve)
@@ -333,7 +333,7 @@ class OutgoingPaymentSender(val fullTag: FullPaymentTag, val listener: OutgoingP
         wait.cnc.chan process cmdAdd
       }
 
-    case (reject: LocalAddRejected, PENDING) =>
+    case (reject: LocalReject, PENDING) =>
       data.parts.values.collectFirst { case wait: WaitForRouteOrInFlight if wait.flight.isDefined && wait.partId == reject.localAdd.partId =>
         val singleCapableCncCandidates = opm.rightNowSendable(data.cmd.allowedChans diff wait.localFailedChans, feeLeftover)
         val otherOpt = singleCapableCncCandidates.collectFirst { case (cnc, sendable) if sendable >= wait.amount => cnc }

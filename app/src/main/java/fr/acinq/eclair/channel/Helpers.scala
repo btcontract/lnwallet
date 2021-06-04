@@ -33,7 +33,7 @@ object Helpers {
     if (open.fundingSatoshis < LNParams.minFundingSatoshis || open.fundingSatoshis > LNParams.maxFundingSatoshis)
       throw InvalidFundingAmount(open.temporaryChannelId, open.fundingSatoshis, LNParams.minFundingSatoshis, LNParams.maxFundingSatoshis)
 
-    newFeerate(LNParams.feeRatesInfo, commits.localCommit.spec, LNParams.shouldForceClosePaymentFeerateDiff).foreach { localFeeratePerKw =>
+    newFeerate(LNParams.feeRates.info, commits.localCommit.spec, LNParams.shouldForceClosePaymentFeerateDiff).foreach { localFeeratePerKw =>
       throw FeerateTooDifferent(open.temporaryChannelId, localFeeratePerKw, open.feeratePerKw)
     }
 
@@ -121,11 +121,6 @@ object Helpers {
       case _ if c.futureRemoteCommitPublished.exists(_.isCommitConfirmed) => c.futureRemoteCommitPublished.map(RecoveryClose)
       case _ => c.revokedCommitPublished.find(_.isCommitConfirmed).map(RevokedClose)
     }
-
-    def isClosed(c: DATA_CLOSING, additionalConfirmedTxOpt: Option[Transaction] = None): Boolean =
-      additionalConfirmedTxOpt.exists(c.mutualClosePublished.contains) || c.localCommitPublished.exists(Closing.isLocalCommitDone) ||
-        c.remoteCommitPublished.exists(Closing.isRemoteCommitDone) || c.nextRemoteCommitPublished.exists(Closing.isRemoteCommitDone) ||
-        c.revokedCommitPublished.exists(Closing.isRevokedCommitDone) || c.futureRemoteCommitPublished.exists(Closing.isRemoteCommitDone)
 
     def isValidFinalScriptPubkey(scriptPubKey: ByteVector): Boolean = Try(Script parse scriptPubKey) match {
       case Success(OP_DUP :: OP_HASH160 :: OP_PUSHDATA(pubkeyHash, _) :: OP_EQUALVERIFY :: OP_CHECKSIG :: Nil) if pubkeyHash.size == 20 => true

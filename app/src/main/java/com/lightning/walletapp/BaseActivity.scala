@@ -45,7 +45,6 @@ import android.content.pm.PackageManager
 import android.view.View.OnClickListener
 import androidx.core.graphics.ColorUtils
 import androidx.core.app.ActivityCompat
-import immortan.LNParams.feeRatesInfo
 import rx.lang.scala.Subscription
 import scala.concurrent.Future
 import android.os.Bundle
@@ -426,7 +425,7 @@ trait BaseActivity extends AppCompatActivity { me =>
 
   abstract class OffChainSender(val maxSendable: MilliSatoshi, val minSendable: MilliSatoshi) extends HasTypicalChainFee {
     val body: android.view.ViewGroup = getLayoutInflater.inflate(R.layout.frag_input_off_chain, null).asInstanceOf[android.view.ViewGroup]
-    val manager = new RateManager(body, getString(dialog_add_ln_memo).asSome, dialog_visibility_private, LNParams.fiatRatesInfo.rates, WalletApp.fiatCode)
+    val manager = new RateManager(body, getString(dialog_add_ln_memo).asSome, dialog_visibility_private, LNParams.fiatRates.info.rates, WalletApp.fiatCode)
     val alert: AlertDialog
 
     val canSendHuman: String = LNParams.denomination.parsedWithSign(maxSendable, Colors.cardZero)
@@ -494,7 +493,7 @@ trait BaseActivity extends AppCompatActivity { me =>
       val invoiceKey = LNParams.secret.keys.fakeInvoiceKey(hash)
       val hop = List(commits.updateOpt.map(_ extraHop commits.remoteInfo.nodeId).toList)
       val prExt = PaymentRequestExt from PaymentRequest(LNParams.chainHash, Some(manager.resultMsat), hash, invoiceKey, description.invoiceText, LNParams.incomingFinalCltvExpiry, hop)
-      LNParams.cm.payBag.replaceIncomingPayment(prExt, preimage, description, balanceSnap = lnBalance, fiatRateSnap = LNParams.fiatRatesInfo.rates, typicalChainTxFee)
+      LNParams.cm.payBag.replaceIncomingPayment(prExt, preimage, description, balanceSnap = lnBalance, fiatRateSnap = LNParams.fiatRates.info.rates, typicalChainTxFee)
       processInvoice(prExt)
       alert.dismiss
     }
@@ -523,14 +522,14 @@ trait BaseActivity extends AppCompatActivity { me =>
 
 trait HasTypicalChainFee {
   lazy val typicalChainTxFee: MilliSatoshi = {
+    val target = LNParams.feeRates.info.onChainFeeConf.feeTargets.fundingBlockTarget
+    val feerate = LNParams.feeRates.info.onChainFeeConf.feeEstimator.getFeeratePerKw(target)
     // Should not be used by long-lived instances since this info is getting outdated
-    val target = LNParams.feeRatesInfo.onChainFeeConf.feeTargets.fundingBlockTarget
-    val feerate = feeRatesInfo.onChainFeeConf.feeEstimator.getFeeratePerKw(target)
-    Transactions.weight2fee(feerate, weight = 700).toMilliSatoshi
+    Transactions.weight2fee(feerate, weight = 600).toMilliSatoshi
   }
 
   def replaceOutgoingPayment(ext: PaymentRequestExt, description: PaymentDescription, action: Option[PaymentAction], sentAmount: MilliSatoshi): Unit =
-    LNParams.cm.payBag.replaceOutgoingPayment(ext, description, action, sentAmount, WalletApp.lastChainBalance.totalBalance, LNParams.fiatRatesInfo.rates, typicalChainTxFee)
+    LNParams.cm.payBag.replaceOutgoingPayment(ext, description, action, sentAmount, WalletApp.lastChainBalance.totalBalance, LNParams.fiatRates.info.rates, typicalChainTxFee)
 }
 
 trait QRActivity extends BaseActivity { me =>

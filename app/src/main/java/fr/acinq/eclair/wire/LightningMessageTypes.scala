@@ -392,8 +392,7 @@ case object TrampolineUndesired extends TrampolineStatus
 object TrampolineOn {
   def byDefault(minimumMsat: MilliSatoshi, cltvExpiryDelta: CltvExpiryDelta): TrampolineOn =
     // A relatively high (10 sat + 0.1%) and linear defaults in case if peer still wants to route while routing is undesired by us
-    TrampolineOn(minimumMsat, maximumMsat = 1000000000L.msat, feeBaseMsat = 10000L.msat, feeProportionalMillionths = 1000L,
-      exponent = 0.0, logExponent = 0.0, cltvExpiryDelta)
+    TrampolineOn(minimumMsat, maximumMsat = 1000000000L.msat, feeBaseMsat = 10000L.msat, feeProportionalMillionths = 1000L, exponent = 0.0, logExponent = 0.0, cltvExpiryDelta)
 }
 
 case class TrampolineOn(minimumMsat: MilliSatoshi, maximumMsat: MilliSatoshi, feeBaseMsat: MilliSatoshi,

@@ -20,13 +20,13 @@ import fr.acinq.eclair.crypto.Generators
 import immortan.crypto.Tools
 
 
-sealed trait LocalAddRejected {
+sealed trait LocalReject {
   val localAdd: UpdateAddHtlc
 }
 
-case class ChannelOffline(localAdd: UpdateAddHtlc) extends LocalAddRejected
-case class ChannelNotAbleToSend(localAdd: UpdateAddHtlc) extends LocalAddRejected
-case class InPrincipleNotSendable(localAdd: UpdateAddHtlc) extends LocalAddRejected
+case class ChannelOffline(localAdd: UpdateAddHtlc) extends LocalReject
+case class ChannelNotAbleToSend(localAdd: UpdateAddHtlc) extends LocalReject
+case class InPrincipleNotSendable(localAdd: UpdateAddHtlc) extends LocalReject
 
 
 case class INPUT_INIT_FUNDEE(remoteInfo: RemoteNodeInfo, localParams: LocalParams, remoteInit: Init, channelVersion: ChannelVersion, theirOpen: OpenChannel)

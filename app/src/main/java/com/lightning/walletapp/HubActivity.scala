@@ -280,7 +280,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
     val searchField: EditText = view.findViewById(R.id.searchField).asInstanceOf[EditText]
 
     def updateFiatRates: Unit = {
-      val change = LNParams.fiatRatesInfo.pctDifference(WalletApp.fiatCode).map(_ + "<br>").getOrElse(new String)
+      val change = LNParams.fiatRates.info.pctDifference(WalletApp.fiatCode).map(_ + "<br>").getOrElse(new String)
       val unitPriceAndChange = s"<small>$change</small>${WalletApp currentMsatInFiatHuman 100000000000L.msat}"
       fiatUnitPriceAndChange.setText(unitPriceAndChange.html)
     }
@@ -421,7 +421,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
 
     LNParams.chainWallet.eventsCatcher ! WalletEventsCatcher.Remove(chainListener)
     for (channel <- LNParams.cm.all.values) channel.listeners -= me
-    FiatRates.listeners -= fiatRatesListener
+    LNParams.fiatRates.listeners -= fiatRatesListener
     LNParams.cm.pf.listeners -= me
     Tovuti.from(me).stop
     super.onDestroy
@@ -572,7 +572,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
       setContentView(com.lightning.walletapp.R.layout.activity_hub)
       for (channel <- LNParams.cm.all.values) channel.listeners += me
       LNParams.chainWallet.eventsCatcher ! chainListener
-      FiatRates.listeners += fiatRatesListener
+      LNParams.fiatRates.listeners += fiatRatesListener
       Tovuti.from(me).monitor(netListener)
       LNParams.cm.pf.listeners += me
 
@@ -672,7 +672,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
 
   def bringSendBitcoinPopup(uri: BitcoinUri): Unit = {
     val body = getLayoutInflater.inflate(R.layout.frag_input_on_chain, null).asInstanceOf[ScrollView]
-    val manager = new RateManager(body, getString(dialog_add_btc_memo).asSome, dialog_visibility_private, LNParams.fiatRatesInfo.rates, WalletApp.fiatCode)
+    val manager = new RateManager(body, getString(dialog_add_btc_memo).asSome, dialog_visibility_private, LNParams.fiatRates.info.rates, WalletApp.fiatCode)
     val canSend = LNParams.denomination.parsedWithSign(WalletApp.lastChainBalance.totalBalance, Colors.cardZero)
     val canSendFiat = WalletApp.currentMsatInFiatHuman(WalletApp.lastChainBalance.totalBalance)
 
@@ -718,8 +718,8 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
       }.run
 
       rate = {
-        val target = LNParams.feeRatesInfo.onChainFeeConf.feeTargets.mutualCloseBlockTarget
-        LNParams.feeRatesInfo.onChainFeeConf.feeEstimator.getFeeratePerKw(target)
+        val target = LNParams.feeRates.info.onChainFeeConf.feeTargets.mutualCloseBlockTarget
+        LNParams.feeRates.info.onChainFeeConf.feeEstimator.getFeeratePerKw(target)
       }
     }
 
@@ -754,7 +754,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
 
   def bringReceivePopup: Unit = lnReceiveGuard(contentWindow) {
     new OffChainReceiver(initMaxReceivable = Long.MaxValue.msat, initMinReceivable = 0L.msat, lnBalance) {
-      override def getManager: RateManager = new RateManager(body, getString(dialog_add_description).asSome, dialog_visibility_public, LNParams.fiatRatesInfo.rates, WalletApp.fiatCode)
+      override def getManager: RateManager = new RateManager(body, getString(dialog_add_description).asSome, dialog_visibility_public, LNParams.fiatRates.info.rates, WalletApp.fiatCode)
       override def getDescription: PaymentDescription = PlainDescription(split = None, label = None, invoiceText = manager.resultExtraInput getOrElse new String)
       override def processInvoice(prExt: PaymentRequestExt): Unit = runAnd(InputParser.value = prExt)(me goTo ClassNames.qrInvoiceActivityClass)
       override def getTitleText: String = getString(dialog_receive_ln)
@@ -763,7 +763,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
 
   def bringWithdrawPopup(data: WithdrawRequest): Unit = lnReceiveGuard(contentWindow) {
     new OffChainReceiver(initMaxReceivable = data.maxWithdrawable.msat, initMinReceivable = data.minCanReceive, lnBalance) {
-      override def getManager: RateManager = new RateManager(body, getString(dialog_add_ln_memo).asSome, dialog_visibility_private, LNParams.fiatRatesInfo.rates, WalletApp.fiatCode)
+      override def getManager: RateManager = new RateManager(body, getString(dialog_add_ln_memo).asSome, dialog_visibility_private, LNParams.fiatRates.info.rates, WalletApp.fiatCode)
       override def getDescription: PaymentDescription = PlainMetaDescription(split = None, label = manager.resultExtraInput, invoiceText = new String, meta = data.descriptionOrEmpty)
       override def getTitleText: String = getString(dialog_lnurl_withdraw).format(data.callbackUri.getHost, data.brDescription)
       override def processInvoice(prExt: PaymentRequestExt): Unit = data.requestWithdraw(prExt).foreach(none, onFail)
@@ -777,7 +777,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
 
       override val manager: RateManager = {
         val commentStringOpt = if (data.commentAllowed.isDefined) getString(dialog_add_comment).asSome else None
-        new RateManager(body, commentStringOpt, dialog_visibility_public, LNParams.fiatRatesInfo.rates, WalletApp.fiatCode)
+        new RateManager(body, commentStringOpt, dialog_visibility_public, LNParams.fiatRates.info.rates, WalletApp.fiatCode)
       }
 
       override def neutral(alert: AlertDialog): Unit = {

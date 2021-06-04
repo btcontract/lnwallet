@@ -167,7 +167,7 @@ case class NormalCommits(channelFlags: Byte, channelId: ByteVector32, channelVer
   def localHasChanges: Boolean = remoteChanges.acked.nonEmpty || localChanges.proposed.nonEmpty
 
   type UpdatedNCAndAdd = (NormalCommits, UpdateAddHtlc)
-  def sendAdd(cmd: CMD_ADD_HTLC, blockHeight: Long): Either[LocalAddRejected, UpdatedNCAndAdd] = {
+  def sendAdd(cmd: CMD_ADD_HTLC, blockHeight: Long): Either[LocalReject, UpdatedNCAndAdd] = {
     if (LNParams.maxCltvExpiryDelta.toCltvExpiry(blockHeight) < cmd.cltvExpiry) return InPrincipleNotSendable(cmd.incompleteAdd).asLeft
     if (CltvExpiry(blockHeight) >= cmd.cltvExpiry) return InPrincipleNotSendable(cmd.incompleteAdd).asLeft
     if (cmd.firstAmount < minSendable) return InPrincipleNotSendable(cmd.incompleteAdd).asLeft
@@ -256,7 +256,7 @@ case class NormalCommits(channelFlags: Byte, channelId: ByteVector32, channelVer
 
     val threshold = Transactions.offeredHtlcTrimThreshold(remoteParams.dustLimit, commitments1.localCommit.spec, channelVersion.commitmentFormat)
     val largeRoutedExist = allOutgoing.exists(ourAdd => ourAdd.amountMsat > threshold * LNParams.minForceClosableOutgoingHtlcAmountToFeeRatio && ourAdd.fullTag.tag == PaymentTagTlv.TRAMPLOINE_ROUTED)
-    val dangerousState = largeRoutedExist && newFeerate(LNParams.feeRatesInfo, reduced, LNParams.shouldForceClosePaymentFeerateDiff).isDefined && fee.feeratePerKw < commitments1.localCommit.spec.feeratePerKw
+    val dangerousState = largeRoutedExist && newFeerate(LNParams.feeRates.info, reduced, LNParams.shouldForceClosePaymentFeerateDiff).isDefined && fee.feeratePerKw < commitments1.localCommit.spec.feeratePerKw
     if (dangerousState) throw ChannelTransitionFail(channelId)
 
     val fees = commitTxFee(commitments1.remoteParams.dustLimit, reduced, channelVersion.commitmentFormat)

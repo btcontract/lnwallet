@@ -16,7 +16,6 @@ import fr.acinq.eclair.blockchain.electrum.{CheckPoint, ElectrumClientPool}
 import android.content.{ClipData, ClipboardManager, Context, Intent, SharedPreferences}
 import fr.acinq.eclair.blockchain.electrum.ElectrumWallet.{TransactionReceived, WalletReady}
 import com.lightning.walletapp.utils.{AwaitService, DelayedNotification, LocalBackup, UsedAddons, WebsocketBus}
-import fr.acinq.eclair.blockchain.fee.FeeratesPerKw
 import fr.acinq.eclair.router.Router.RouterConf
 import androidx.appcompat.app.AppCompatDelegate
 import immortan.utils.Denomination.formatFiat
@@ -80,8 +79,8 @@ object WalletApp {
     // Clear listeners
     try LNParams.cm.becomeShutDown catch none
     try LNParams.chainWallet.becomeShutDown catch none
-    try FiatRates.becomeShutDown catch none
-    try FeeRates.becomeShutDown catch none
+    try LNParams.fiatRates.becomeShutDown catch none
+    try LNParams.feeRates.becomeShutDown catch none
 
     txDataBag = null
     extDataBag = null
@@ -125,9 +124,11 @@ object WalletApp {
     LNParams.ourInit = LNParams.createInit
 
     extDataBag.db txWrap {
-      LNParams.fiatRatesInfo = extDataBag.tryGetFiatRatesInfo getOrElse FiatRatesInfo(rates = Map.empty, oldRates = Map.empty, stamp = 0L)
-      LNParams.feeRatesInfo = extDataBag.tryGetFeeRatesInfo getOrElse FeeRatesInfo(FeeratesPerKw(FeeRatesHelpers.defaultFeerates), history = Nil, stamp = 0L)
-      LNParams.trampoline = extDataBag.tryGetTrampolineOn getOrElse TrampolineOn.byDefault(LNParams.minPayment, LNParams.routingCltvExpiryDelta)
+      LNParams.feeRates = new FeeRates(extDataBag)
+      LNParams.fiatRates = new FiatRates(extDataBag)
+      LNParams.trampoline = extDataBag.tryGetTrampolineOn getOrElse {
+        TrampolineOn.byDefault(LNParams.minPayment, LNParams.routingCltvExpiryDelta)
+      }
     }
 
     val pf = new PathFinder(normalBag, hostedBag) {
@@ -158,7 +159,7 @@ object WalletApp {
     // Listeners added here will be called first
     pf.listeners += LNParams.cm.opm
 
-    FeeRates.listeners += new FeeRatesListener {
+    LNParams.feeRates.listeners += new FeeRatesListener {
       def onFeeRates(newRates: FeeRatesInfo): Unit = {
         // We may get fresh feerates after channels become OPEN
         LNParams.cm.all.values.foreach(_ process CMD_CHECK_FEERATE)
@@ -166,7 +167,7 @@ object WalletApp {
       }
     }
 
-    FiatRates.listeners += new FiatRatesListener {
+    LNParams.fiatRates.listeners += new FiatRatesListener {
       def onFiatRates(newRates: FiatRatesInfo): Unit =
         extDataBag.putFiatRatesInfo(newRates)
     }
@@ -186,7 +187,7 @@ object WalletApp {
 
       override def onTransactionReceived(event: TransactionReceived): Unit = {
         def replaceChainTx(received: Satoshi, sent: Satoshi, description: TxDescription, isIncoming: Long): Unit = txDataBag.db txWrap {
-          txDataBag.replaceTx(event.tx, event.depth, received, sent, event.feeOpt, description, isIncoming, lastChainBalance.totalBalance, LNParams.fiatRatesInfo.rates)
+          txDataBag.replaceTx(event.tx, event.depth, received, sent, event.feeOpt, description, isIncoming, lastChainBalance.totalBalance, LNParams.fiatRates.info.rates)
           txDataBag.addSearchableTransaction(description.queryText(event.tx.txid), event.tx.txid)
         }
 
@@ -208,8 +209,8 @@ object WalletApp {
 
     // Get up channels and payment FSMs
     LNParams.cm.all = Channel.load(listeners = Set(LNParams.cm), chanBag)
-    // This inital update will create all in/routed/out FSMs
-    LNParams.cm.stateUpdated(rejects = Nil)
+    // This inital notification will create all in/routed/out FSMs
+    LNParams.cm.notifyResolvers
   }
 
   def syncAddonUpdate(fun: UsedAddons => UsedAddons): Unit = synchronized {
@@ -228,11 +229,11 @@ object WalletApp {
 
   def msatInFiatHuman(rates: Fiat2Btc, code: String, msat: MilliSatoshi): String = {
     val fiatAmount = msatInFiat(rates, code)(msat).map(formatFiat.format).getOrElse(default = "?")
-    FiatRates.customFiatSymbols.get(code).map(sign => s"$sign$fiatAmount").getOrElse(s"$fiatAmount $code")
+    LNParams.fiatRates.customFiatSymbols.get(code).map(sign => s"$sign$fiatAmount").getOrElse(s"$fiatAmount $code")
   }
 
   val currentMsatInFiatHuman: MilliSatoshi => String = msat =>
-    msatInFiatHuman(LNParams.fiatRatesInfo.rates, fiatCode, msat)
+    msatInFiatHuman(LNParams.fiatRates.info.rates, fiatCode, msat)
 }
 
 object Vibrator {

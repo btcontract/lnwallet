@@ -70,11 +70,12 @@ object ChannelMaster {
   private def defineResolution(secret: PrivateKey, pkt: IncomingPacket): IncomingResolution = pkt match {
     case packet: IncomingPacket.FinalPacket if packet.payload.paymentSecret.exists(_ != NO_SECRET) => ReasonableLocal(packet, secret)
     case packet: IncomingPacket.NodeRelayPacket if packet.outerPayload.paymentSecret.exists(_ != NO_SECRET) => ReasonableTrampoline(packet, secret)
-    case packet: IncomingPacket.ChannelRelayPacket => CMD_FAIL_HTLC(Right(LNParams incorrectDetails packet.add.amountMsat), secret, packet.add)
-    case packet: IncomingPacket.NodeRelayPacket => CMD_FAIL_HTLC(Right(LNParams incorrectDetails packet.add.amountMsat), secret, packet.add)
-    case packet: IncomingPacket.FinalPacket => CMD_FAIL_HTLC(Right(LNParams incorrectDetails packet.add.amountMsat), secret, packet.add)
+    case packet: IncomingPacket.ChannelRelayPacket => CMD_FAIL_HTLC(LNParams.incorrectDetails(packet.add.amountMsat).asRight, secret, packet.add)
+    case packet: IncomingPacket.NodeRelayPacket => CMD_FAIL_HTLC(LNParams.incorrectDetails(packet.add.amountMsat).asRight, secret, packet.add)
+    case packet: IncomingPacket.FinalPacket => CMD_FAIL_HTLC(LNParams.incorrectDetails(packet.add.amountMsat).asRight, secret, packet.add)
   }
 
+  // Of all incoming payments inside of HCs for which we have revealed a preimage, find those which are dangerously close to expiration
   def dangerousHCRevealed(revealed: Map[ByteVector32, RevealedLocalFulfills], tip: Long, hash: ByteVector32): Iterable[LocalFulfill] =
     revealed.getOrElse(hash, Iterable.empty).filter(tip > _.theirAdd.cltvExpiry.toLong - LNParams.hcFulfillSafetyBlocks)
 }
@@ -126,10 +127,8 @@ class ChannelMaster(val payBag: PaymentBag, val chanBag: ChannelBag, val dataBag
 
     override def gotFirstPreimage(data: OutgoingPaymentSenderData, fulfill: RemoteFulfill): Unit = chanBag.db txWrap {
       // Note that this method MAY get called multiple times for multipart payments if fulfills happen between restarts
-      payBag.setPreimage(fulfill.ourAdd.paymentHash, fulfill.theirPreimage)
-
       getPaymentInfoMemo.get(fulfill.ourAdd.paymentHash).filter(_.status != PaymentStatus.SUCCEEDED).foreach { paymentInfo =>
-        // Persist various payment metadata if this is ACTUALLY the first preimage (otherwise payment would be marked as successful)
+        // Persist payment metadata if this is ACTUALLY the first preimage (otherwise payment would be marked as successful)
         payBag.addSearchablePayment(paymentInfo.description.queryText, fulfill.ourAdd.paymentHash)
         payBag.updOkOutgoing(fulfill, data.usedFee)
 
@@ -137,10 +136,12 @@ class ChannelMaster(val payBag: PaymentBag, val chanBag: ChannelBag, val dataBag
           // Sender FSM won't have in-flight parts after restart
           val usedRoutesReport = data.usedRoutesAsString(LNParams.denomination)
           dataBag.putReport(fulfill.ourAdd.paymentHash, usedRoutesReport)
+          // We only increment scores for normal channels, never for HCs
           data.successfulUpdates.foreach(pf.normalBag.incrementScore)
         }
       }
 
+      payBag.setPreimage(fulfill.ourAdd.paymentHash, fulfill.theirPreimage)
       getPaymentInfoMemo.invalidate(fulfill.ourAdd.paymentHash)
       getPreimageMemo.invalidate(fulfill.ourAdd.paymentHash)
     }
@@ -178,7 +179,7 @@ class ChannelMaster(val payBag: PaymentBag, val chanBag: ChannelBag, val dataBag
   def markAsFailed(paymentInfos: Iterable[PaymentInfo], inFlightOutgoing: Map[FullPaymentTag, OutgoingAdds] = Map.empty): Unit = paymentInfos
     .collect { case outgoingPayInfo if !outgoingPayInfo.isIncoming && outgoingPayInfo.status == PaymentStatus.PENDING => outgoingPayInfo.fullTag }
     .collect { case fullTag if fullTag.tag == PaymentTagTlv.LOCALLY_SENT && !inFlightOutgoing.contains(fullTag) => fullTag.paymentHash }
-    .foreach(LNParams.cm.payBag.updAbortedOutgoing)
+    .foreach(payBag.updAbortedOutgoing)
 
   def allInChannelOutgoing: Map[FullPaymentTag, OutgoingAdds] = all.values.flatMap(Channel.chanAndCommitsOpt).flatMap(_.commits.allOutgoing).groupBy(_.fullTag)
   def closingsPublished: Iterable[ForceCloseCommitPublished] = all.values.map(_.data).collect { case closing: DATA_CLOSING => closing.forceCloseCommitPublished }.flatten
@@ -222,11 +223,8 @@ class ChannelMaster(val payBag: PaymentBag, val chanBag: ChannelBag, val dataBag
   // These are executed in Channel context
 
   override def onException: PartialFunction[Malfunction, Unit] = {
-    case (_: ChannelTransitionFail, chan: ChannelNormal, _: HasNormalCommitments) =>
-      chan process CMD_CLOSE(scriptPubKey = None, force = true)
-
-    case (_: ChannelTransitionFail, chan: ChannelHosted, hc: HostedCommits) if hc.error.isEmpty =>
-      chan.localSuspend(hc, ErrorCodes.ERR_HOSTED_MANUAL_SUSPEND)
+    case (_: ChannelTransitionFail, chan: ChannelNormal, _: HasNormalCommitments) => chan process CMD_CLOSE(scriptPubKey = None, force = true)
+    case (_: ChannelTransitionFail, chan: ChannelHosted, hc: HostedCommits) if hc.error.isEmpty => chan.localSuspend(hc, ErrorCodes.ERR_HOSTED_MANUAL_SUSPEND)
   }
 
   override def onBecome: PartialFunction[Transition, Unit] = {
@@ -249,36 +247,38 @@ class ChannelMaster(val payBag: PaymentBag, val chanBag: ChannelBag, val dataBag
       next(statusUpdateStream)
   }
 
-  // Used to fail outgoing adds which can not be committed, or not committed any more
-  // also contains invariants which instruct outgoing FSM to abort a payment right away
-  override def localAddRejected(reason: LocalAddRejected): Unit = opm process reason
-
-  // Used to notify about an existance of preimage before new state is committed in origin channel
+  // Used to notify about an existance of preimage BEFORE new state is committed in origin channel
   // should always be followed by real or simulated state update to let incoming FSMs finalize properly
   override def fulfillReceived(fulfill: RemoteFulfill): Unit = opm process fulfill
 
-  override def stateUpdated(rejects: Seq[RemoteReject] = Nil): Unit = {
-    // Rejects here are the ones we can safely retry in outgoing FSM since they are not committed any more after last state update
-    val allIns = all.values.flatMap(Channel.chanAndCommitsOpt).flatMap(_.commits.crossSignedIncoming).map(initResolveMemo.get)
-    allIns.foreach { case finalResolve: FinalResolution => sendTo(finalResolve, finalResolve.theirAdd.channelId) case _ => }
-    val reasonableIncoming = allIns.collect { case resolution: ReasonableResolution => resolution }.groupBy(_.fullTag)
-    val inFlightBag = InFlightPayments(allInChannelOutgoing, reasonableIncoming)
+  // Used to notify about outgoing adds which can not be committed, or not committed any more
+  // also contains invariants which instruct outgoing FSM to abort a payment right away
+  override def addRejectedLocally(reason: LocalReject): Unit = opm process reason
 
-    inFlightBag.allTags.collect {
+  // Used to notify about outgoing adds which were failed by peer AFTER new state is committed in origin channel
+  // this means it's safe to retry amounts from these failed payments, there will be no cross-signed duplicates
+  override def addRejectedRemotely(reason: RemoteReject): Unit = opm process reason
+
+  override def notifyResolvers: Unit = {
+    // Used to notify FSMs that we have cross-signed incoming HTLCs which FSMs may somehow act upon
+    val allIns = all.values.flatMap(Channel.chanAndCommitsOpt).flatMap(_.commits.crossSignedIncoming).map(initResolveMemo.get)
+    allIns.foreach { case finalResolve: FinalResolution => sendTo(finalResolve, finalResolve.theirAdd.channelId) case _ => } // Resolve strange incoming right away
+    val reasonableIncoming = allIns.collect { case resolution: ReasonableResolution => resolution }.groupBy(_.fullTag) // Group reasonable incoming for FSM processing
+    val inFlightsBag = InFlightPayments(allInChannelOutgoing, reasonableIncoming)
+
+    inFlightsBag.allTags.collect {
       case fullTag if PaymentTagTlv.TRAMPLOINE_ROUTED == fullTag.tag && !inProcessors.contains(fullTag) => inProcessors += new TrampolinePaymentRelayer(fullTag, me).tuple
       case fullTag if PaymentTagTlv.FINAL_INCOMING == fullTag.tag && !inProcessors.contains(fullTag) => inProcessors += new IncomingPaymentReceiver(fullTag, me).tuple
       case fullTag if PaymentTagTlv.LOCALLY_SENT == fullTag.tag => opm process CreateSenderFSM(fullTag, localPaymentListener)
     }
 
-    // An FSM was created, but now no related payments are left
+    // FSM exists because there were related HTLCs, none may be left now
     // this change is used by existing FSMs to properly finalize themselves
-    for (incomingFSM <- inProcessors.values) incomingFSM doProcess inFlightBag
-    // Send another part only after current failure has been cross-signed
-    // Sign all fails and fulfills that could have been sent above
-    for (theirReject <- rejects) opm process theirReject
+    for (incomingFSM <- inProcessors.values) incomingFSM doProcess inFlightsBag
+    // Sign all fails and fulfills that could have been sent from FSMs above
     for (chan <- all.values) chan process CMD_SIGN
     // Maybe remove successful outgoing FSMs
-    opm process inFlightBag
+    opm process inFlightsBag
     next(stateUpdateStream)
   }
 

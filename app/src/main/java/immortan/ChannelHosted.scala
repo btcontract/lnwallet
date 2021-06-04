@@ -76,7 +76,7 @@ abstract class ChannelHosted extends Channel { me =>
       else {
         StoreBecomeSend(hc, OPEN, hc.lastCrossSignedState)
         // We may have local incoming FSMs to finalize
-        events stateUpdated Nil
+        events.notifyResolvers
       }
 
     // CHANNEL IS ESTABLISHED
@@ -100,7 +100,9 @@ abstract class ChannelHosted extends Channel { me =>
             val (fulfilled, failed) = sentExpired.values.flatten.partition(add => hash2preimage contains add.paymentHash)
             localSuspend(hc.modify(_.postErrorOutgoingResolvedIds).using(_ ++ settledOutgoingHtlcIds), ERR_HOSTED_TIMED_OUT_OUTGOING_HTLC)
             for (add <- fulfilled) events fulfillReceived RemoteFulfill(theirPreimage = hash2preimage(add.paymentHash), ourAdd = add)
-            for (add <- failed) events localAddRejected InPrincipleNotSendable(localAdd = add)
+            for (add <- failed) events addRejectedLocally InPrincipleNotSendable(localAdd = add)
+            // There will be no state update
+            events.notifyResolvers
           }
         }
 
@@ -129,6 +131,8 @@ abstract class ChannelHosted extends Channel { me =>
       val remoteFulfill = hc.makeRemoteFulfill(msg)
       BECOME(hc1.addRemoteProposal(msg), state)
       events fulfillReceived remoteFulfill
+      // There will be no state update
+      events.notifyResolvers
 
 
     case (hc: HostedCommits, msg: UpdateFailHtlc, OPEN) if hc.error.isEmpty => BECOME(hc.receiveFail(msg), OPEN)
@@ -149,9 +153,9 @@ abstract class ChannelHosted extends Channel { me =>
 
     case (hc: HostedCommits, cmd: CMD_ADD_HTLC, OPEN | SLEEPING) =>
       hc.sendAdd(cmd, blockHeight = LNParams.blockCount.get) match {
-        case _ if hc.error.isDefined => events localAddRejected ChannelNotAbleToSend(cmd.incompleteAdd)
-        case _ if SLEEPING == state => events localAddRejected ChannelOffline(cmd.incompleteAdd)
-        case Left(reason) => events localAddRejected reason
+        case _ if hc.error.isDefined => events addRejectedLocally ChannelNotAbleToSend(cmd.incompleteAdd)
+        case _ if SLEEPING == state => events addRejectedLocally ChannelOffline(cmd.incompleteAdd)
+        case Left(reason) => events addRejectedLocally reason
 
         case Right(hc1 ~~ updateAddHtlcMsg) =>
           StoreBecomeSend(hc1, OPEN, updateAddHtlcMsg)
@@ -162,7 +166,7 @@ abstract class ChannelHosted extends Channel { me =>
     case (_, cmd: CMD_ADD_HTLC, _) =>
       // Instruct upstream to skip this channel in such a state
       val reason = ChannelNotAbleToSend(cmd.incompleteAdd)
-      events localAddRejected reason
+      events addRejectedLocally reason
 
 
     // CMD_SIGN will be sent from ChannelMaster strictly after outgoing FSM sends this command
@@ -253,9 +257,9 @@ abstract class ChannelHosted extends Channel { me =>
   }
 
   def rejectOverriddenOutgoingAdds(hc: HostedCommits, hc1: HostedCommits): Unit = {
-    for (add <- hc.allOutgoing -- hc1.allOutgoing) events localAddRejected InPrincipleNotSendable(add)
+    for (add <- hc.allOutgoing -- hc1.allOutgoing) events addRejectedLocally InPrincipleNotSendable(add)
     // We may have local incoming FSMs to finalize because pending incoming HTLCs could have also been removed
-    events stateUpdated Nil
+    events.notifyResolvers
   }
 
   def restoreCommits(localLCSS: LastCrossSignedState, remoteInfo: RemoteNodeInfo): HostedCommits = {
@@ -328,14 +332,9 @@ abstract class ChannelHosted extends Channel { me =>
         case None => localSuspend(hc, ERR_HOSTED_WRONG_REMOTE_SIG)
       }
     } else {
-      val lastRemoteRejects: Seq[RemoteReject] = hc.nextRemoteUpdates.collect {
-        case fail: UpdateFailHtlc => RemoteUpdateFail(fail, hc.localSpec.findOutgoingHtlcById(fail.id).get.add)
-        case malform: UpdateFailMalformedHtlc => RemoteUpdateMalform(malform, hc.localSpec.findOutgoingHtlcById(malform.id).get.add)
-      }
-
-      // First persist a new state, then call an event
       StoreBecomeSend(hc1, OPEN, lcss1.stateUpdate)
-      events stateUpdated lastRemoteRejects
+      notifyRemoteRejects(hc.nextRemoteUpdates, hc.localSpec)
+      events.notifyResolvers
     }
   }
 }

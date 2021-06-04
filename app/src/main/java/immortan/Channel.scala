@@ -5,10 +5,10 @@ import fr.acinq.eclair.channel._
 import scala.concurrent.duration._
 import akka.actor.{Actor, ActorRef, Props}
 import immortan.crypto.{CanBeRepliedTo, StateMachine}
-import fr.acinq.eclair.transactions.{RemoteFulfill, RemoteReject}
+import fr.acinq.eclair.wire.{LightningMessage, UpdateFailHtlc, UpdateFailMalformedHtlc, UpdateMessage}
+import fr.acinq.eclair.transactions.{CommitmentSpec, RemoteFulfill, RemoteReject, RemoteUpdateFail, RemoteUpdateMalform}
 import fr.acinq.eclair.blockchain.CurrentBlockCount
 import scala.concurrent.ExecutionContextExecutor
-import fr.acinq.eclair.wire.LightningMessage
 import immortan.Channel.channelContext
 import java.util.concurrent.Executors
 import fr.acinq.bitcoin.ByteVector32
@@ -94,21 +94,22 @@ trait Channel extends StateMachine[ChannelData] with CanBeRepliedTo { me =>
     SEND(lnMessage:_*)
   }
 
+  def notifyRemoteRejects(signed: List[UpdateMessage], spec: CommitmentSpec): Unit = signed.foreach {
+    case fail: UpdateFailHtlc => events addRejectedRemotely RemoteUpdateFail(fail, spec.findIncomingHtlcById(fail.id).get.add)
+    case malform: UpdateFailMalformedHtlc => events addRejectedRemotely RemoteUpdateMalform(malform, spec.findIncomingHtlcById(malform.id).get.add)
+    case _ =>
+  }
+
   var listeners = Set.empty[ChannelListener]
 
   val events: ChannelListener = new ChannelListener {
-    override def onException: PartialFunction[ChannelListener.Malfunction, Unit] = {
-      case failure => for (lst <- listeners if lst.onException isDefinedAt failure) lst onException failure
-    }
-
-    override def onBecome: PartialFunction[ChannelListener.Transition, Unit] = {
-      case transition => for (lst <- listeners if lst.onBecome isDefinedAt transition) lst onBecome transition
-    }
-
-    override def stateUpdated(rejects: Seq[RemoteReject] = Nil): Unit = for (lst <- listeners) lst.stateUpdated(rejects)
-    override def localAddRejected(reason: LocalAddRejected): Unit = for (lst <- listeners) lst.localAddRejected(reason)
+    override def onException: PartialFunction[ChannelListener.Malfunction, Unit] = { case tuple => for (lst <- listeners if lst.onException isDefinedAt tuple) lst onException tuple }
+    override def onBecome: PartialFunction[ChannelListener.Transition, Unit] = { case tuple => for (lst <- listeners if lst.onBecome isDefinedAt tuple) lst onBecome tuple }
+    override def addRejectedRemotely(reason: RemoteReject): Unit = for (lst <- listeners) lst.addRejectedRemotely(reason)
+    override def addRejectedLocally(reason: LocalReject): Unit = for (lst <- listeners) lst.addRejectedLocally(reason)
     override def fulfillReceived(fulfill: RemoteFulfill): Unit = for (lst <- listeners) lst.fulfillReceived(fulfill)
     override def addReceived(add: UpdateAddHtlcExt): Unit = for (lst <- listeners) lst.addReceived(add)
+    override def notifyResolvers: Unit = for (lst <- listeners) lst.notifyResolvers
   }
 
   val receiver: ActorRef = LNParams.system actorOf Props(new ActorEventsReceiver)
@@ -127,11 +128,11 @@ trait Channel extends StateMachine[ChannelData] with CanBeRepliedTo { me =>
         // Replace block count with a new one if this happens while propagation is being delayed
         context become main(currentBlockCount.asSome, useDelay = true)
 
-      case "propagate" if lastSeenBlockCount.isDefined =>
-        // Propagate all subsequent block counts right away
+      case "propagate" =>
+        // Propagate upcoming block counts right away
         context become main(None, useDelay = false)
         // Popagate the last delayed block count
-        process(lastSeenBlockCount.get)
+        lastSeenBlockCount.foreach(process)
 
       case msg =>
         process(msg)
@@ -147,10 +148,11 @@ object ChannelListener {
 trait ChannelListener {
   def onException: PartialFunction[ChannelListener.Malfunction, Unit] = none
   def onBecome: PartialFunction[ChannelListener.Transition, Unit] = none
-  def stateUpdated(rejects: Seq[RemoteReject] = Nil): Unit = none
-  def localAddRejected(reason: LocalAddRejected): Unit = none
+  def addRejectedRemotely(reason: RemoteReject): Unit = none
+  def addRejectedLocally(reason: LocalReject): Unit = none
   def fulfillReceived(fulfill: RemoteFulfill): Unit = none
   def addReceived(add: UpdateAddHtlcExt): Unit = none
+  def notifyResolvers: Unit = none
 }
 
 case class ChanAndCommits(chan: Channel, commits: Commitments)

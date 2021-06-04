@@ -67,8 +67,8 @@ object LNParams {
   var syncParams: SyncParams = _
   var trampoline: TrampolineOn = _
   var denomination: Denomination = _
-  var feeRatesInfo: FeeRatesInfo = _
-  var fiatRatesInfo: FiatRatesInfo = _
+  var fiatRates: FiatRates = _
+  var feeRates: FeeRates = _
 
   // Last known chain tip (zero is unknown)
   val blockCount: AtomicLong = new AtomicLong(0L)
@@ -79,7 +79,7 @@ object LNParams {
 
   def isOperational: Boolean =
     null != chainHash && null != secret && null != chainWallet && null != syncParams &&
-      null != trampoline && null != feeRatesInfo && null != fiatRatesInfo && null != denomination &&
+      null != trampoline && null != fiatRates && null != feeRates && null != denomination &&
       null != cm && null != cm.inProcessors && null != cm.sendTo && null != routerConf && null != ourInit
 
   implicit val timeout: Timeout = Timeout(30.seconds)
@@ -251,6 +251,9 @@ trait PaymentBag {
 trait DataBag {
   def putSecret(secret: WalletSecret)
   def tryGetSecret: Try[WalletSecret]
+
+  def putFiatRatesInfo(data: FiatRatesInfo)
+  def tryGetFiatRatesInfo: Try[FiatRatesInfo]
 
   def putFeeRatesInfo(data: FeeRatesInfo)
   def tryGetFeeRatesInfo: Try[FeeRatesInfo]

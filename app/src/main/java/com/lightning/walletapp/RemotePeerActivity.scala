@@ -133,7 +133,7 @@ class RemotePeerActivity extends BaseActivity with ExternalDataChecker { me =>
 
   def fundNewChannel(view: View): Unit = {
     val body = getLayoutInflater.inflate(R.layout.frag_input_on_chain, null).asInstanceOf[ViewGroup]
-    val manager = new RateManager(body, None, visHintRes = -1, LNParams.fiatRatesInfo.rates, WalletApp.fiatCode)
+    val manager = new RateManager(body, None, visHintRes = -1, LNParams.fiatRates.info.rates, WalletApp.fiatCode)
     val canSend = LNParams.denomination.parsedWithSign(WalletApp.lastChainBalance.totalBalance, Colors.cardZero)
     val canSendFiat = WalletApp.currentMsatInFiatHuman(WalletApp.lastChainBalance.totalBalance)
 
@@ -163,8 +163,8 @@ class RemotePeerActivity extends BaseActivity with ExternalDataChecker { me =>
       }.run
 
       rate = {
-        val target = LNParams.feeRatesInfo.onChainFeeConf.feeTargets.fundingBlockTarget
-        LNParams.feeRatesInfo.onChainFeeConf.feeEstimator.getFeeratePerKw(target)
+        val target = LNParams.feeRates.info.onChainFeeConf.feeTargets.fundingBlockTarget
+        LNParams.feeRates.info.onChainFeeConf.feeEstimator.getFeeratePerKw(target)
       }
 
       // Rate for funding tx can not be adjusted

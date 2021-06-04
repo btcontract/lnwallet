@@ -1,17 +1,17 @@
 package immortan.utils
 
 import fr.acinq.bitcoin._
-import immortan.utils.FeeRatesHelpers._
+import immortan.utils.FeeRates._
 import fr.acinq.eclair.blockchain.fee._
 import immortan.utils.ImplicitJsonFormats._
 import rx.lang.scala.{Observable, Subscription}
 import com.github.kevinsawicki.http.HttpRequest.get
 import immortan.crypto.CanBeShutDown
 import immortan.crypto.Tools.none
-import immortan.LNParams
+import immortan.DataBag
 
 
-object FeeRatesHelpers {
+object FeeRates {
   val minPerKw: FeeratePerKw = FeeratePerKw(1000L.sat)
 
   val defaultFeerates: FeeratesPerKB =
@@ -43,7 +43,7 @@ object FeeRatesHelpers {
     )
 }
 
-object FeeRates extends CanBeShutDown {
+class FeeRates(bag: DataBag) extends CanBeShutDown {
   def reloadData: FeeratesPerKB = fr.acinq.eclair.secureRandom nextInt 4 match {
     case 0 => new EsploraFeeProvider("https://blockstream.info/api/fee-estimates").provide
     case 1 => new EsploraFeeProvider("https://mempool.space/api/fee-estimates").provide
@@ -56,18 +56,23 @@ object FeeRates extends CanBeShutDown {
     listeners = Set.empty
   }
 
+  var listeners: Set[FeeRatesListener] = Set.empty
+  var info: FeeRatesInfo = bag.tryGetFeeRatesInfo getOrElse {
+    FeeRatesInfo(FeeratesPerKw(defaultFeerates), history = Nil, stamp = 0L)
+  }
+
   private[this] val periodHours = 12
   private[this] val retryRepeatDelayedCall: Observable[FeeratesPerKB] = {
     val retry = Rx.retry(Rx.ioQueue.map(_ => reloadData), Rx.incSec, 3 to 18 by 3)
     val repeat = Rx.repeat(retry, Rx.incHour, periodHours to Int.MaxValue by periodHours)
-    Rx.initDelay(repeat, LNParams.fiatRatesInfo.stamp, periodHours * 60 * 60 * 1000L)
+    Rx.initDelay(repeat, info.stamp, periodHours * 60 * 60 * 1000L)
   }
 
-  var listeners: Set[FeeRatesListener] = Set.empty
   val subscription: Subscription = retryRepeatDelayedCall.subscribe(newPerKB => {
-    val history1 = newPerKB :: LNParams.feeRatesInfo.history diff List(defaultFeerates) take 3
-    LNParams.feeRatesInfo = FeeRatesInfo(smoothedFeeratesPerKw(history1), history1, System.currentTimeMillis)
-    for (lst <- listeners) lst.onFeeRates(LNParams.feeRatesInfo)
+    // Prepend new item to history, then make sure default is not there, then keep 3 recent items
+    val history1: List[FeeratesPerKB] = newPerKB :: info.history diff List(defaultFeerates) take 3
+    info = FeeRatesInfo(smoothedFeeratesPerKw(history1), history1, System.currentTimeMillis)
+    for (lst <- listeners) lst.onFeeRates(info)
   }, none)
 }
 

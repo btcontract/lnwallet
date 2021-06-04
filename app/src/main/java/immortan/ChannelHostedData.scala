@@ -57,7 +57,7 @@ case class HostedCommits(remoteInfo: RemoteNodeInfo, localSpec: CommitmentSpec, 
   def alreadyReplied(id: Long): Boolean = nextLocalSpec.findIncomingHtlcById(id).isEmpty
 
   type UpdatedHCAndAdd = (HostedCommits, UpdateAddHtlc)
-  def sendAdd(cmd: CMD_ADD_HTLC, blockHeight: Long): Either[LocalAddRejected, UpdatedHCAndAdd] = {
+  def sendAdd(cmd: CMD_ADD_HTLC, blockHeight: Long): Either[LocalReject, UpdatedHCAndAdd] = {
     val completeAdd = cmd.incompleteAdd.copy(channelId = channelId, id = nextTotalLocal + 1)
     val commits1 = addLocalProposal(completeAdd)
 

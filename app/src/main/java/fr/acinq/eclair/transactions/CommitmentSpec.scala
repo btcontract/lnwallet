@@ -85,31 +85,36 @@ object CommitmentSpec {
     case None => throw new RuntimeException
   }
 
-  def reduce(localCommitSpec: CommitmentSpec, localChanges: List[UpdateMessage], remoteChanges: List[UpdateMessage]): CommitmentSpec = {
+  def reduce(localCommitSpec: CommitmentSpec, localChanges: List[UpdateMessage], remoteChanges: List[UpdateMessage] = Nil): CommitmentSpec = {
     val spec1 = localChanges.foldLeft(localCommitSpec) {
       case (spec, u: UpdateAddHtlc) => addHtlc(spec, OutgoingHtlc(u))
       case (spec, _) => spec
     }
+
     val spec2 = remoteChanges.foldLeft(spec1) {
       case (spec, u: UpdateAddHtlc) => addHtlc(spec, IncomingHtlc(u))
       case (spec, _) => spec
     }
+
     val spec3 = localChanges.foldLeft(spec2) {
       case (spec, u: UpdateFulfillHtlc) => fulfillIncomingHtlc(spec, u.id)
       case (spec, u: UpdateFailHtlc) => failIncomingHtlc(spec, u.id)
       case (spec, u: UpdateFailMalformedHtlc) => failIncomingHtlc(spec, u.id)
       case (spec, _) => spec
     }
+
     val spec4 = remoteChanges.foldLeft(spec3) {
       case (spec, u: UpdateFulfillHtlc) => fulfillOutgoingHtlc(spec, u.id)
       case (spec, u: UpdateFailHtlc) => failOutgoingHtlc(spec, u.id)
       case (spec, u: UpdateFailMalformedHtlc) => failOutgoingHtlc(spec, u.id)
       case (spec, _) => spec
     }
+
     val spec5 = (localChanges ++ remoteChanges).foldLeft(spec4) {
       case (spec, u: UpdateFee) => spec.copy(feeratePerKw = u.feeratePerKw)
       case (spec, _) => spec
     }
+
     spec5
   }
 }
