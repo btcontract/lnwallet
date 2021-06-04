@@ -169,20 +169,21 @@ abstract class ChannelHosted extends Channel { me =>
       events addRejectedLocally reason
 
 
+    // Fulfilling is allowed even in error state
     // CMD_SIGN will be sent from ChannelMaster strictly after outgoing FSM sends this command
-    case (hc: HostedCommits, cmd: CMD_FULFILL_HTLC, OPEN) if !hc.alreadyReplied(cmd.theirAdd.id) =>
+    case (hc: HostedCommits, cmd: CMD_FULFILL_HTLC, OPEN) if hc.nextLocalSpec.findIncomingHtlcById(cmd.theirAdd.id).isDefined =>
       val msg = UpdateFulfillHtlc(hc.channelId, cmd.theirAdd.id, cmd.preimage)
       StoreBecomeSend(hc.addLocalProposal(msg), OPEN, msg)
 
 
     // CMD_SIGN will be sent from ChannelMaster strictly after outgoing FSM sends this command
-    case (hc: HostedCommits, cmd: CMD_FAIL_HTLC, OPEN) if !hc.alreadyReplied(cmd.theirAdd.id) =>
+    case (hc: HostedCommits, cmd: CMD_FAIL_HTLC, OPEN) if hc.nextLocalSpec.findIncomingHtlcById(cmd.theirAdd.id).isDefined && hc.error.isEmpty =>
       val msg = OutgoingPacket.buildHtlcFailure(cmd, theirAdd = cmd.theirAdd)
       StoreBecomeSend(hc.addLocalProposal(msg), OPEN, msg)
 
 
     // CMD_SIGN will be sent from ChannelMaster strictly after outgoing FSM sends this command
-    case (hc: HostedCommits, cmd: CMD_FAIL_MALFORMED_HTLC, OPEN) if !hc.alreadyReplied(cmd.theirAdd.id) =>
+    case (hc: HostedCommits, cmd: CMD_FAIL_MALFORMED_HTLC, OPEN) if hc.nextLocalSpec.findIncomingHtlcById(cmd.theirAdd.id).isDefined && hc.error.isEmpty =>
       val msg = UpdateFailMalformedHtlc(hc.channelId, cmd.theirAdd.id, cmd.onionHash, cmd.failureCode)
       StoreBecomeSend(hc.addLocalProposal(msg), OPEN, msg)
 

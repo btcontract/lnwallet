@@ -69,6 +69,8 @@ case class NormalCommits(channelFlags: Byte, channelId: ByteVector32, channelVer
 
   val latestRemoteCommit: RemoteCommit = remoteNextCommitInfo.left.toOption.map(_.nextRemoteCommit).getOrElse(remoteCommit)
 
+  val latestReducedRemoteSpec: CommitmentSpec = CommitmentSpec.reduce(latestRemoteCommit.spec, remoteChanges.acked, localChanges.proposed)
+
   val allOutgoing: Set[UpdateAddHtlc] = {
     val allOutgoingAdds = localCommit.spec.outgoingAdds ++ localChanges.adds
     allOutgoingAdds.filterNot(add => postCloseOutgoingResolvedIds contains add.id)
@@ -80,14 +82,13 @@ case class NormalCommits(channelFlags: Byte, channelId: ByteVector32, channelVer
 
   val availableForSend: MilliSatoshi = {
     // We need to base the next current commitment on the last sig we sent, even if we didn't yet receive their revocation
-    val reduced = CommitmentSpec.reduce(latestRemoteCommit.spec, remoteChanges.acked, localChanges.proposed)
-    val balanceNoFees = reduced.toRemote - remoteParams.channelReserve
+    val balanceNoFees = latestReducedRemoteSpec.toRemote - remoteParams.channelReserve
 
     if (localParams.isFunder) {
-      val doubleFeerate = reduced.copy(feeratePerKw = reduced.feeratePerKw * 2)
-      val doubleFeeBuffer = htlcOutputFee(reduced.feeratePerKw * 2, channelVersion.commitmentFormat)
-      val commitFees = commitTxFeeMsat(remoteParams.dustLimit, reduced, channelVersion.commitmentFormat)
-      val trimThreshold = offeredHtlcTrimThreshold(remoteParams.dustLimit, reduced, channelVersion.commitmentFormat)
+      val doubleFeerate = latestReducedRemoteSpec.copy(feeratePerKw = latestReducedRemoteSpec.feeratePerKw * 2)
+      val doubleFeeBuffer = htlcOutputFee(latestReducedRemoteSpec.feeratePerKw * 2, channelVersion.commitmentFormat)
+      val commitFees = commitTxFeeMsat(remoteParams.dustLimit, latestReducedRemoteSpec, channelVersion.commitmentFormat)
+      val trimThreshold = offeredHtlcTrimThreshold(remoteParams.dustLimit, latestReducedRemoteSpec, channelVersion.commitmentFormat)
       val funderFeeBuffer = commitTxFeeMsat(remoteParams.dustLimit, doubleFeerate, channelVersion.commitmentFormat) + doubleFeeBuffer
       val amountToReserve = commitFees.max(funderFeeBuffer)
 
@@ -96,7 +97,7 @@ case class NormalCommits(channelFlags: Byte, channelId: ByteVector32, channelVer
         balanceNoFees - amountToReserve
       } else {
         // Htlc will have an output in the commitment tx, so there will be additional fees.
-        val commitFees1 = commitFees + htlcOutputFee(reduced.feeratePerKw, channelVersion.commitmentFormat)
+        val commitFees1 = commitFees + htlcOutputFee(latestReducedRemoteSpec.feeratePerKw, channelVersion.commitmentFormat)
         // We take the additional fees for that htlc output into account in the fee buffer at a x2 feerate increase
         balanceNoFees - commitFees1.max(funderFeeBuffer + doubleFeeBuffer)
       }
@@ -143,17 +144,6 @@ case class NormalCommits(channelFlags: Byte, channelId: ByteVector32, channelVer
     pendingHtlcs || changes.exists { case _: UpdateFee => true case _ => false }
   }
 
-  def alreadyReplied(id: Long): Boolean = {
-    val repliedUnsigned = localChanges.proposed.exists {
-      case update: UpdateFailMalformedHtlc => id == update.id
-      case update: UpdateFulfillHtlc => id == update.id
-      case update: UpdateFailHtlc => id == update.id
-      case _ => false
-    }
-
-    repliedUnsigned || latestRemoteCommit.spec.findOutgoingHtlcById(id).isEmpty
-  }
-
   def addLocalProposal(proposal: UpdateMessage): NormalCommits = me.modify(_.localChanges.proposed).using(_ :+ proposal)
 
   def addRemoteProposal(proposal: UpdateMessage): NormalCommits = me.modify(_.remoteChanges.proposed).using(_ :+ proposal)
@@ -174,17 +164,17 @@ case class NormalCommits(channelFlags: Byte, channelId: ByteVector32, channelVer
 
     val completeAdd = cmd.incompleteAdd.copy(channelId = channelId, id = localNextHtlcId)
     val commitments1 = addLocalProposal(completeAdd).copy(localNextHtlcId = localNextHtlcId + 1)
-    val reduced = CommitmentSpec.reduce(commitments1.latestRemoteCommit.spec, commitments1.remoteChanges.acked, commitments1.localChanges.proposed)
-    val totalOutgoingHtlcs = reduced.htlcs.collect(incoming).size
+    val totalOutgoingHtlcs = commitments1.latestReducedRemoteSpec.htlcs.collect(incoming).size
 
-    val doubleFeerate = reduced.copy(feeratePerKw = reduced.feeratePerKw * 2)
-    val doubleFeeBuffer = htlcOutputFee(reduced.feeratePerKw * 2, channelVersion.commitmentFormat)
+    val doubleFeeBuffer = htlcOutputFee(commitments1.latestReducedRemoteSpec.feeratePerKw * 2, channelVersion.commitmentFormat)
+    val doubleFeerate = commitments1.latestReducedRemoteSpec.copy(feeratePerKw = commitments1.latestReducedRemoteSpec.feeratePerKw * 2)
     // The funder needs to keep an extra buffer to be able to handle a x2 feerate increase and an additional htlc to avoid getting the channel stuck
     val funderFeeBuffer = commitTxFeeMsat(commitments1.remoteParams.dustLimit, doubleFeerate, channelVersion.commitmentFormat) + doubleFeeBuffer
 
-    val receiverWithReserve = reduced.toLocal - commitments1.localParams.channelReserve
-    val senderWithReserve = reduced.toRemote - commitments1.remoteParams.channelReserve
-    val fees = commitTxFee(commitments1.remoteParams.dustLimit, reduced, channelVersion.commitmentFormat)
+    val receiverWithReserve = commitments1.latestReducedRemoteSpec.toLocal - commitments1.localParams.channelReserve
+    val senderWithReserve = commitments1.latestReducedRemoteSpec.toRemote - commitments1.remoteParams.channelReserve
+    val fees = commitTxFee(commitments1.remoteParams.dustLimit, commitments1.latestReducedRemoteSpec, channelVersion.commitmentFormat)
+
     val missingForReceiver = if (commitments1.localParams.isFunder) receiverWithReserve else receiverWithReserve - fees
     val missingForSender = if (commitments1.localParams.isFunder) senderWithReserve - (fees max funderFeeBuffer.truncateToSatoshi) else senderWithReserve
 
@@ -242,9 +232,8 @@ case class NormalCommits(channelFlags: Byte, channelId: ByteVector32, channelVer
     val msg: UpdateFee = UpdateFee(channelId = channelId, feeratePerKw = rate)
     // Let's compute the current commitment *as seen by them* with this change taken into account
     val commitments1 = me.modify(_.localChanges.proposed).using(changes => changes.filter { case _: UpdateFee => false case _ => true } :+ msg)
-    val reduced = CommitmentSpec.reduce(commitments1.remoteCommit.spec, commitments1.remoteChanges.acked, commitments1.localChanges.proposed)
-    val fees = commitTxFee(commitments1.remoteParams.dustLimit, reduced, channelVersion.commitmentFormat)
-    val reserve = reduced.toRemote.truncateToSatoshi - commitments1.remoteParams.channelReserve - fees
+    val fees = commitTxFee(commitments1.remoteParams.dustLimit, commitments1.latestReducedRemoteSpec, channelVersion.commitmentFormat)
+    val reserve = commitments1.latestReducedRemoteSpec.toRemote.truncateToSatoshi - commitments1.remoteParams.channelReserve - fees
     (commitments1, reserve, msg)
   }
 
@@ -266,19 +255,18 @@ case class NormalCommits(channelFlags: Byte, channelId: ByteVector32, channelVer
 
   def sendCommit: (NormalCommits, CommitSig, RemoteCommit) =
     remoteNextCommitInfo match {
-      case Right(remoteNextPerCommitmentPoint) if localHasChanges =>
-        val spec = CommitmentSpec.reduce(remoteCommit.spec, remoteChanges.acked, localChanges.proposed)
+      case Right(remoteNextPoint) if localHasChanges =>
         val localChanges1 = localChanges.copy(proposed = Nil, signed = localChanges.proposed)
         val remoteChanges1 = remoteChanges.copy(acked = Nil, signed = remoteChanges.acked)
 
         val (remoteCommitTx, htlcTimeoutTxs, htlcSuccessTxs) =
-          NormalCommits.makeRemoteTxs(channelVersion, remoteCommit.index + 1,
-            localParams, remoteParams, commitInput, remoteNextPerCommitmentPoint, spec)
+          NormalCommits.makeRemoteTxs(channelVersion, remoteCommit.index + 1, localParams,
+            remoteParams, commitInput, remoteNextPoint, latestReducedRemoteSpec)
 
         val sortedHtlcTxs = (htlcTimeoutTxs ++ htlcSuccessTxs).sortBy(_.input.outPoint.index)
-        val htlcSigs = for (htlc <- sortedHtlcTxs) yield localParams.keys.sign(htlc, localParams.keys.htlcKey.privateKey, remoteNextPerCommitmentPoint, TxOwner.Remote, channelVersion.commitmentFormat)
+        val htlcSigs = for (htlc <- sortedHtlcTxs) yield localParams.keys.sign(htlc, localParams.keys.htlcKey.privateKey, remoteNextPoint, TxOwner.Remote, channelVersion.commitmentFormat)
         val commitSig = CommitSig(channelId, Transactions.sign(remoteCommitTx, localParams.keys.fundingKey.privateKey, TxOwner.Remote, channelVersion.commitmentFormat), htlcSigs.toList)
-        val waiting = WaitingForRevocation(RemoteCommit(remoteCommit.index + 1, spec, remoteCommitTx.tx.txid, remoteNextPerCommitmentPoint), commitSig, localCommit.index)
+        val waiting = WaitingForRevocation(RemoteCommit(remoteCommit.index + 1, latestReducedRemoteSpec, remoteCommitTx.tx.txid, remoteNextPoint), commitSig, localCommit.index)
         val commitments1 = copy(remoteNextCommitInfo = Left(waiting), localChanges = localChanges1, remoteChanges = remoteChanges1)
         (commitments1, commitSig, waiting.nextRemoteCommit)
 
@@ -329,14 +317,14 @@ case class NormalCommits(channelFlags: Byte, channelId: ByteVector32, channelVer
   }
 
   def receiveRevocation(revocation: RevokeAndAck): NormalCommits = remoteNextCommitInfo match {
-      case Left(d1: WaitingForRevocation) if revocation.perCommitmentSecret.publicKey == remoteCommit.remotePerCommitmentPoint =>
-        val remotePerCommitmentSecrets1 = remotePerCommitmentSecrets.addHash(revocation.perCommitmentSecret.value, 0xFFFFFFFFFFFFL - remoteCommit.index)
-        copy(localChanges = localChanges.copy(signed = Nil, acked = localChanges.acked ++ localChanges.signed), remoteChanges = remoteChanges.copy(signed = Nil),
-          remoteCommit = d1.nextRemoteCommit, remoteNextCommitInfo = Right(revocation.nextPerCommitmentPoint), remotePerCommitmentSecrets = remotePerCommitmentSecrets1)
+    case Left(d1: WaitingForRevocation) if revocation.perCommitmentSecret.publicKey == remoteCommit.remotePerCommitmentPoint =>
+      val remotePerCommitmentSecrets1 = remotePerCommitmentSecrets.addHash(revocation.perCommitmentSecret.value, 0xFFFFFFFFFFFFL - remoteCommit.index)
+      copy(localChanges = localChanges.copy(signed = Nil, acked = localChanges.acked ++ localChanges.signed), remoteChanges = remoteChanges.copy(signed = Nil),
+        remoteCommit = d1.nextRemoteCommit, remoteNextCommitInfo = Right(revocation.nextPerCommitmentPoint), remotePerCommitmentSecrets = remotePerCommitmentSecrets1)
 
-      case _ =>
-        throw ChannelTransitionFail(channelId)
-    }
+    case _ =>
+      throw ChannelTransitionFail(channelId)
+  }
 }
 
 object NormalCommits {

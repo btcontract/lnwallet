@@ -296,23 +296,26 @@ abstract class ChannelNormal(bag: ChannelBag) extends Channel { me =>
         events addRejectedLocally reason
 
 
-      // CMD_SIGN will be sent from ChannelMaster strictly after outgoing FSM sends this command
-      case (norm: DATA_NORMAL, cmd: CMD_FULFILL_HTLC, OPEN) if !norm.commitments.alreadyReplied(cmd.theirAdd.id) =>
+      case (norm: DATA_NORMAL, cmd: CMD_FULFILL_HTLC, OPEN)
+        // CMD_SIGN will be sent from ChannelMaster strictly after outgoing FSM sends this command
+        if norm.commitments.latestReducedRemoteSpec.findOutgoingHtlcById(cmd.theirAdd.id).isDefined =>
         val (commits1, ourFulfillMsg) = norm.commitments.sendFulfill(cmd)
         BECOME(norm.copy(commitments = commits1), OPEN)
         SEND(ourFulfillMsg)
 
 
-      // CMD_SIGN will be sent from ChannelMaster strictly after outgoing FSM sends this command
-      case (norm: DATA_NORMAL, cmd: CMD_FAIL_HTLC, OPEN) if !norm.commitments.alreadyReplied(cmd.theirAdd.id) =>
+      case (norm: DATA_NORMAL, cmd: CMD_FAIL_HTLC, OPEN)
+        // CMD_SIGN will be sent from ChannelMaster strictly after outgoing FSM sends this command
+        if norm.commitments.latestReducedRemoteSpec.findOutgoingHtlcById(cmd.theirAdd.id).isDefined =>
         val msg = OutgoingPacket.buildHtlcFailure(cmd, theirAdd = cmd.theirAdd)
         val commits1 = norm.commitments.addLocalProposal(msg)
         BECOME(norm.copy(commitments = commits1), OPEN)
         SEND(msg)
 
 
-      // CMD_SIGN will be sent from ChannelMaster strictly after outgoing FSM sends this command
-      case (norm: DATA_NORMAL, cmd: CMD_FAIL_MALFORMED_HTLC, OPEN) if !norm.commitments.alreadyReplied(cmd.theirAdd.id) =>
+      case (norm: DATA_NORMAL, cmd: CMD_FAIL_MALFORMED_HTLC, OPEN)
+        // CMD_SIGN will be sent from ChannelMaster strictly after outgoing FSM sends this command
+        if norm.commitments.latestReducedRemoteSpec.findOutgoingHtlcById(cmd.theirAdd.id).isDefined =>
         val msg = UpdateFailMalformedHtlc(norm.channelId, cmd.theirAdd.id, cmd.onionHash, cmd.failureCode)
         val commits1 = norm.commitments.addLocalProposal(msg)
         BECOME(norm.copy(commitments = commits1), OPEN)
@@ -590,8 +593,9 @@ abstract class ChannelNormal(bag: ChannelBag) extends Channel { me =>
         }
 
 
-      case (closing: DATA_CLOSING, cmd: CMD_FULFILL_HTLC, CLOSING) if !closing.commitments.alreadyReplied(cmd.theirAdd.id) =>
+      case (closing: DATA_CLOSING, cmd: CMD_FULFILL_HTLC, CLOSING)
         // We get a preimage when channel is already closed, so we need to try to redeem payments on chain
+        if closing.commitments.latestReducedRemoteSpec.findOutgoingHtlcById(cmd.theirAdd.id).isDefined =>
         val (commits1, ourFulfillMsg) = closing.commitments.sendFulfill(cmd)
         val conf = LNParams.feeRates.info.onChainFeeConf
 
