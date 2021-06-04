@@ -9,6 +9,7 @@ import com.lightning.walletapp.sqlite._
 import com.lightning.walletapp.R.string._
 import android.os.{Build, VibrationEffect}
 import immortan.crypto.Tools.{Fiat2Btc, none, runAnd}
+import android.net.{ConnectivityManager, NetworkCapabilities}
 import fr.acinq.bitcoin.{Block, ByteVector32, Satoshi, SatoshiLong}
 import fr.acinq.eclair.channel.{CMD_CHECK_FEERATE, PersistentChannelData}
 import android.app.{Application, NotificationChannel, NotificationManager}
@@ -69,7 +70,7 @@ object WalletApp {
   def showRateUs: Boolean = app.prefs.getBoolean(SHOW_RATE_US, true)
 
   // Due to Android specifics any of these may be nullified at runtime, must check for liveness on every entry
-  def isAlive: Boolean = null != extDataBag && null != txDataBag && null != lastChainBalance && null != usedAddons && null != app
+  def isAlive: Boolean = null != txDataBag && null != extDataBag && null != lastChainBalance && null != usedAddons && null != app
 
   def freePossiblyUsedResouces: Unit = {
     // Drop whatever network connections we still have
@@ -77,15 +78,25 @@ object WalletApp {
     CommsTower.workers.values.map(_.pair).foreach(CommsTower.forget)
 
     // Clear listeners
-    try LNParams.cm.becomeShutDown catch none
     try LNParams.chainWallet.becomeShutDown catch none
     try LNParams.fiatRates.becomeShutDown catch none
     try LNParams.feeRates.becomeShutDown catch none
+    try LNParams.cm.becomeShutDown catch none
 
+    // Make non-alive and non-operational
+    LNParams.secret = null
     txDataBag = null
-    extDataBag = null
-    lastChainBalance = null
-    usedAddons = null
+  }
+
+  def restartApplication: Unit = if (isAlive) {
+    // This may be called multiple times from different threads
+    // execute once if app is alive, otherwise do nothing
+
+    freePossiblyUsedResouces
+    app.quickToast(orbot_err_disconnect)
+    require(!LNParams.isOperational, "Still operational")
+    val intent = new Intent(app, ClassNames.mainActivityClass)
+    app.startActivity(Intent makeRestartActivityTask intent.getComponent)
   }
 
   def makeAlive: Unit = {
@@ -152,7 +163,17 @@ object WalletApp {
       case _ => throw new RuntimeException
     }
 
-    LNParams.cm = new ChannelMaster(payBag, chanBag, extDataBag, pf)
+    LNParams.cm = new ChannelMaster(payBag, chanBag, extDataBag, pf) {
+      // There will be a disconnect if VPN (Orbot) suddenly stops working
+      // we halt all connections and go to main activity if Tor is required
+      // in turn main activity won't proceed further if Tor check fails there
+      override def onDisconnect(worker: CommsTower.Worker): Unit = {
+        if (ensureTor && !app.isVPNOn) restartApplication
+        else super.onDisconnect(worker)
+      }
+    }
+
+    // Initialize chain wallet after ChannelMaster since it starts automatically
     LNParams.chainWallet = LNParams.createWallet(extDataBag, secret.seed)
 
     // Take care of essential listeners of all kinds
@@ -306,6 +327,11 @@ class WalletApp extends Application { me =>
   def plurOrZero(opts: Array[String] = Array.empty)(num: Long): String = if (num > 0) plur(opts, num).format(num) else opts(0)
   def clipboardManager: ClipboardManager = getSystemService(Context.CLIPBOARD_SERVICE).asInstanceOf[ClipboardManager]
   def getBufferUnsafe: String = clipboardManager.getPrimaryClip.getItemAt(0).getText.toString
+
+  def isVPNOn: Boolean = Try {
+    val manager = getSystemService(Context.CONNECTIVITY_SERVICE).asInstanceOf[ConnectivityManager]
+    manager.getAllNetworks.exists(manager getNetworkCapabilities _ hasTransport NetworkCapabilities.TRANSPORT_VPN)
+  } getOrElse false
 
   def copy(text: String): Unit = {
     val bufferContent = ClipData.newPlainText("wallet", text)

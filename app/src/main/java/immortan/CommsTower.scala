@@ -139,7 +139,7 @@ object CommsTower {
   }
 }
 
-class ConnectionListener {
+trait ConnectionListener {
   def onOperational(worker: CommsTower.Worker, theirInit: Init): Unit = none
   def onMessage(worker: CommsTower.Worker, msg: LightningMessage): Unit = none
   def onHostedMessage(worker: CommsTower.Worker, msg: HostedChannelMessage): Unit = none

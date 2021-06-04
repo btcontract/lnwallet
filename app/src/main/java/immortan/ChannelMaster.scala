@@ -85,33 +85,10 @@ case class InFlightPayments(out: Map[FullPaymentTag, OutgoingAdds], in: Map[Full
   val allTags: Set[FullPaymentTag] = out.keySet ++ in.keySet
 }
 
-class ChannelMaster(val payBag: PaymentBag, val chanBag: ChannelBag, val dataBag: DataBag, val pf: PathFinder) extends ChannelListener with CanBeShutDown { me =>
+class ChannelMaster(val payBag: PaymentBag, val chanBag: ChannelBag, val dataBag: DataBag, val pf: PathFinder) extends ChannelListener with ConnectionListener with CanBeShutDown { me =>
   val getPaymentInfoMemo: LoadingCache[ByteVector32, PaymentInfoTry] = memoize(payBag.getPaymentInfo)
   val initResolveMemo: LoadingCache[UpdateAddHtlcExt, IncomingResolution] = memoize(initResolve)
   val getPreimageMemo: LoadingCache[ByteVector32, PreimageTry] = memoize(payBag.getPreimage)
-
-  val socketChannelListener: ConnectionListener = new ConnectionListener {
-    // Note that this may be sent multiple times after chain wallet reconnects
-    override def onOperational(worker: CommsTower.Worker, theirInit: Init): Unit =
-      fromNode(worker.info.nodeId).foreach(_.chan process CMD_SOCKET_ONLINE)
-
-    override def onMessage(worker: CommsTower.Worker, message: LightningMessage): Unit = message match {
-      case msg: Error if msg.channelId == ByteVector32.Zeroes => fromNode(worker.info.nodeId).foreach(_.chan process msg)
-      case msg: ChannelUpdate => fromNode(worker.info.nodeId).foreach(_.chan process msg)
-      case msg: HasChannelId => sendTo(msg, msg.channelId)
-      case _ => // Do nothing
-    }
-
-    override def onHostedMessage(worker: CommsTower.Worker, message: HostedChannelMessage): Unit = message match {
-      case msg: HostedChannelBranding => dataBag.putBranding(worker.info.nodeId, msg)
-      case _ => hostedFromNode(worker.info.nodeId).foreach(_ process message)
-    }
-
-    override def onDisconnect(worker: CommsTower.Worker): Unit = {
-      fromNode(worker.info.nodeId).foreach(_.chan process CMD_SOCKET_OFFLINE)
-      Rx.ioQueue.delay(5.seconds).foreach(_ => initConnect)
-    }
-  }
 
   val localPaymentListener: OutgoingPaymentListener = new OutgoingPaymentListener {
     override def wholePaymentSucceeded(data: OutgoingPaymentSenderData): Unit =
@@ -151,6 +128,29 @@ class ChannelMaster(val payBag: PaymentBag, val chanBag: ChannelBag, val dataBag
   var inProcessors = Map.empty[FullPaymentTag, IncomingPaymentProcessor]
   var all = Map.empty[ByteVector32, Channel]
 
+  // CONNECTION LISTENER
+
+  // Note that this may be sent multiple times after chain wallet reconnects
+  override def onOperational(worker: CommsTower.Worker, theirInit: Init): Unit =
+    fromNode(worker.info.nodeId).foreach(_.chan process CMD_SOCKET_ONLINE)
+
+  override def onMessage(worker: CommsTower.Worker, message: LightningMessage): Unit = message match {
+    case msg: Error if msg.channelId == ByteVector32.Zeroes => fromNode(worker.info.nodeId).foreach(_.chan process msg)
+    case msg: ChannelUpdate => fromNode(worker.info.nodeId).foreach(_.chan process msg)
+    case msg: HasChannelId => sendTo(msg, msg.channelId)
+    case _ => // Do nothing
+  }
+
+  override def onHostedMessage(worker: CommsTower.Worker, message: HostedChannelMessage): Unit = message match {
+    case msg: HostedChannelBranding => dataBag.putBranding(worker.info.nodeId, msg)
+    case _ => hostedFromNode(worker.info.nodeId).foreach(_ process message)
+  }
+
+  override def onDisconnect(worker: CommsTower.Worker): Unit = {
+    fromNode(worker.info.nodeId).foreach(_.chan process CMD_SOCKET_OFFLINE)
+    Rx.ioQueue.delay(5.seconds).foreach(_ => initConnect)
+  }
+
   // CHANNEL MANAGEMENT
 
   override def becomeShutDown: Unit = {
@@ -171,8 +171,8 @@ class ChannelMaster(val payBag: PaymentBag, val chanBag: ChannelBag, val dataBag
 
   def initConnect: Unit =
     all.values.flatMap(Channel.chanAndCommitsOpt).foreach { cnc =>
-      // Connect to all peers with channels, including CLOSED and SUSPENDED ones
-      CommsTower.listenNative(Set(socketChannelListener), cnc.commits.remoteInfo)
+      // Connect to all peers with channels, including CLOSED ones
+      CommsTower.listenNative(Set(me), cnc.commits.remoteInfo)
     }
 
   // Marks as failed those payments which did not make it into channels before an app has been restarted
