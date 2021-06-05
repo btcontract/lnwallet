@@ -142,9 +142,14 @@ case class SyncWorker(master: CanBeRepliedTo, keyPair: KeyPair, remoteInfo: Remo
       // We still have queries left, send another one to peer
       CommsTower.sendMany(data1.queries.take(1), pair)
 
-    case (update: ChannelUpdate, d1: SyncWorkerGossipData, GOSSIP_SYNC) if d1.syncMaster.provenButShouldBeExcluded(update) => become(d1.copy(excluded = d1.excluded + update.core), GOSSIP_SYNC)
-    case (update: ChannelUpdate, d1: SyncWorkerGossipData, GOSSIP_SYNC) if d1.syncMaster.provenAndNotExcluded(update.shortChannelId) => become(d1.copy(updates = d1.updates + update.lite), GOSSIP_SYNC)
-    case (ann: ChannelAnnouncement, d1: SyncWorkerGossipData, GOSSIP_SYNC) if d1.syncMaster.provenShortIds.contains(ann.shortChannelId) => become(d1.copy(announces = d1.announces + ann.lite), GOSSIP_SYNC)
+    case (update: ChannelUpdate, d1: SyncWorkerGossipData, GOSSIP_SYNC) if d1.syncMaster.provenButShouldBeExcluded(update) =>
+      become(d1.copy(excluded = d1.excluded + update.core), GOSSIP_SYNC)
+
+    case (update: ChannelUpdate, d1: SyncWorkerGossipData, GOSSIP_SYNC) if d1.syncMaster.provenAndNotExcluded(update.shortChannelId) =>
+      become(d1.copy(updates = d1.updates + update.lite), GOSSIP_SYNC)
+
+    case (ann: ChannelAnnouncement, d1: SyncWorkerGossipData, GOSSIP_SYNC) if d1.syncMaster.provenShortIds.contains(ann.shortChannelId) =>
+      become(d1.copy(announces = d1.announces + ann.lite), GOSSIP_SYNC)
 
     case (_: ReplyShortChannelIdsEnd, data1: SyncWorkerGossipData, GOSSIP_SYNC) =>
       // We have completed current chunk, inform master and either continue or complete
@@ -154,9 +159,14 @@ case class SyncWorker(master: CanBeRepliedTo, keyPair: KeyPair, remoteInfo: Remo
 
     // PHC_SYNC
 
-    case (worker: CommsTower.Worker, _: SyncWorkerPHCData, PHC_SYNC) => worker.handler process QueryPublicHostedChannels(LNParams.chainHash)
-    case (update: ChannelUpdate, d1: SyncWorkerPHCData, PHC_SYNC) if d1.isUpdateAcceptable(update) => become(d1.withNewUpdate(update.lite), PHC_SYNC)
-    case (ann: ChannelAnnouncement, d1: SyncWorkerPHCData, PHC_SYNC) if d1.isAcceptable(ann) && d1.phcMaster.isAcceptable(ann) => become(d1.withNewAnnounce(ann.lite), PHC_SYNC)
+    case (worker: CommsTower.Worker, _: SyncWorkerPHCData, PHC_SYNC) =>
+      worker.handler process QueryPublicHostedChannels(LNParams.chainHash)
+
+    case (ann: ChannelAnnouncement, d1: SyncWorkerPHCData, PHC_SYNC) if d1.isAcceptable(ann) && d1.phcMaster.isAcceptable(ann) =>
+      become(d1.withNewAnnounce(ann.lite), PHC_SYNC)
+
+    case (update: ChannelUpdate, d1: SyncWorkerPHCData, PHC_SYNC) if d1.isUpdateAcceptable(update) =>
+      become(d1.withNewUpdate(update.lite), PHC_SYNC)
 
     case (_: ReplyPublicHostedChannelsEnd, completeSyncData: SyncWorkerPHCData, PHC_SYNC) =>
       // Peer has informed us that there is no more PHC gossip left, inform master and shut down
@@ -174,7 +184,7 @@ case class SyncWorker(master: CanBeRepliedTo, keyPair: KeyPair, remoteInfo: Remo
 sealed trait SyncMasterData extends { me =>
   def getNewSync(master: CanBeRepliedTo): SyncWorker = {
     // This relies on (1) baseSyncs items are never removed
-    // AND (2) size of baseSyncs is >= LNParams.maxNodesToSyncFrom
+    // This relies on (2) size of baseSyncs is >= LNParams.maxNodesToSyncFrom
     val unusedSyncs = activeSyncs.foldLeft(baseInfos ++ extInfos)(_ - _.remoteInfo)
     SyncWorker(master, randomKeyPair, shuffle(unusedSyncs.toList).head, LNParams.ourInit)
   }
@@ -242,7 +252,7 @@ abstract class SyncMaster(excluded: Set[Long], routerData: Data) extends StateMa
         goodRanges.flatMap(_.allShortIds).foreach(shortId => accum(shortId) += 1)
         provenShortIds = accum.collect { case (shortId, confs) if confs > LNParams.syncParams.acceptThreshold => shortId }.toSet
         val queries: Seq[QueryShortChannelIds] = goodRanges.maxBy(_.allShortIds.size).ranges.par.flatMap(reply2Query).toList
-        // println(s"Re-querying ${queries.flatMap(_.shortChannelIds.array).size} channels")
+        // println(s"SYNC: re-querying ${queries.flatMap(_.shortChannelIds.array).size} channels")
 
         // Transfer every worker into gossip syncing state
         become(SyncMasterGossipData(baseSyncs, extSyncs, activeSyncs, LNParams.syncParams.chunksToWait), GOSSIP_SYNC)
@@ -358,6 +368,7 @@ abstract class PHCSyncMaster(routerData: Data) extends StateMachine[SyncMasterDa
 
     case (CMDAddSync, data1: SyncMasterPHCData, PHC_SYNC) if data1.activeSyncs.isEmpty =>
       // We are asked to create a new worker AND we don't have a worker yet: create one
+      // for now PHC sync happens with a single remote peer
 
       val newSyncWorker = data1.getNewSync(me)
       become(data1.copy(activeSyncs = data1.activeSyncs + newSyncWorker), PHC_SYNC)
@@ -368,14 +379,13 @@ abstract class PHCSyncMaster(routerData: Data) extends StateMachine[SyncMasterDa
       Rx.ioQueue.delay(5.seconds).foreach(_ => me process CMDAddSync)
 
     case (_: SyncWorker, _, PHC_SYNC) =>
-      // No more reconnect attempts left
+      // No more reconnection attempts left
       become(null, SHUT_DOWN)
 
     case (d1: SyncWorkerPHCData, _, PHC_SYNC) =>
       // Worker has informed us that PHC sync is complete, shut everything down
-      val pure = CompleteHostedRoutingData(d1.announces.values.toSet, d1.updates)
+      me onSyncComplete CompleteHostedRoutingData(d1.announces.values.toSet, d1.updates)
       become(null, SHUT_DOWN)
-      onSyncComplete(pure)
 
     case _ =>
   }

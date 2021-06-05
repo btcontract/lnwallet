@@ -88,8 +88,6 @@ class IncomingPaymentReceiver(val fullTag: FullPaymentTag, cm: ChannelMaster) ex
     case _ =>
   }
 
-  // Utils
-
   def fulfill(preimage: ByteVector32, adds: ReasonableLocals): Unit =
     for (local <- adds) cm.sendTo(CMD_FULFILL_HTLC(preimage, local.add), local.add.channelId)
 
@@ -168,7 +166,7 @@ class TrampolinePaymentRelayer(val fullTag: FullPaymentTag, cm: ChannelMaster) e
   become(null, RECEIVING)
 
   def doProcess(msg: Any): Unit = (msg, data, state) match {
-    case (inFlight: InFlightPayments, _, FINALIZING | SENDING) if !inFlight.allTags.contains(fullTag) =>
+    case (inFlight: InFlightPayments, _, RECEIVING | SENDING | FINALIZING) if !inFlight.allTags.contains(fullTag) =>
       // This happens AFTER we have resolved all outgoing payments and started resolving related incoming payments
       becomeShutDown
 
@@ -212,7 +210,7 @@ class TrampolinePaymentRelayer(val fullTag: FullPaymentTag, cm: ChannelMaster) e
       cm.notifyResolvers
 
     case (inFlight: InFlightPayments, null, RECEIVING) =>
-      // We have either just got another state update or restored an app with parts present
+      // We have either just got another notification or restored an app with parts present
       val ins = inFlight.in.getOrElse(fullTag, Nil).asInstanceOf[ReasonableTrampolines]
       val outs = inFlight.out.getOrElse(fullTag, Nil)
       lastAmountIn = ins.map(_.add.amountMsat).sum
@@ -222,7 +220,6 @@ class TrampolinePaymentRelayer(val fullTag: FullPaymentTag, cm: ChannelMaster) e
         case _ if outs.isEmpty && firstOption(ins).exists(lastAmountIn >= _.outerPayload.totalAmount) => becomeSendingOrAborted(ins) // We have collected enough incoming parts: start sending
         case _ if outs.nonEmpty && firstOption(ins).exists(lastAmountIn >= _.outerPayload.totalAmount) => become(TrampolineStopping(retry = true), SENDING) // Probably a restart: fail and retry afterwards
         case _ if outs.nonEmpty => become(TrampolineStopping(retry = false), SENDING) // Have not collected enough incoming yet have outgoing (this is pathologic state): fail and don't retry afterwards
-        case _ if !inFlight.allTags.contains(fullTag) => becomeShutDown // Somehow no leftovers are present at all, nothing left to do: fail and don't retry
         case _ => // Do nothing, wait for more parts with a timeout
       }
 
@@ -267,7 +264,7 @@ class TrampolinePaymentRelayer(val fullTag: FullPaymentTag, cm: ChannelMaster) e
         val totalFeeReserve = lastAmountIn - inner.amountToForward - relayFee(inner, LNParams.trampoline)
         val extraEdges = RouteCalculation.makeExtraEdges(inner.invoiceRoutingInfo.getOrElse(Nil), inner.outgoingNodeId)
         val routerConf = LNParams.routerConf.copy(initCltvMaxDelta = expiryIn(adds) - inner.outgoingCltv - LNParams.trampoline.cltvExpiryDelta)
-        // It makes no sense to try to route out a payment through channels used by peer to route it in, this also includes possible unused multiple channels with same peer
+        // It makes no sense to try to route out a payment through channels used by peer to route it in, this also includes possible unused multiple channels from same peer
         val allowedChans = cm.all -- adds.map(_.add.channelId).flatMap(cm.all.get).flatMap(Channel.chanAndCommitsOpt).map(_.commits.remoteInfo.nodeId).flatMap(cm.fromNode).map(_.commits.channelId)
         val send = SendMultiPart(fullTag, Left(inner.outgoingCltv), SplitInfo(inner.amountToForward, inner.amountToForward), routerConf, inner.outgoingNodeId, totalFeeReserve, allowedChans.values.toSeq)
 

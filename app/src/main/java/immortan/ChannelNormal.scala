@@ -196,7 +196,7 @@ abstract class ChannelNormal(bag: ChannelBag) extends Channel { me =>
 
       case (norm: DATA_NORMAL, CurrentBlockCount(tip), OPEN | SLEEPING) =>
         val sentExpiredRouted = norm.commitments.allOutgoing.exists(add => tip > add.cltvExpiry.toLong && add.fullTag.tag == PaymentTagTlv.TRAMPLOINE_ROUTED)
-        val threshold = Transactions.receivedHtlcTrimThreshold(norm.commitments.remoteParams.dustLimit, norm.commitments.latestRemoteCommit.spec, norm.commitments.channelVersion.commitmentFormat)
+        val threshold = Transactions.receivedHtlcTrimThreshold(norm.commitments.remoteParams.dustLimit, norm.commitments.remoteCommit.spec, norm.commitments.channelVersion.commitmentFormat)
         val largeReceivedRevealed = norm.commitments.revealedFulfills.filter(_.theirAdd.amountMsat > threshold * LNParams.minForceClosableIncomingHtlcAmountToFeeRatio)
         val expiredReceivedRevealed = largeReceivedRevealed.exists(tip > _.theirAdd.cltvExpiry.toLong - LNParams.ncFulfillSafetyBlocks)
         if (sentExpiredRouted || expiredReceivedRevealed) throw ChannelTransitionFail(norm.channelId)

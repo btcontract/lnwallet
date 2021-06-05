@@ -75,7 +75,7 @@ abstract class ChannelAnnouncementTable(val table: String) extends Table {
 
   val selectAllSql = s"SELECT * FROM $table"
 
-  val killAllSql = s"DELETE * FROM $table"
+  val killAllSql = s"DELETE FROM $table"
 
   def createStatements: Seq[String] = s"CREATE TABLE IF NOT EXISTS $table($IDAUTOINC, $features BLOB NOT NULL, $shortChannelId INTEGER NOT NULL $UNIQUE, $nodeId1 BLOB NOT NULL, $nodeId2 BLOB NOT NULL)" :: Nil
 
@@ -109,7 +109,7 @@ abstract class ChannelUpdateTable(val table: String, val useHeuristics: Boolean)
 
   val killSql = s"DELETE FROM $table WHERE $sid = ?"
 
-  val killAllSql = s"DELETE * FROM $table"
+  val killAllSql = s"DELETE FROM $table"
 
   def createStatements: Seq[String] = {
     val createTable = s"""CREATE TABLE IF NOT EXISTS $table(

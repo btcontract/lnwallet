@@ -67,9 +67,10 @@ case class NormalCommits(channelFlags: Byte, channelId: ByteVector32, channelVer
 
   val maxSendInFlight: MilliSatoshi = remoteParams.maxHtlcValueInFlightMsat.toMilliSatoshi
 
-  val latestRemoteCommit: RemoteCommit = remoteNextCommitInfo.left.toOption.map(_.nextRemoteCommit).getOrElse(remoteCommit)
-
-  val latestReducedRemoteSpec: CommitmentSpec = CommitmentSpec.reduce(latestRemoteCommit.spec, remoteChanges.acked, localChanges.proposed)
+  val latestReducedRemoteSpec: CommitmentSpec = {
+    val latestRemoteCommit = remoteNextCommitInfo.left.toOption.map(_.nextRemoteCommit).getOrElse(remoteCommit)
+    CommitmentSpec.reduce(latestRemoteCommit.spec, remoteChanges.acked, localChanges.proposed)
+  }
 
   val allOutgoing: Set[UpdateAddHtlc] = {
     val allOutgoingAdds = localCommit.spec.outgoingAdds ++ localChanges.adds
