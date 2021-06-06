@@ -126,7 +126,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
           holder.description setText txDescription(info).html
           setVis(info.description.label.isDefined, holder.labelIcon)
           holder.amount setText LNParams.denomination.directedWithSign(info.receivedSat.toMilliSatoshi, info.sentSat.toMilliSatoshi, cardZero, info.isIncoming).html
-          holder.cardContainer setBackgroundResource R.drawable.border_dark_gray
+          holder.cardContainer setBackgroundResource chainTxBackground(info)
           holder.statusIcon setImageResource txStatusIcon(info)
           holder.meta setText txMeta(info).html
           setTxTypeIcon(holder, info)
@@ -154,6 +154,12 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
       case _: OpReturnTxDescription => getString(tx_description_op_return)
       case _: PenaltyTxDescription => getString(tx_description_penalty)
       case plain: PlainTxDescription => labelOrFallback(plain)
+    }
+
+    private def chainTxBackground(info: TxInfo): Int = info.description match {
+      case _: HtlcClaimTxDescription if info.depth <= 0L => R.drawable.border_yellow
+      case _: PenaltyTxDescription if info.depth <= 0L => R.drawable.border_yellow
+      case _ => R.drawable.border_dark_gray
     }
 
     private def labelOrFallback(plainTxDescription: PlainTxDescription): String = plainTxDescription.label.getOrElse {
