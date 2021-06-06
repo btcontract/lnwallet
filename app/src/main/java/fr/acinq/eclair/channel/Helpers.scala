@@ -33,7 +33,7 @@ object Helpers {
     if (open.fundingSatoshis < LNParams.minFundingSatoshis || open.fundingSatoshis > LNParams.maxFundingSatoshis)
       throw InvalidFundingAmount(open.temporaryChannelId, open.fundingSatoshis, LNParams.minFundingSatoshis, LNParams.maxFundingSatoshis)
 
-    newFeerate(LNParams.feeRates.info, commits.localCommit.spec, LNParams.shouldForceClosePaymentFeerateDiff).foreach { localFeeratePerKw =>
+    newFeerate(LNParams.feeRates.info, commits.localCommit.spec, LNParams.shouldRejectPaymentFeerateDiff).foreach { localFeeratePerKw =>
       throw FeerateTooDifferent(open.temporaryChannelId, localFeeratePerKw, open.feeratePerKw)
     }
 
@@ -365,37 +365,23 @@ object Helpers {
       matchingHtlcs.zip(matchingTxs).collectFirst { case (add, timeoutTx) if timeoutTx.txid == tx.txid => add }
     }
 
-    def timedoutHtlcs(commitmentFormat: CommitmentFormat, localCommit: LocalCommit,
-                      localCommitPublished: LocalCommitPublished, localDustLimit: Satoshi,
-                      tx: Transaction): Set[UpdateAddHtlc] = {
-
-      val untrimmedHtlcs = trimOfferedHtlcs(localDustLimit, localCommit.spec, commitmentFormat).map(_.add)
-      val finder = findTimedOutHtlc(tx, _: ByteVector, untrimmedHtlcs, Scripts.extractPaymentHashFromHtlcTimeout,
-        localCommitPublished.htlcTimeoutTxs)
+    def timedoutHtlcs(cs: NormalCommits, localCommit: LocalCommit, localCommitPublished: LocalCommitPublished, tx: Transaction): (Set[UpdateAddHtlc], Boolean) = {
+      def finder(hash: ByteVector): Option[UpdateAddHtlc] = findTimedOutHtlc(tx, hash, untrimmedHtlcs, Scripts.extractPaymentHashFromHtlcTimeout, localCommitPublished.htlcTimeoutTxs)
+      lazy val untrimmedHtlcs = trimOfferedHtlcs(cs.localParams.dustLimit, localCommit.spec, cs.channelVersion.commitmentFormat).map(_.add)
 
       // Fail dusty HTLCs if it's a commit tx, otherwise find the ones with matching hash
-      if (tx.txid == localCommit.publishableTxs.commitTx.tx.txid) localCommit.spec.htlcs.collect(outgoing) -- untrimmedHtlcs
-      else tx.txIn.map(_.witness).collect(Scripts.extractPaymentHashFromHtlcTimeout).map(finder).flatten.toSet
+      if (tx.txid == localCommit.publishableTxs.commitTx.tx.txid) (localCommit.spec.outgoingAdds -- untrimmedHtlcs, true)
+      else (tx.txIn.map(_.witness).collect(Scripts.extractPaymentHashFromHtlcTimeout).flatMap(finder).toSet, false)
     }
 
-    def timedoutHtlcs(commitmentFormat: CommitmentFormat, remoteCommit: RemoteCommit,
-                      remoteCommitPublished: RemoteCommitPublished, remoteDustLimit: Satoshi,
-                      tx: Transaction): Set[UpdateAddHtlc] = {
-
-      val untrimmedHtlcs = trimReceivedHtlcs(remoteDustLimit, remoteCommit.spec, commitmentFormat).map(_.add)
-      val finder = findTimedOutHtlc(tx, _: ByteVector, untrimmedHtlcs, Scripts.extractPaymentHashFromClaimHtlcTimeout,
-        remoteCommitPublished.claimHtlcTimeoutTxs)
+    def timedoutHtlcs(cs: NormalCommits, remoteCommit: RemoteCommit, remoteCommitPublished: RemoteCommitPublished, tx: Transaction): (Set[UpdateAddHtlc], Boolean) = {
+      def finder(hash: ByteVector): Option[UpdateAddHtlc] = findTimedOutHtlc(tx, hash, untrimmedHtlcs, Scripts.extractPaymentHashFromClaimHtlcTimeout, remoteCommitPublished.claimHtlcTimeoutTxs)
+      lazy val untrimmedHtlcs = trimReceivedHtlcs(cs.remoteParams.dustLimit, remoteCommit.spec, cs.channelVersion.commitmentFormat).map(_.add)
 
       // Fail dusty HTLCs if it's a commit tx, otherwise find the ones with matching hash
-      if (tx.txid == remoteCommit.txid) remoteCommit.spec.htlcs.collect(incoming) -- untrimmedHtlcs
-      else tx.txIn.map(_.witness).collect(Scripts.extractPaymentHashFromClaimHtlcTimeout).map(finder).flatten.toSet
+      if (tx.txid == remoteCommit.txid) (remoteCommit.spec.incomingAdds -- untrimmedHtlcs, true)
+      else (tx.txIn.map(_.witness).collect(Scripts.extractPaymentHashFromClaimHtlcTimeout).flatMap(finder).toSet, false)
     }
-
-    def onChainOutgoingHtlcs(localCommit: LocalCommit, remoteCommit: RemoteCommit, nextRemoteCommitOpt: Option[RemoteCommit], tx: Transaction): Set[UpdateAddHtlc] =
-      if (nextRemoteCommitOpt.map(_.txid) contains tx.txid) nextRemoteCommitOpt.get.spec.htlcs.collect(incoming)
-      else if (localCommit.publishableTxs.commitTx.tx.txid == tx.txid) localCommit.spec.htlcs.collect(outgoing)
-      else if (remoteCommit.txid == tx.txid) remoteCommit.spec.htlcs.collect(incoming)
-      else Set.empty
 
     /**
      * If a commitment tx reaches min_depth, we need to fail the outgoing htlcs that will never reach the blockchain.
@@ -408,15 +394,14 @@ object Helpers {
       if (localCommit.publishableTxs.commitTx.tx.txid == tx.txid) {
         // our commit got confirmed, so any htlc that is in their commitment but not in ours will never reach the chain
         val htlcsInRemoteCommit = remoteCommit.spec.htlcs ++ nextRemoteCommit_opt.map(_.spec.htlcs).getOrElse(Set.empty)
-        // NB: from the p.o.v of remote, their incoming htlcs are our outgoing htlcs
-        htlcsInRemoteCommit.collect(incoming) -- localCommit.spec.htlcs.collect(outgoing)
+        // NB: from the POV of remote, their incoming htlcs are our outgoing htlcs
+        htlcsInRemoteCommit.collect(incoming) -- localCommit.spec.outgoingAdds
       } else if (remoteCommit.txid == tx.txid) {
         // their commit got confirmed
         nextRemoteCommit_opt match {
           case Some(nextRemoteCommit) =>
             // we had signed a new commitment but they committed the previous one
-            // any htlc that we signed in the new commitment that they didn't sign will never reach the chain
-            nextRemoteCommit.spec.htlcs.collect(incoming) -- localCommit.spec.htlcs.collect(outgoing)
+            nextRemoteCommit.spec.incomingAdds -- localCommit.spec.outgoingAdds
           case None =>
             // their last commitment got confirmed, so no htlcs will be overridden, they will timeout or be fulfilled on chain
             Set.empty
@@ -429,7 +414,7 @@ object Helpers {
         //  - outgoing htlcs that are in the local commitment but not in remote/nextRemote have already been fulfilled/failed so we don't care about them
         //  - outgoing htlcs that are in the remote/nextRemote commitment may not really be overridden, but since we are going to claim their output as a
         //    punishment we will never get the preimage and may as well consider them failed in the context of relaying htlcs
-        nextRemoteCommit_opt.getOrElse(remoteCommit).spec.htlcs.collect(incoming)
+        nextRemoteCommit_opt.getOrElse(remoteCommit).spec.incomingAdds
       } else {
         Set.empty
       }
@@ -579,7 +564,7 @@ object Helpers {
 
     if (isFeeDefineable) {
       val outPoint = tx.txIn.head.outPoint
-      val txMap = (data.balanceLeftoverRefunds ++ data.paymentLeftoverRefunds).map(channelTx => channelTx.txid -> channelTx).toMap
+      val txMap = (data.balanceRefunds ++ data.paymentLeftoverRefunds).map(channelTx => channelTx.txid -> channelTx).toMap
       val parentTxOutOpt = if (isCommitTx) Some(data.commitments.commitInput.txOut) else txMap.get(outPoint.txid).map(_ txOut outPoint.index.toInt)
       parentTxOutOpt.map(_.amount - tx.txOut.map(_.amount).sum)
     } else None

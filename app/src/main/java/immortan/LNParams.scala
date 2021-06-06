@@ -45,11 +45,9 @@ object LNParams {
 
   val shouldSendUpdateFeerateDiff = 5.0
   val shouldRejectPaymentFeerateDiff = 15.0
-  val shouldForceClosePaymentFeerateDiff = 25.0
 
   val minInvoiceExpiryDelta: CltvExpiryDelta = CltvExpiryDelta(18) // If payee does not provide an explicit relative CLTV this is what we use by default
-  val minForceClosableIncomingHtlcAmountToFeeRatio = 3 // When incoming HTLC gets (nearly) expired, how much higher than trim threshold should it be for us to force-close
-  val minForceClosableOutgoingHtlcAmountToFeeRatio = 4 // When outgoing HTLC becomes problematic, how much higher than trim threshold should it be for us to force-close
+  val minForceClosableIncomingHtlcAmountToFeeRatio = 4 // When incoming HTLC gets (nearly) expired, how much higher than trim threshold should it be for us to force-close
   val minPayment: MilliSatoshi = MilliSatoshi(1000L) // We can neither send nor receive LN payments which are below this value
   val minFundingSatoshis: Satoshi = Satoshi(200000L) // Proposed channels of capacity less than this are not allowed
   val minDustLimit: Satoshi = Satoshi(546L)
@@ -127,7 +125,7 @@ object LNParams {
   // Note: we set local maxHtlcValueInFlightMsat to channel capacity to simplify calculations
   def makeChannelParams(defFinalScriptPubkey: ByteVector, walletStaticPaymentBasepoint: PublicKey, isFunder: Boolean, keyPath: DeterministicWallet.KeyPath, fundingAmount: Satoshi): LocalParams =
     LocalParams(ChannelKeys.fromPath(secret.keys.master, keyPath), minDustLimit, UInt64(fundingAmount.toMilliSatoshi.toLong), channelReserve = (fundingAmount * 0.001).max(minDustLimit),
-      minPayment, maxToLocalDelay, maxAcceptedHtlcs = 6, isFunder, defFinalScriptPubkey, walletStaticPaymentBasepoint)
+      minPayment, maxToLocalDelay, maxAcceptedHtlcs = 5, isFunder, defFinalScriptPubkey, walletStaticPaymentBasepoint)
 
   def currentBlockDay: Long = blockCount.get / blocksPerDay
 
@@ -285,5 +283,5 @@ trait ChannelBag {
   def rmHtlcInfos(sid: ShortChannelId)
 
   def channelTxFeesSummary: Try[ChannelTxFeesSummary]
-  def addChannelTxFee(feePaid: Satoshi, txid: ByteVector32)
+  def addChannelTxFee(feePaid: Satoshi, idenitifer: String, tag: String)
 }

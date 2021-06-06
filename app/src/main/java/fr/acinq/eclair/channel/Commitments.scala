@@ -7,12 +7,12 @@ import com.softwaremill.quicklens._
 import fr.acinq.eclair.transactions._
 import fr.acinq.eclair.transactions.DirectedHtlc._
 import fr.acinq.eclair.transactions.Transactions._
-import immortan.crypto.Tools.{Any2Some, newFeerate}
 import fr.acinq.eclair.crypto.{Generators, ShaChain}
 import immortan.{LNParams, RemoteNodeInfo, UpdateAddHtlcExt}
 import fr.acinq.eclair.channel.Helpers.HashToPreimage
 import fr.acinq.eclair.blockchain.fee.FeeratePerKw
 import fr.acinq.bitcoin.Crypto.PublicKey
+import immortan.crypto.Tools.Any2Some
 
 
 case class LocalChanges(proposed: List[UpdateMessage], signed: List[UpdateMessage], acked: List[UpdateMessage] = Nil) {
@@ -183,7 +183,7 @@ case class NormalCommits(channelFlags: Byte, channelId: ByteVector32, channelVer
     if (missingForReceiver < 0L.sat && localParams.isFunder) return ChannelNotAbleToSend(cmd.incompleteAdd).asLeft
     if (commitments1.allOutgoing.foldLeft(0L.msat)(_ + _.amountMsat) > maxSendInFlight) ChannelNotAbleToSend(cmd.incompleteAdd).asLeft
     if (totalOutgoingHtlcs > commitments1.remoteParams.maxAcceptedHtlcs) return ChannelNotAbleToSend(cmd.incompleteAdd).asLeft // This is from spec and prevents remote force-close
-    if (totalOutgoingHtlcs > commitments1.localParams.maxAcceptedHtlcs) return ChannelNotAbleToSend(cmd.incompleteAdd).asLeft // This is needed for peer backup to safely work
+    if (totalOutgoingHtlcs > commitments1.localParams.maxAcceptedHtlcs) return ChannelNotAbleToSend(cmd.incompleteAdd).asLeft // This is needed for peer backup and routing to safely work
     Right(commitments1, completeAdd)
   }
 
@@ -243,12 +243,6 @@ case class NormalCommits(channelFlags: Byte, channelId: ByteVector32, channelVer
     if (fee.feeratePerKw < FeeratePerKw.MinimumFeeratePerKw) throw ChannelTransitionFail(channelId)
     val commitments1 = me.modify(_.remoteChanges.proposed).using(changes => changes.filter { case _: UpdateFee => false case _ => true } :+ fee)
     val reduced = CommitmentSpec.reduce(commitments1.localCommit.spec, commitments1.localChanges.acked, commitments1.remoteChanges.proposed)
-
-    val threshold = Transactions.offeredHtlcTrimThreshold(remoteParams.dustLimit, commitments1.localCommit.spec, channelVersion.commitmentFormat)
-    val largeRoutedExist = allOutgoing.exists(ourAdd => ourAdd.amountMsat > threshold * LNParams.minForceClosableOutgoingHtlcAmountToFeeRatio && ourAdd.fullTag.tag == PaymentTagTlv.TRAMPLOINE_ROUTED)
-    val dangerousState = largeRoutedExist && newFeerate(LNParams.feeRates.info, reduced, LNParams.shouldForceClosePaymentFeerateDiff).isDefined && fee.feeratePerKw < commitments1.localCommit.spec.feeratePerKw
-    if (dangerousState) throw ChannelTransitionFail(channelId)
-
     val fees = commitTxFee(commitments1.remoteParams.dustLimit, reduced, channelVersion.commitmentFormat)
     val missing = reduced.toRemote.truncateToSatoshi - commitments1.localParams.channelReserve - fees
     if (missing < 0L.sat) throw ChannelTransitionFail(channelId) else commitments1

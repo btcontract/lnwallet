@@ -15,6 +15,7 @@ import fr.acinq.eclair.blockchain.fee.FeeratePerKw
 import fr.acinq.eclair.channel.Helpers.Closing
 import fr.acinq.eclair.payment.OutgoingPacket
 import fr.acinq.bitcoin.Crypto.PrivateKey
+import immortan.sqlite.ChannelTxFeesTable
 import scala.collection.immutable.Queue
 import fr.acinq.eclair.crypto.ShaChain
 import scodec.bits.ByteVector
@@ -568,13 +569,12 @@ abstract class ChannelNormal(bag: ChannelBag) extends Channel { me =>
             rcp1Opt.exists(Closing.isRemoteCommitDone) || rcp1NextOpt.exists(Closing.isRemoteCommitDone) ||
             revCp1Opt.exists(Closing.isRevokedCommitDone) || fcp1Opt.exists(Closing.isRemoteCommitDone)
 
-        val format = closing1.commitments.channelVersion.commitmentFormat
         val overRiddenHtlcs = Closing.overriddenOutgoingHtlcs(closing1, confirmed.tx)
-        val timedOutHtlcs: Set[UpdateAddHtlc] = Closing.isClosingTypeAlreadyKnown(closing1) map {
-          case local: Closing.LocalClose => Closing.timedoutHtlcs(format, local.localCommit, local.localCommitPublished, closing1.commitments.localParams.dustLimit, confirmed.tx)
-          case remote: Closing.RemoteClose => Closing.timedoutHtlcs(format, remote.remoteCommit, remote.remoteCommitPublished, closing1.commitments.remoteParams.dustLimit, confirmed.tx)
-          case _: Closing.MutualClose | _: Closing.RecoveryClose | _: Closing.RevokedClose => Set.empty[UpdateAddHtlc] // We can not have pending HTLCs in these states
-        } getOrElse Set.empty[UpdateAddHtlc]
+        val (timedOutHtlcs, isDustOutgoingHtlcs) = Closing.isClosingTypeAlreadyKnown(closing1) map {
+          case local: Closing.LocalClose => Closing.timedoutHtlcs(closing1.commitments, local.localCommit, local.localCommitPublished, confirmed.tx)
+          case remote: Closing.RemoteClose => Closing.timedoutHtlcs(closing1.commitments, remote.remoteCommit, remote.remoteCommitPublished, confirmed.tx)
+          case _: Closing.MutualClose | _: Closing.RecoveryClose | _: Closing.RevokedClose => (Set.empty, false) // We can not have pending HTLCs in these states
+        } getOrElse (Set.empty, false)
 
         // Update state and notify system about failed HTLCs
         val settledOutgoingHtlcIds = (overRiddenHtlcs ++ timedOutHtlcs).map(_.id)
@@ -582,8 +582,13 @@ abstract class ChannelNormal(bag: ChannelBag) extends Channel { me =>
         for (add <- overRiddenHtlcs ++ timedOutHtlcs) events addRejectedLocally InPrincipleNotSendable(localAdd = add)
 
         Helpers.chainFeePaid(confirmed.tx, closing1).foreach { chainFee =>
-          // Record a chain tx fee we have paid if fee can be defined
-          bag.addChannelTxFee(chainFee, confirmed.tx.txid)
+          // This happens when we get a confimed (mutual|commit)-as-funder/timeout/success tx
+          bag.addChannelTxFee(chainFee, confirmed.tx.txid.toHex, ChannelTxFeesTable.TAG_CHAIN_FEE)
+        }
+
+        if (isDustOutgoingHtlcs) bag.db txWrap {
+          // This happens when we get a confirmed local/remote commit with dusty outgoing HTLCs which would never reach a chain now, record their values as loss
+          for (add <- timedOutHtlcs) bag.addChannelTxFee(add.amountMsat.truncateToSatoshi, add.paymentHash.toHex + add.id, ChannelTxFeesTable.TAG_DUSTY_HTLC)
         }
 
         if (isClosed) bag.db txWrap {

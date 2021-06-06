@@ -131,10 +131,6 @@ case class RemoteCommitPublished(commitTx: Transaction, claimMainOutputTx: Optio
                                  claimHtlcTimeoutTxs: List[Transaction], irrevocablySpent: Map[OutPoint, ByteVector32] = Map.empty) extends ForceCloseCommitPublished {
 
   lazy val delayedRefundsLeft: Seq[Transaction] = claimHtlcTimeoutTxs.filterNot(delayTx => irrevocablySpentTxIds contains delayTx.txid)
-
-  lazy val paymentLeftoverRefunds: Seq[Transaction] = claimHtlcSuccessTxs ++ claimHtlcTimeoutTxs
-
-  lazy val balanceLeftoverRefunds: Seq[Transaction] = commitTx +: claimMainOutputTx.toList
 }
 
 case class RevokedCommitPublished(commitTx: Transaction, claimMainOutputTx: Option[Transaction], mainPenaltyTx: Option[Transaction], htlcPenaltyTxs: List[Transaction],
@@ -181,18 +177,20 @@ final case class DATA_CLOSING(commitments: NormalCommits, waitingSince: Long, mu
                               localCommitPublished: Option[LocalCommitPublished] = None, remoteCommitPublished: Option[RemoteCommitPublished] = None, nextRemoteCommitPublished: Option[RemoteCommitPublished] = None,
                               futureRemoteCommitPublished: Option[RemoteCommitPublished] = None, revokedCommitPublished: List[RevokedCommitPublished] = Nil) extends ChannelData with HasNormalCommitments {
 
-  lazy val balanceLeftoverRefunds: Seq[Transaction] = {
-    // It's OK to use a set of all possible payment leftovers because it will be compared against an incoming tx
-    mutualCloseProposed ++ mutualClosePublished ++ localCommitPublished.toList.flatMap(_.claimMainDelayedOutputTx) ++
-      remoteCommitPublished.toList.flatMap(_.balanceLeftoverRefunds) ++ nextRemoteCommitPublished.toList.flatMap(_.balanceLeftoverRefunds) ++
-      futureRemoteCommitPublished.toList.flatMap(_.balanceLeftoverRefunds)
-  }
+  lazy val balanceRefunds: Seq[Transaction] =
+    // Txs which are not related to HTLC UTXOs but only involved in getting our balance back
+    remoteCommitPublished.toList.flatMap(rcp => rcp.commitTx +: rcp.claimMainOutputTx.toList) ++
+      nextRemoteCommitPublished.toList.flatMap(rcp => rcp.commitTx +: rcp.claimMainOutputTx.toList) ++
+      futureRemoteCommitPublished.toList.flatMap(rcp => rcp.commitTx +: rcp.claimMainOutputTx.toList) ++
+      localCommitPublished.toList.flatMap(_.claimMainDelayedOutputTx) ++
+      mutualCloseProposed ++ mutualClosePublished
 
-  lazy val paymentLeftoverRefunds: Seq[Transaction] = {
-    // It's OK to use a set of all possible payment leftovers because it will be compared against an incoming tx
-    localCommitPublished.toList.flatMap(_.claimHtlcDelayedTxs) ++ remoteCommitPublished.toList.flatMap(_.paymentLeftoverRefunds) ++
-      nextRemoteCommitPublished.toList.flatMap(_.paymentLeftoverRefunds) ++ futureRemoteCommitPublished.toList.flatMap(_.paymentLeftoverRefunds)
-  }
+  lazy val paymentLeftoverRefunds: Seq[Transaction] =
+    // Txs which are involved in getting our success/timeout HTLC UTXOs back
+    remoteCommitPublished.toList.flatMap(rcp => rcp.claimHtlcSuccessTxs ++ rcp.claimHtlcTimeoutTxs) ++
+    nextRemoteCommitPublished.toList.flatMap(rcp => rcp.claimHtlcSuccessTxs ++ rcp.claimHtlcTimeoutTxs) ++
+    futureRemoteCommitPublished.toList.flatMap(rcp => rcp.claimHtlcSuccessTxs ++ rcp.claimHtlcTimeoutTxs) ++
+      localCommitPublished.toList.flatMap(lcp => lcp.claimHtlcDelayedTxs ++ lcp.htlcSuccessTxs ++ lcp.htlcTimeoutTxs)
 
   lazy val forceCloseCommitPublished: Option[ForceCloseCommitPublished] = {
     // We must select a single candidate here because its delayed refunds will be displayed to user, so we can't show a total sum of all possible refunds

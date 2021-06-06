@@ -267,13 +267,20 @@ object TxTable extends Table {
 }
 
 object ChannelTxFeesTable extends Table {
-  val (table, txid, feeSat) = ("chantxfees", "txid", "fee")
+  final val TAG_CHAIN_FEE = "tag-chain-fee"
+  final val TAG_DUSTY_HTLC = "tag-dusty-htlc"
 
-  val newSql = s"INSERT OR IGNORE INTO $table ($txid, $feeSat) VALUES (?, ?)"
+  val (table, identifier, tag, feeSat) = ("chantxfees", "identifier", "tag", "fee")
+
+  val newSql = s"INSERT OR IGNORE INTO $table ($identifier, $tag, $feeSat) VALUES (?, ?, ?)"
 
   val selectSummarySql = s"SELECT SUM($feeSat), COUNT($id) FROM $table"
 
-  def createStatements: Seq[String] = s"CREATE TABLE IF NOT EXISTS $table($IDAUTOINC, $txid TEXT NOT NULL $UNIQUE, $feeSat INTEGER NOT NULL)" :: Nil
+  def createStatements: Seq[String] =
+    s"""CREATE TABLE IF NOT EXISTS $table(
+      $IDAUTOINC, $identifier TEXT NOT NULL $UNIQUE,
+      $tag TEXT NOT NULL, $feeSat INTEGER NOT NULL
+    )""" :: Nil
 }
 
 object DataTable extends Table {

@@ -53,6 +53,6 @@ class SQLiteChannel(val db: DBInterface, channelTxFeesDb: DBInterface) extends C
       ChannelTxFeesSummary(fees = Satoshi(rc long 0), count = rc long 1)
     }
 
-  def addChannelTxFee(feePaid: Satoshi, txid: ByteVector32): Unit =
-    channelTxFeesDb.change(ChannelTxFeesTable.newSql, txid.toHex, feePaid.toLong: JLong)
+  def addChannelTxFee(feePaid: Satoshi, idenitifer: String, tag: String): Unit =
+    channelTxFeesDb.change(ChannelTxFeesTable.newSql, idenitifer, tag, feePaid.toLong: JLong)
 }
