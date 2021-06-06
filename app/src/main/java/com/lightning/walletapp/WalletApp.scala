@@ -32,6 +32,7 @@ import scala.util.Try
 
 object WalletApp {
   var txDataBag: SQLiteTx = _
+  var payMarketBag: SQLitePayMarket = _
   var extDataBag: SQLiteDataExtended = _
   var lastChainBalance: LastChainBalance = _
   var usedAddons: UsedAddons = _
@@ -69,8 +70,9 @@ object WalletApp {
   def capLNFeeToChain: Boolean = app.prefs.getBoolean(CAP_LN_FEE_TO_CHAIN, false)
   def showRateUs: Boolean = app.prefs.getBoolean(SHOW_RATE_US, true)
 
-  // Due to Android specifics any of these may be nullified at runtime, must check for liveness on every entry
-  def isAlive: Boolean = null != txDataBag && null != extDataBag && null != lastChainBalance && null != usedAddons && null != app
+  def isAlive: Boolean =
+    null != txDataBag && null != payMarketBag && null != extDataBag &&
+      null != lastChainBalance && null != usedAddons && null != app
 
   def freePossiblyUsedResouces: Unit = {
     // Drop whatever network connections we still have
@@ -105,6 +107,7 @@ object WalletApp {
 
     miscInterface txWrap {
       txDataBag = new SQLiteTx(miscInterface)
+      payMarketBag = new SQLitePayMarket(miscInterface)
       extDataBag = new SQLiteDataExtended(miscInterface)
       lastChainBalance = extDataBag.tryGetLastChainBalance getOrElse LastChainBalance(0L.sat, 0L.sat, 0L)
       usedAddons = extDataBag.tryGetAddons getOrElse UsedAddons(addons = List.empty)

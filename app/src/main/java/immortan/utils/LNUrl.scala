@@ -167,18 +167,34 @@ case class PayRequest(callback: String, maxSendable: Long, minSendable: Long, me
 
   val callbackUri: Uri = LNUrl.checkHost(callback)
 
-  val metaDataTexts: List[String] = to[PayMetaData](metadata).collect { case List("text/plain", txt) => txt }
+  val decodedMetadata: PayMetaData = to[PayMetaData](metadata)
+
+  val metaDataTexts: List[String] = decodedMetadata.collect { case List("text/plain", txt) => txt }
 
   require(metaDataTexts.size == 1, "There must be exactly one text/plain entry in metadata")
 
   require(minSendable <= maxSendable, s"max=$maxSendable while min=$minSendable")
 
   val metaDataTextPlain: String = trimmed(metaDataTexts.head)
+
+  val metaDataImageBase64s: Seq[String] = for {
+    List("image/png;base64" | "image/jpeg;base64", content) <- decodedMetadata
+    _ = require(content.length <= 136536, s"Image is too heavy, base64 length=${content.length}")
+  } yield content
 }
 
-case class PayRequestFinal(successAction: Option[PaymentAction], routes: List[AdditionalRoute], pr: String) extends LNUrlData {
+case class PayRequestFinal(successAction: Option[PaymentAction], disposable: Option[Boolean], routes: List[AdditionalRoute], pr: String) extends LNUrlData {
 
   val additionalRoutes: Set[GraphStructure.GraphEdge] = RouteCalculation.makeExtraEdges(routes.map(PayRequest.routeToHops), prExt.pr.nodeId)
 
   lazy val prExt: PaymentRequestExt = PaymentRequestExt.fromRaw(pr)
+
+  val isThrowAway: Boolean = disposable.getOrElse(true)
+}
+
+case class PayLinkInfo(image64: String, lnurl: LNUrl, text: String, lastMsat: MilliSatoshi, hash: String, lastDate: Long) {
+
+  def imageBytesTry: Try[Bytes] = Try(org.bouncycastle.util.encoders.Base64 decode image64)
+
+  lazy val paymentHash: ByteVector = ByteVector.fromValidHex(hash)
 }
