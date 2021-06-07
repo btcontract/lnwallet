@@ -17,6 +17,7 @@ import fr.acinq.eclair.blockchain.electrum.{CheckPoint, ElectrumClientPool}
 import android.content.{ClipData, ClipboardManager, Context, Intent, SharedPreferences}
 import fr.acinq.eclair.blockchain.electrum.ElectrumWallet.{TransactionReceived, WalletReady}
 import com.lightning.walletapp.utils.{AwaitService, DelayedNotification, LocalBackup, UsedAddons, WebsocketBus}
+import fr.acinq.eclair.blockchain.CurrentBlockCount
 import fr.acinq.eclair.router.Router.RouterConf
 import androidx.appcompat.app.AppCompatDelegate
 import immortan.utils.Denomination.formatFiat
@@ -197,16 +198,17 @@ object WalletApp {
     }
 
     LNParams.chainWallet.eventsCatcher ! new WalletEventsListener {
+      override def onChainTipKnown(event: CurrentBlockCount): Unit = {
+        // Invalidate last disconnect stamp since we're up again
+        LNParams.lastDisconnect.set(Long.MaxValue)
+        LNParams.blockCount.set(event.blockCount)
+        LNParams.cm.initConnect
+      }
+
       override def onChainSynchronized(event: WalletReady): Unit = {
         // The main point of this is to use unix timestamp instead of chain tip stamp to define whether we are deeply in past
         lastChainBalance = LastChainBalance(event.confirmedBalance, event.unconfirmedBalance, System.currentTimeMillis)
         extDataBag.putLastChainBalance(lastChainBalance)
-
-        // Sync is complete now, we can start channel connections
-        // Invalidate last disconnect stamp since we're up again
-        LNParams.lastDisconnect.set(Long.MaxValue)
-        LNParams.blockCount.set(event.height)
-        LNParams.cm.initConnect
       }
 
       override def onTransactionReceived(event: TransactionReceived): Unit = {

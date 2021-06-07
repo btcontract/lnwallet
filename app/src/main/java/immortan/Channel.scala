@@ -116,26 +116,26 @@ trait Channel extends StateMachine[ChannelData] with CanBeRepliedTo { me =>
 
   class ActorEventsReceiver extends Actor {
     context.system.eventStream.subscribe(channel = classOf[CurrentBlockCount], subscriber = self)
+
     override def receive: Receive = main(lastSeenBlockCount = None, useDelay = true)
 
     def main(lastSeenBlockCount: Option[CurrentBlockCount], useDelay: Boolean): Receive = {
       case currentBlockCount: CurrentBlockCount if lastSeenBlockCount.isEmpty && useDelay =>
-        // Delay first block count propagation to give peer a last change to resolve on reconnect
         context.system.scheduler.scheduleOnce(10.seconds)(self ! "propagate")(LNParams.ec)
         context become main(currentBlockCount.asSome, useDelay = true)
 
       case currentBlockCount: CurrentBlockCount if lastSeenBlockCount.isDefined && useDelay =>
-        // Replace block count with a new one if this happens while propagation is being delayed
+        // We may get another chain tip while delaying a current one: store a new one then
         context become main(currentBlockCount.asSome, useDelay = true)
 
       case "propagate" =>
-        // Propagate upcoming block counts right away
+        // Propagate subsequent block counts right away
         context become main(None, useDelay = false)
         // Popagate the last delayed block count
         lastSeenBlockCount.foreach(process)
 
-      case msg =>
-        process(msg)
+      case message =>
+        process(message)
     }
   }
 }

@@ -75,7 +75,7 @@ abstract class ChannelHosted extends Channel { me =>
       else if (!isLocalSigOk) localSuspend(hc, ERR_HOSTED_WRONG_LOCAL_SIG)
       else {
         StoreBecomeSend(hc, OPEN, hc.lastCrossSignedState)
-        // We may have local incoming FSMs to finalize
+        // Remote LCSS could contain pending incoming
         events.notifyResolvers
       }
 
@@ -250,6 +250,8 @@ abstract class ChannelHosted extends Channel { me =>
       if (!isRemoteSigOk) throw CMDException("Override impossible: new override signature from remote host is wrong", cmd)
       StoreBecomeSend(hc1, OPEN, completeLocalLCSS.stateUpdate)
       rejectOverriddenOutgoingAdds(hc, hc1)
+      // We may have pendig incoming
+      events.notifyResolvers
 
 
     case (null, wait: WaitRemoteHostedReply, -1) => super.become(wait, WAIT_FOR_INIT)
@@ -257,11 +259,8 @@ abstract class ChannelHosted extends Channel { me =>
     case _ =>
   }
 
-  def rejectOverriddenOutgoingAdds(hc: HostedCommits, hc1: HostedCommits): Unit = {
+  def rejectOverriddenOutgoingAdds(hc: HostedCommits, hc1: HostedCommits): Unit =
     for (add <- hc.allOutgoing -- hc1.allOutgoing) events addRejectedLocally InPrincipleNotSendable(add)
-    // We may have local incoming FSMs to finalize because pending incoming HTLCs could have also been removed
-    events.notifyResolvers
-  }
 
   def restoreCommits(localLCSS: LastCrossSignedState, remoteInfo: RemoteNodeInfo): HostedCommits = {
     val inFlightHtlcs = localLCSS.incomingHtlcs.map(IncomingHtlc) ++ localLCSS.outgoingHtlcs.map(OutgoingHtlc)
@@ -303,12 +302,13 @@ abstract class ChannelHosted extends Channel { me =>
         // We have fallen behind a bit but have all the data required to successfully synchronize such that an updated state is reached
         val hc3 = hc2.copy(lastCrossSignedState = syncedLCSS, localSpec = hc2.nextLocalSpec, nextLocalUpdates = localUpdatesLeftover, nextRemoteUpdates = Nil)
         StoreBecomeSend(hc3, OPEN, List(syncedLCSS) ++ hc2.resizeProposal ++ localUpdatesLeftover:_*)
-        process(CMD_SIGN)
+        events.notifyResolvers
       } else {
         // We are too far behind, restore from their future data
         val hc3 = restoreCommits(remoteLCSS.reverse, hc2.remoteInfo)
         StoreBecomeSend(hc3, OPEN, remoteLCSS.reverse)
         rejectOverriddenOutgoingAdds(hc1, hc3)
+        events.notifyResolvers
       }
     }
   }

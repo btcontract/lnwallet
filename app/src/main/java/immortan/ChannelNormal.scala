@@ -428,11 +428,10 @@ abstract class ChannelNormal(bag: ChannelBag) extends Channel { me =>
         if (wasUpdated) StoreBecomeSend(data2, SLEEPING) else BECOME(data1, SLEEPING)
         for (add <- localProposedAdds) events addRejectedLocally ChannelOffline(add)
 
-
       // REESTABLISHMENT IN PERSISTENT STATES
 
       case (wait: DATA_WAIT_FOR_REMOTE_PUBLISH_FUTURE_COMMITMENT, CMD_SOCKET_ONLINE, SLEEPING) =>
-        // There isn't much to do except asking them again to publish their current commitment by sending an error
+        // There isn't much to do except asking them again to publish their current commitment
         val error = Error(wait.channelId, "please publish your local commitment")
         BECOME(wait, CLOSING)
         SEND(error)
@@ -507,9 +506,9 @@ abstract class ChannelNormal(bag: ChannelBag) extends Channel { me =>
                 throw ChannelTransitionFail(norm.channelId)
             }
 
-            norm.localShutdown.foreach(sendQueue :+= _)
             BECOME(data1 = norm, state1 = OPEN)
-            SEND(sendQueue: _*)
+            SEND(sendQueue ++ norm.localShutdown:_*)
+            events.notifyResolvers
         }
 
 
