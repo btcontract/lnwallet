@@ -161,7 +161,7 @@ case class NormalCommits(channelFlags: Byte, channelId: ByteVector32, channelVer
   def sendAdd(cmd: CMD_ADD_HTLC, blockHeight: Long): Either[LocalReject, UpdatedNCAndAdd] = {
     if (LNParams.maxCltvExpiryDelta.toCltvExpiry(blockHeight) < cmd.cltvExpiry) return InPrincipleNotSendable(cmd.incompleteAdd).asLeft
     if (CltvExpiry(blockHeight) >= cmd.cltvExpiry) return InPrincipleNotSendable(cmd.incompleteAdd).asLeft
-    if (cmd.firstAmount < minSendable) return InPrincipleNotSendable(cmd.incompleteAdd).asLeft
+    if (cmd.firstAmount < minSendable) return ChannelNotAbleToSend(cmd.incompleteAdd).asLeft
 
     val completeAdd = cmd.incompleteAdd.copy(channelId = channelId, id = localNextHtlcId)
     val commitments1 = addLocalProposal(completeAdd).copy(localNextHtlcId = localNextHtlcId + 1)

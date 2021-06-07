@@ -417,18 +417,13 @@ class OutgoingPaymentSender(val fullTag: FullPaymentTag, val listener: OutgoingP
             resolveRemoteFail(data.withRemoteFailure(route, pkt), wait)
 
         } getOrElse {
-          // Select nodes between peer and payee, they are least likely to send garbage
+          // Select nodes between peer and payee
           val nodesInBetween = route.hops.map(_.nextNodeId).drop(1).dropRight(1)
-          val failure = UnreadableRemoteFailure(route)
-
-          if (nodesInBetween.isEmpty) {
-            // Garbage is sent by our peer or final payee, fail a payment
-            val data1 = data.copy(failures = failure +: data.failures)
-            me abortMaybeNotify data1.withoutPartId(wait.partId)
-          } else {
+          val data1 = data.copy(failures = UnreadableRemoteFailure(route) +: data.failures)
+          if (nodesInBetween.isEmpty) me abortMaybeNotify data1.withoutPartId(wait.partId) else {
             // We don't know which exact remote node is sending garbage, exclude a random one for current attempts
             opm doProcess NodeFailed(shuffle(nodesInBetween).head, data.cmd.routerConf.maxStrangeNodeFailures)
-            resolveRemoteFail(data.copy(failures = failure +: data.failures), wait)
+            resolveRemoteFail(data1, wait)
           }
         }
       }
@@ -451,17 +446,14 @@ class OutgoingPaymentSender(val fullTag: FullPaymentTag, val listener: OutgoingP
     // This is a terminal method in a sense that it either successfully assigns a given amount to channels or turns a payment into failed state
     val directChansFirst = shuffle(sendable.toSeq) sortBy { case (cnc, _) => if (cnc.commits.remoteInfo.nodeId == data1.cmd.targetNodeId) 0 else 1 }
     // This method always sets a new partId to assigned parts so old payment statuses in data must be cleared before calling it
-    val accumulatorAndLeftover = (Map.empty[ByteVector, PartStatus], amount)
 
-    directChansFirst.foldLeft(accumulatorAndLeftover) {
+    directChansFirst.foldLeft(Map.empty[ByteVector, PartStatus] -> amount) {
       case (accumulator ~~ leftover, cnc ~~ chanSendable) if leftover > 0L.msat =>
-        // If leftover becomes less than theoretical sendable minimum then we must bump it upwards
-        // Example: channel leftover=500, minSendable=10, chanSendable=200 -> sending 200
-        // Example: channel leftover=300, minSendable=10, chanSendable=400 -> sending 300
-        // Example: channel leftover=6, minSendable=10, chanSendable=200 -> sending 10
-        // Example: channel leftover=6, minSendable=10, chanSendable=8 -> skipping
+        // If leftover becomes less than sendable minimum then we must bump it upwards
+        // Example: channel leftover=500, chanSendable=200 -> sending 200
+        // Example: channel leftover=300, chanSendable=400 -> sending 300
 
-        val noFeeAmount = leftover max cnc.commits.minSendable min chanSendable
+        val noFeeAmount = leftover.min(chanSendable)
         val wait = WaitForRouteOrInFlight(randomKey, noFeeAmount, cnc, None, Nil, 0)
         if (noFeeAmount < cnc.commits.minSendable) (accumulator, leftover)
         else (accumulator + wait.tuple, leftover - noFeeAmount)

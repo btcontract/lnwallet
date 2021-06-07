@@ -60,7 +60,7 @@ case class HostedCommits(remoteInfo: RemoteNodeInfo, localSpec: CommitmentSpec, 
     val completeAdd = cmd.incompleteAdd.copy(channelId = channelId, id = nextTotalLocal + 1)
     val commits1 = addLocalProposal(completeAdd)
 
-    if (cmd.payload.amount < minSendable) return InPrincipleNotSendable(cmd.incompleteAdd).asLeft
+    if (cmd.payload.amount < minSendable) return ChannelNotAbleToSend(cmd.incompleteAdd).asLeft
     if (CltvExpiry(blockHeight) >= cmd.cltvExpiry) return InPrincipleNotSendable(cmd.incompleteAdd).asLeft
     if (LNParams.maxCltvExpiryDelta.toCltvExpiry(blockHeight) < cmd.cltvExpiry) return InPrincipleNotSendable(cmd.incompleteAdd).asLeft
     if (commits1.nextLocalSpec.outgoingAdds.size > lastCrossSignedState.initHostedChannel.maxAcceptedHtlcs) return ChannelNotAbleToSend(cmd.incompleteAdd).asLeft

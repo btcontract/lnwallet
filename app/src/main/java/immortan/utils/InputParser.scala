@@ -70,7 +70,7 @@ object PaymentRequestExt {
 case class PaymentRequestExt(uri: Try[Uri], pr: PaymentRequest, raw: String) {
   def withNewSplit(anotherPart: MilliSatoshi): String = s"$lightning$raw?splits=" + (anotherPart :: splits).map(_.toLong).mkString(",")
   val splits: List[MilliSatoshi] = uri.map(_.getQueryParameter("splits").split(',').toList.map(_.toLong) map MilliSatoshi.apply).getOrElse(Nil)
-  val hasSplitIssue: Boolean = pr.amount.forall(splits.sum + LNParams.minPayment > _) || (pr.amount.isEmpty && splits.nonEmpty)
+  val hasSplitIssue: Boolean = pr.amount.exists(splits.sum + LNParams.minPayment > _) || (pr.amount.isEmpty && splits.nonEmpty)
   val splitLeftover: MilliSatoshi = pr.amount.map(_ - splits.sum).getOrElse(0L.msat)
 
   val descriptionOpt: Option[String] = pr.description.left.toOption.map(trimmed).filter(_.nonEmpty)

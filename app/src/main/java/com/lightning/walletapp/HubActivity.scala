@@ -11,11 +11,13 @@ import com.softwaremill.quicklens._
 import com.lightning.walletapp.Colors._
 import com.lightning.walletapp.R.string._
 import immortan.utils.ImplicitJsonFormats._
+import com.lightning.walletapp.HubActivity._
 
 import scala.util.{Success, Try}
 import java.lang.{Integer => JInt}
 import android.view.{MenuItem, View, ViewGroup}
 import rx.lang.scala.{Observable, Subscription}
+import immortan.fsm.{CreateSenderFSM, InFlightInfo}
 import com.androidstudy.networkmanager.{Monitor, Tovuti}
 import fr.acinq.eclair.wire.{FullPaymentTag, PaymentTagTlv}
 import fr.acinq.bitcoin.{ByteVector32, Crypto, Satoshi, SatoshiLong}
@@ -37,7 +39,6 @@ import com.indicator.ChannelIndicatorLine
 import androidx.appcompat.app.AlertDialog
 import immortan.crypto.CanBeRepliedTo
 import java.util.concurrent.TimeUnit
-import immortan.fsm.InFlightInfo
 import android.content.Intent
 import immortan.sqlite.Table
 import org.ndeftools.Message
@@ -45,6 +46,17 @@ import java.util.TimerTask
 import android.os.Bundle
 import android.net.Uri
 
+
+object HubActivity {
+  var txInfos: Iterable[TxInfo] = Iterable.empty
+  var paymentInfos: Iterable[PaymentInfo] = Iterable.empty
+  var relayedPreimageInfos: Iterable[RelayedPreimageInfo] = Iterable.empty
+  var hashToReveals: Map[ByteVector32, RevealedLocalFulfills] = Map.empty
+  var allInfos: Seq[TransactionDetails] = Nil
+
+  // Run clear up method once on app start, do not re-run it every time this activity gets restarted
+  lazy val markAsFailedOnce: Unit = LNParams.cm.markAsFailed(paymentInfos, LNParams.cm.allInChannelOutgoing)
+}
 
 class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataChecker with ChoiceReceiver with ChannelListener with CanBeRepliedTo { me =>
   def inFlightOutgoingForTag(fullTag: FullPaymentTag): Seq[InFlightInfo] = LNParams.cm.opm.data.payments.get(fullTag).toList.flatMap(_.data.inFlightParts)
@@ -67,12 +79,6 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
   private[this] lazy val lnDefTitle = getString(tx_ln)
 
   // PAYMENT LIST
-
-  private var txInfos = Iterable.empty[TxInfo]
-  private var paymentInfos = Iterable.empty[PaymentInfo]
-  private var relayedPreimageInfos = Iterable.empty[RelayedPreimageInfo]
-  private var hashToReveals = Map.empty[ByteVector32, RevealedLocalFulfills]
-  private var allInfos = List.empty[TransactionDetails]
 
   def reloadTxInfos: Unit = txInfos = WalletApp.txDataBag.listRecentTxs(Table.DEFAULT_LIMIT.get).map(WalletApp.txDataBag.toTxInfo)
   def reloadPaymentInfos: Unit = paymentInfos = LNParams.cm.payBag.listRecentPayments(Table.DEFAULT_LIMIT.get).map(LNParams.cm.payBag.toPaymentInfo)
@@ -469,7 +475,8 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
             override def send(alert: AlertDialog): Unit = {
               val cmd = makeSendCmd(prExt, toSend = manager.resultMsat).modify(_.split.totalSum).setTo(origAmount)
               val description = PlainDescription(cmd.split.asSome, label = manager.resultExtraInput, invoiceText = prExt.descriptionOrEmpty)
-              replaceOutgoingPayment(prExt, description, action = None, cmd.split.myPart)
+              replaceOutgoingPayment(prExt, description, action = None, sentAmount = cmd.split.myPart)
+              LNParams.cm.opm process CreateSenderFSM(cmd.fullTag, LNParams.cm.localPaymentListener)
               LNParams.cm.opm process cmd
               alert.dismiss
             }
@@ -629,7 +636,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
       preimageSubscription = ChannelMaster.remoteFulfillStream.subscribe(resolveAction, none).asSome
       timer.scheduleAtFixedRate(UITask(for (holder <- currentHolders) holder.updMeta), 30000, 30000)
       // Run this check after establishing subscriptions since it will trigger an event stream
-      LNParams.cm.markAsFailed(paymentInfos, LNParams.cm.allInChannelOutgoing)
+      markAsFailedOnce
     } else {
       WalletApp.freePossiblyUsedResouces
       me exitTo ClassNames.mainActivityClass
@@ -822,7 +829,8 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
           lnSendGuard(pf.prExt, container = contentWindow) { _ =>
             val cmd = makeSendCmd(pf.prExt, toSend = manager.resultMsat).modify(_.split.totalSum).setTo(manager.resultMsat)
             val description = PlainMetaDescription(split = None, label = None, invoiceText = new String, meta = data.metaDataTextPlain)
-            replaceOutgoingPayment(pf.prExt, description, pf.successAction, cmd.split.myPart)
+            replaceOutgoingPayment(pf.prExt, description, pf.successAction, sentAmount = cmd.split.myPart)
+            LNParams.cm.opm process CreateSenderFSM(cmd.fullTag, LNParams.cm.localPaymentListener)
             LNParams.cm.opm process cmd
             alert.dismiss
           }

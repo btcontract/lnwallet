@@ -9,13 +9,13 @@ import android.view.{View, ViewGroup}
 import java.io.{File, FileOutputStream}
 import android.graphics.{Bitmap, Color}
 import android.graphics.Color.{BLACK, WHITE}
-import immortan.fsm.{SendMultiPart, SplitInfo}
 import android.content.{DialogInterface, Intent}
 import android.text.{Editable, Spanned, TextWatcher}
 import com.google.zxing.{BarcodeFormat, EncodeHintType}
 import fr.acinq.bitcoin.{ByteVector32, Crypto, Satoshi}
 import androidx.core.content.{ContextCompat, FileProvider}
 import fr.acinq.eclair.wire.{FullPaymentTag, PaymentTagTlv}
+import immortan.fsm.{CreateSenderFSM, SendMultiPart, SplitInfo}
 import immortan.crypto.Tools.{Any2Some, Fiat2Btc, none, runAnd}
 import immortan.utils.{Denomination, InputParser, PaymentRequestExt}
 import fr.acinq.eclair.blockchain.fee.{FeeratePerKw, FeeratePerVByte}
@@ -460,7 +460,8 @@ trait BaseActivity extends AppCompatActivity { me =>
     def baseSendNow(prExt: PaymentRequestExt, alert: AlertDialog): Unit = {
       val cmd = makeSendCmd(prExt, toSend = manager.resultMsat).modify(_.split.totalSum).setTo(manager.resultMsat)
       val description = PlainDescription(split = None, label = manager.resultExtraInput, invoiceText = prExt.descriptionOrEmpty)
-      replaceOutgoingPayment(prExt, description, action = None, cmd.split.myPart)
+      replaceOutgoingPayment(prExt, description, action = None, sentAmount = cmd.split.myPart)
+      LNParams.cm.opm process CreateSenderFSM(cmd.fullTag, LNParams.cm.localPaymentListener)
       LNParams.cm.opm process cmd
       alert.dismiss
     }
