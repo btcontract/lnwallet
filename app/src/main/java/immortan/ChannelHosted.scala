@@ -286,7 +286,7 @@ abstract class ChannelHosted extends Channel { me =>
       SEND(List(hc.lastCrossSignedState) ++ hc1.resizeProposal ++ hc1.nextLocalUpdates:_*)
       // Forget about their unsigned updates, they are expected to resend
       BECOME(hc1.copy(nextRemoteUpdates = Nil), OPEN)
-      process(CMD_SIGN)
+      events.notifyResolvers
     } else {
       val localUpdatesAcked = remoteLCSS.remoteUpdates - hc1.lastCrossSignedState.localUpdates
       val remoteUpdatesAcked = remoteLCSS.localUpdates - hc1.lastCrossSignedState.remoteUpdates

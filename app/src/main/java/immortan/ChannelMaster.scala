@@ -262,8 +262,8 @@ class ChannelMaster(val payBag: PaymentBag, val chanBag: ChannelBag, val dataBag
   override def notifyResolvers: Unit = {
     // Used to notify FSMs that we have cross-signed incoming HTLCs which FSMs may somehow act upon
     val allIns = all.values.flatMap(Channel.chanAndCommitsOpt).flatMap(_.commits.crossSignedIncoming).map(initResolveMemo.get)
-    allIns.foreach { case finalResolve: FinalResolution => sendTo(finalResolve, finalResolve.theirAdd.channelId) case _ => } // Resolve strange incoming right away
-    val reasonableIncoming = allIns.collect { case resolution: ReasonableResolution => resolution }.groupBy(_.fullTag) // Group reasonable incoming for FSM processing
+    allIns.foreach { case finalResolve: FinalResolution => sendTo(finalResolve, finalResolve.theirAdd.channelId) case _ => }
+    val reasonableIncoming = allIns.collect { case resolution: ReasonableResolution => resolution }.groupBy(_.fullTag)
     val inFlightsBag = InFlightPayments(allInChannelOutgoing, reasonableIncoming)
 
     inFlightsBag.allTags.collect {
