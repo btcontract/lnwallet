@@ -1,7 +1,7 @@
 package immortan
 
 import immortan.utils.ImplicitJsonFormats._
-import fr.acinq.eclair.channel.{DATA_CLOSING, DATA_NEGOTIATING, HasNormalCommitments}
+import fr.acinq.eclair.channel.{DATA_CLOSING, HasNormalCommitments}
 import immortan.crypto.Tools.{Bytes, Fiat2Btc, Any2Some, SEPARATOR, ratio}
 import immortan.fsm.{IncomingPaymentProcessor, SendMultiPart, SplitInfo}
 import fr.acinq.bitcoin.{ByteVector32, Satoshi, Transaction}
