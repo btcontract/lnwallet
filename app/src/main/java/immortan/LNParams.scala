@@ -38,10 +38,12 @@ object LNParams {
   val maxToLocalDelay: CltvExpiryDelta = CltvExpiryDelta(2016) // We ask peer to delay their payment for this long in case of force-close
   val maxFundingSatoshis: Satoshi = Satoshi(10000000000L) // Proposed channels of capacity more than this are not allowed
   val maxReserveToFundingRatio: Double = 0.05 // %
-  val maxOffChainFeeRatio: Double = 0.01 // %
   val maxNegotiationIterations: Int = 50
   val maxChainConnectionsCount: Int = 5
   val maxAcceptedHtlcs: Int = 483
+
+  val maxOffChainFeeRatio: Double = 0.01 // We are OK with paying up to this % of LN fee relative to payment amount
+  val maxOffChainFeeAboveRatio = MilliSatoshi(150000L) // For small amounts we accept fee up to this even when above ratio
 
   val shouldSendUpdateFeerateDiff = 5.0
   val shouldRejectPaymentFeerateDiff = 15.0

@@ -148,7 +148,6 @@
                     style="@style/ChipTextGrayMargin"
                     android:textColor="@color/colorAccent"
                     android:layout_toEndOf="@id/unusedAnchorId2"
-                    android:layout_centerVertical="true"
                     android:id="@+id/lnSyncIndicator"
                     android:text="@string/sync"
                     android:visibility="gone"

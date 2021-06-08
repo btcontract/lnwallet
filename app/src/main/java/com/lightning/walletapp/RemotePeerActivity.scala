@@ -1,6 +1,7 @@
 package com.lightning.walletapp
 
 import immortan._
+import immortan.utils._
 import fr.acinq.eclair._
 import fr.acinq.eclair.wire._
 import immortan.crypto.Tools._
@@ -11,7 +12,6 @@ import android.view.{View, ViewGroup}
 import fr.acinq.bitcoin.{ByteVector32, Satoshi}
 import android.widget.{LinearLayout, ProgressBar, TextView}
 import immortan.fsm.{HCOpenHandler, NCFundeeOpenHandler, NCFunderOpenHandler}
-import immortan.utils.{HasRemoteInfo, HasRemoteInfoWrap, HostedChannelRequest, InputParser, NormalChannelRequest, Rx, ThrottledWork}
 import fr.acinq.eclair.blockchain.MakeFundingTxResponse
 import com.lightning.walletapp.BaseActivity.StringOps
 import concurrent.ExecutionContext.Implicits.global
@@ -202,10 +202,8 @@ class RemotePeerActivity extends BaseActivity with ExternalDataChecker { me =>
     feeView.update(feeOpt = None, showIssue = false)
   }
 
-  def sharePeerSpecificNodeId(view: View): Unit = {
+  def sharePeerSpecificNodeId(view: View): Unit =
     share(hasInfo.remoteInfo.nodeSpecificPubKey.toString)
-    println(hasInfo.remoteInfo.nodeSpecificPubKey.toString)
-  }
 
   def requestHostedChannel(view: View): Unit =
     me askHostedChannel randomBytes32

@@ -42,7 +42,7 @@ object RouteCalculation {
     assistedRoutes.flatMap(converter).toSet
   }
 
-  def routeToEdges(extraHops: ExtraHops, targetNodeId: PublicKey): List[GraphEdge] = {
+  def routeToEdges(extraHops: ExtraHops, targetNodeId: PublicKey): Graph.GraphStructure.GraphEdges = {
     // BOLT 11: "For each entry, the pubkey is the node ID of the start of the channel", and the last node is the destination
     val protoDescs = (extraHops.map(_.shortChannelId), extraHops.map(_.nodeId), extraHops.map(_.nodeId).drop(1) :+ targetNodeId)
     protoDescs.zipped.toList.map(ChannelDesc.tupled).zip(extraHops map toFakeUpdate).map(GraphEdge.tupled)

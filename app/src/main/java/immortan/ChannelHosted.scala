@@ -136,8 +136,6 @@ abstract class ChannelHosted extends Channel { me =>
 
 
     case (hc: HostedCommits, msg: UpdateFailHtlc, OPEN) if hc.error.isEmpty => BECOME(hc.receiveFail(msg), OPEN)
-
-
     case (hc: HostedCommits, msg: UpdateFailMalformedHtlc, OPEN) if hc.error.isEmpty => BECOME(hc.receiveFailMalformed(msg), OPEN)
 
 
@@ -147,7 +145,7 @@ abstract class ChannelHosted extends Channel { me =>
 
 
     // First attempt a normal state update, then a resized state update if original signature check fails and we have a pending resize proposal
-    case (hc: HostedCommits, remoteSU: StateUpdate, OPEN) if remoteSU.localSigOfRemoteLCSS != hc.lastCrossSignedState.remoteSigOfLocal && hc.error.isEmpty =>
+    case (hc: HostedCommits, remoteSU: StateUpdate, OPEN) if (remoteSU.localSigOfRemoteLCSS != hc.lastCrossSignedState.remoteSigOfLocal) && hc.error.isEmpty =>
       attemptStateUpdate(remoteSU, hc)
 
 
@@ -256,7 +254,7 @@ abstract class ChannelHosted extends Channel { me =>
 
     case (null, wait: WaitRemoteHostedReply, -1) => super.become(wait, WAIT_FOR_INIT)
     case (null, hc: HostedCommits, -1) => super.become(hc, SLEEPING)
-    case _ =>
+    case _ => println(s"-- UNHANDLED $state, ${change.getClass.getSimpleName}")
   }
 
   def rejectOverriddenOutgoingAdds(hc: HostedCommits, hc1: HostedCommits): Unit =
@@ -333,8 +331,13 @@ abstract class ChannelHosted extends Channel { me =>
         case None => localSuspend(hc, ERR_HOSTED_WRONG_REMOTE_SIG)
       }
     } else {
+      val remoteRejects: Seq[RemoteReject] = hc.nextRemoteUpdates.collect {
+        case fail: UpdateFailHtlc => RemoteUpdateFail(fail, hc.localSpec.findOutgoingHtlcById(fail.id).get.add)
+        case malform: UpdateFailMalformedHtlc => RemoteUpdateMalform(malform, hc.localSpec.findOutgoingHtlcById(malform.id).get.add)
+      }
+
       StoreBecomeSend(hc1, OPEN, lcss1.stateUpdate)
-      notifyRemoteRejects(hc.nextRemoteUpdates, hc.localSpec)
+      for (reject <- remoteRejects) events addRejectedRemotely reject
       events.notifyResolvers
     }
   }

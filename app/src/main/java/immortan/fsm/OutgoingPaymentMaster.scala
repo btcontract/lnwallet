@@ -230,8 +230,8 @@ sealed trait PartStatus { me =>
 case class InFlightInfo(cmd: CMD_ADD_HTLC, route: Route)
 case class WaitForChanOnline(onionKey: PrivateKey, amount: MilliSatoshi) extends PartStatus
 case class WaitForRouteOrInFlight(onionKey: PrivateKey, amount: MilliSatoshi, cnc: ChanAndCommits,
-                                  flight: Option[InFlightInfo], localFailed: List[Channel],
-                                  remoteAttempts: Int) extends PartStatus {
+                                  flight: Option[InFlightInfo] = None, localFailed: List[Channel] = Nil,
+                                  remoteAttempts: Int = 0) extends PartStatus {
 
   def oneMoreRemoteAttempt(cnc1: ChanAndCommits): WaitForRouteOrInFlight = copy(flight = None, remoteAttempts = remoteAttempts + 1, cnc = cnc1)
   def oneMoreLocalAttempt(cnc1: ChanAndCommits): WaitForRouteOrInFlight = copy(flight = None, localFailed = localFailedChans, cnc = cnc1)
@@ -299,133 +299,140 @@ class OutgoingPaymentSender(val fullTag: FullPaymentTag, val listener: OutgoingP
       become(data1, SUCCEEDED)
 
     case (CMDChanGotOnline, PENDING) =>
-      data.parts.values.collectFirst { case wait: WaitForChanOnline =>
-        val nowSendable = opm.rightNowSendable(data.cmd.allowedChans, feeLeftover)
-        assignToChans(nowSendable, data.withoutPartId(wait.partId), wait.amount)
+      data.parts.values.collectFirst {
+        case wait: WaitForChanOnline =>
+          val nowSendable = opm.rightNowSendable(data.cmd.allowedChans, feeLeftover)
+          assignToChans(nowSendable, data.withoutPartId(wait.partId), wait.amount)
       }
 
     case (CMDAskForRoute, PENDING) =>
-      data.parts.values.collectFirst { case wait: WaitForRouteOrInFlight if wait.flight.isEmpty =>
-        val fakeLocalEdge = mkFakeLocalEdge(from = invalidPubKey, wait.cnc.commits.remoteInfo.nodeId)
-        val routeParams = RouteParams(feeLeftover, data.cmd.routerConf.initRouteMaxLength, data.cmd.routerConf.initCltvMaxDelta)
-        opm process RouteRequest(fullTag, wait.partId, source = invalidPubKey, data.cmd.targetNodeId, wait.amount, fakeLocalEdge, routeParams)
+      data.parts.values.collectFirst {
+        case wait: WaitForRouteOrInFlight if wait.flight.isEmpty =>
+          val fakeLocalEdge = mkFakeLocalEdge(from = invalidPubKey, wait.cnc.commits.remoteInfo.nodeId)
+          val routeParams = RouteParams(feeLeftover, data.cmd.routerConf.initRouteMaxLength, data.cmd.routerConf.initCltvMaxDelta)
+          opm process RouteRequest(fullTag, wait.partId, source = invalidPubKey, data.cmd.targetNodeId, wait.amount, fakeLocalEdge, routeParams)
       }
 
     case (fail: NoRouteAvailable, PENDING) =>
-      data.parts.values.collectFirst { case wait: WaitForRouteOrInFlight if wait.flight.isEmpty && wait.partId == fail.partId =>
-        val singleCapableCncCandidates = opm.rightNowSendable(data.cmd.allowedChans diff wait.localFailedChans, feeLeftover)
-        val otherOpt = singleCapableCncCandidates.collectFirst { case (cnc, sendable) if sendable >= wait.amount => cnc }
+      data.parts.values.collectFirst {
+        case wait: WaitForRouteOrInFlight if wait.flight.isEmpty && wait.partId == fail.partId =>
+          val singleCapableCncCandidates = opm.rightNowSendable(data.cmd.allowedChans diff wait.localFailedChans, feeLeftover)
+          val otherOpt = singleCapableCncCandidates.collectFirst { case (cnc, sendable) if sendable >= wait.amount => cnc }
 
-        otherOpt match {
-          case None if canBeSplit(wait.amount) => become(data.withoutPartId(wait.partId), PENDING) doProcess CutIntoHalves(wait.amount)
-          case Some(otherCapableCnc) => become(data.copy(parts = data.parts + wait.oneMoreLocalAttempt(otherCapableCnc).tuple), PENDING)
-          case None => me abortMaybeNotify data.withoutPartId(wait.partId).withLocalFailure(NO_ROUTES_FOUND, wait.amount)
-        }
+          otherOpt match {
+            case None if canBeSplit(wait.amount) => become(data.withoutPartId(wait.partId), PENDING) doProcess CutIntoHalves(wait.amount)
+            case Some(otherCapableCnc) => become(data.copy(parts = data.parts + wait.oneMoreLocalAttempt(otherCapableCnc).tuple), PENDING)
+            case None => me abortMaybeNotify data.withoutPartId(wait.partId).withLocalFailure(NO_ROUTES_FOUND, wait.amount)
+          }
       }
 
     case (found: RouteFound, PENDING) =>
-      data.parts.values.collectFirst { case wait: WaitForRouteOrInFlight if wait.flight.isEmpty && wait.partId == found.partId =>
-        val chainExpiry = data.cmd.chainExpiry match { case Right(delta) => delta.toCltvExpiry(LNParams.blockCount.get + 1) case Left(absolute) => absolute }
-        val finalPayload = Onion.createMultiPartPayload(wait.amount, data.cmd.split.totalSum, chainExpiry, data.cmd.outerPaymentSecret, data.cmd.onionTlvs, data.cmd.userCustomTlvs)
-        val (firstAmount, firstExpiry, onion) = OutgoingPacket.buildPacket(Sphinx.PaymentPacket)(wait.onionKey, fullTag.paymentHash, found.route.hops, finalPayload)
-        val cmdAdd = CMD_ADD_HTLC(fullTag, firstAmount, firstExpiry, PacketAndSecrets(onion.packet, onion.sharedSecrets), finalPayload)
-        become(data.copy(parts = data.parts + wait.copy(flight = InFlightInfo(cmdAdd, found.route).asSome).tuple), PENDING)
-        wait.cnc.chan process cmdAdd
+      data.parts.values.collectFirst {
+        case wait: WaitForRouteOrInFlight if wait.flight.isEmpty && wait.partId == found.partId =>
+          val chainExpiry = data.cmd.chainExpiry match { case Right(delta) => delta.toCltvExpiry(LNParams.blockCount.get + 1) case Left(absolute) => absolute }
+          val finalPayload = Onion.createMultiPartPayload(wait.amount, data.cmd.split.totalSum, chainExpiry, data.cmd.outerPaymentSecret, data.cmd.onionTlvs, data.cmd.userCustomTlvs)
+          val (firstAmount, firstExpiry, onion) = OutgoingPacket.buildPacket(Sphinx.PaymentPacket)(wait.onionKey, fullTag.paymentHash, found.route.hops, finalPayload)
+          val cmdAdd = CMD_ADD_HTLC(fullTag, firstAmount, firstExpiry, PacketAndSecrets(onion.packet, onion.sharedSecrets), finalPayload)
+          become(data.copy(parts = data.parts + wait.copy(flight = InFlightInfo(cmdAdd, found.route).asSome).tuple), PENDING)
+          wait.cnc.chan process cmdAdd
       }
 
     case (reject: LocalReject, PENDING) =>
-      data.parts.values.collectFirst { case wait: WaitForRouteOrInFlight if wait.flight.isDefined && wait.partId == reject.localAdd.partId =>
-        val singleCapableCncCandidates = opm.rightNowSendable(data.cmd.allowedChans diff wait.localFailedChans, feeLeftover)
-        val otherOpt = singleCapableCncCandidates.collectFirst { case (cnc, sendable) if sendable >= wait.amount => cnc }
+      data.parts.values.collectFirst {
+        case wait: WaitForRouteOrInFlight if wait.flight.isDefined && wait.partId == reject.localAdd.partId =>
+          val singleCapableCncCandidates = opm.rightNowSendable(data.cmd.allowedChans diff wait.localFailedChans, feeLeftover)
+          val otherOpt = singleCapableCncCandidates.collectFirst { case (cnc, sendable) if sendable >= wait.amount => cnc }
 
-        otherOpt match {
-          case _ if reject.isInstanceOf[InPrincipleNotSendable] => me abortMaybeNotify data.withoutPartId(wait.partId).withLocalFailure(PAYMENT_NOT_SENDABLE, wait.amount)
-          case None if reject.isInstanceOf[ChannelOffline] => assignToChans(opm.rightNowSendable(data.cmd.allowedChans, feeLeftover), data.withoutPartId(wait.partId), wait.amount)
-          case Some(otherCapableCnc) => become(data.copy(parts = data.parts + wait.oneMoreLocalAttempt(otherCapableCnc).tuple), PENDING)
-          case None => me abortMaybeNotify data.withoutPartId(wait.partId).withLocalFailure(RUN_OUT_OF_RETRY_ATTEMPTS, wait.amount)
-        }
+          otherOpt match {
+            case _ if reject.isInstanceOf[InPrincipleNotSendable] => me abortMaybeNotify data.withoutPartId(wait.partId).withLocalFailure(PAYMENT_NOT_SENDABLE, wait.amount)
+            case None if reject.isInstanceOf[ChannelOffline] => assignToChans(opm.rightNowSendable(data.cmd.allowedChans, feeLeftover), data.withoutPartId(wait.partId), wait.amount)
+            case Some(otherCapableCnc) => become(data.copy(parts = data.parts + wait.oneMoreLocalAttempt(otherCapableCnc).tuple), PENDING)
+            case None => me abortMaybeNotify data.withoutPartId(wait.partId).withLocalFailure(RUN_OUT_OF_RETRY_ATTEMPTS, wait.amount)
+          }
       }
 
     case (reject: RemoteUpdateMalform, PENDING) =>
-      data.parts.values.collectFirst { case wait: WaitForRouteOrInFlight if wait.flight.isDefined && wait.partId == reject.ourAdd.partId =>
-        val singleCapableCncCandidates = opm.rightNowSendable(data.cmd.allowedChans diff wait.localFailedChans, feeLeftover)
-        val otherOpt = singleCapableCncCandidates.collectFirst { case (cnc, sendable) if sendable >= wait.amount => cnc }
+      data.parts.values.collectFirst {
+        case wait: WaitForRouteOrInFlight if wait.flight.isDefined && wait.partId == reject.ourAdd.partId =>
+          val singleCapableCncCandidates = opm.rightNowSendable(data.cmd.allowedChans diff wait.localFailedChans, feeLeftover)
+          val otherOpt = singleCapableCncCandidates.collectFirst { case (cnc, sendable) if sendable >= wait.amount => cnc }
 
-        otherOpt match {
-          case Some(otherCapableCnc) => become(data.copy(parts = data.parts + wait.oneMoreLocalAttempt(otherCapableCnc).tuple), PENDING)
-          case None => me abortMaybeNotify data.withoutPartId(wait.partId).withLocalFailure(PEER_COULD_NOT_PARSE_ONION, wait.amount)
-        }
+          otherOpt match {
+            case Some(otherCapableCnc) => become(data.copy(parts = data.parts + wait.oneMoreLocalAttempt(otherCapableCnc).tuple), PENDING)
+            case None => me abortMaybeNotify data.withoutPartId(wait.partId).withLocalFailure(PEER_COULD_NOT_PARSE_ONION, wait.amount)
+          }
       }
 
     case (reject: RemoteUpdateFail, PENDING) =>
-      // TODO: this is only viable for base and trampoline-to-legacy MPP
-      // TODO: when we send TMPP remote errors from targetNodeId have different meaning (since targetNodeId is not payee)
-      // TODO: when we send TMPP remote errors may NOT have a corresponding hop in our route (originated beyond trampoline node)
-      data.parts.values.collectFirst { case wait: WaitForRouteOrInFlight if wait.flight.isDefined && wait.partId == reject.ourAdd.partId =>
-        val InFlightInfo(cmd, route) = wait.flight.get
+      data.parts.values.collectFirst {
+        // TODO: this is only viable for base and trampoline-to-legacy MPP
+        // TODO: when we send TMPP remote errors from targetNodeId have different meaning (since targetNodeId is not payee)
+        // TODO: when we send TMPP remote errors may NOT have a corresponding hop in our route (originated beyond trampoline node)
+        case wait: WaitForRouteOrInFlight if wait.flight.isDefined && wait.partId == reject.ourAdd.partId =>
+          val InFlightInfo(cmd, route) = wait.flight.get
 
-        Sphinx.FailurePacket.decrypt(reject.fail.reason, cmd.packetAndSecrets.sharedSecrets) map {
-          case pkt if pkt.originNode == data.cmd.targetNodeId || PaymentTimeout == pkt.failureMessage =>
-            me abortMaybeNotify data.withoutPartId(wait.partId).withRemoteFailure(route, pkt)
+          Sphinx.FailurePacket.decrypt(reject.fail.reason, cmd.packetAndSecrets.sharedSecrets) map {
+            case pkt if pkt.originNode == data.cmd.targetNodeId || PaymentTimeout == pkt.failureMessage =>
+              me abortMaybeNotify data.withoutPartId(wait.partId).withRemoteFailure(route, pkt)
 
-          case pkt @ Sphinx.DecryptedFailurePacket(originNodeId, failure: Update) =>
-            // Pathfinder channels must be fully loaded from db at this point since we have already used them to construct a route earlier
-            val originalNodeIdOpt = opm.cm.pf.data.channels.get(failure.update.shortChannelId).map(_.ann getNodeIdSameSideAs failure.update)
-            val isSignatureFine = originalNodeIdOpt.contains(originNodeId) && Announcements.checkSig(failure.update)(originNodeId)
+            case pkt @ Sphinx.DecryptedFailurePacket(originNodeId, failure: Update) =>
+              // Pathfinder channels must be fully loaded from db at this point since we have already used them to construct a route earlier
+              val originalNodeIdOpt = opm.cm.pf.data.channels.get(failure.update.shortChannelId).map(_.ann getNodeIdSameSideAs failure.update)
+              val isSignatureFine = originalNodeIdOpt.contains(originNodeId) && Announcements.checkSig(failure.update)(originNodeId)
 
-            if (isSignatureFine) {
-              opm.cm.pf process failure.update
-              route.getEdgeForNode(originNodeId) match {
-                case Some(edge) if edge.updExt.update.shortChannelId != failure.update.shortChannelId =>
-                  // This is fine: remote node has used a different channel than the one we have initially requested
-                  // But remote node may send such errors infinitely so increment this specific type of failure
-                  // Still fail an originally selected channel since it has most likely been tried too
-                  opm doProcess ChannelFailed(edge.toDescAndCapacity, increment = 1)
-                  opm doProcess NodeFailed(originNodeId, increment = 1)
+              if (isSignatureFine) {
+                opm.cm.pf process failure.update
+                route.getEdgeForNode(originNodeId) match {
+                  case Some(edge) if edge.updExt.update.shortChannelId != failure.update.shortChannelId =>
+                    // This is fine: remote node has used a different channel than the one we have initially requested
+                    // But remote node may send such errors infinitely so increment this specific type of failure
+                    // Still fail an originally selected channel since it has most likely been tried too
+                    opm doProcess ChannelFailed(edge.toDescAndCapacity, increment = 1)
+                    opm doProcess NodeFailed(originNodeId, increment = 1)
 
-                case Some(edge) if edge.updExt.update.core == failure.update.core =>
-                  // Remote node returned the same update we used, channel is most likely imbalanced
-                  // Note: we may have it disabled and new update comes enabled: still same update
-                  opm doProcess ChannelFailed(edge.toDescAndCapacity, increment = 1)
+                  case Some(edge) if edge.updExt.update.core == failure.update.core =>
+                    // Remote node returned the same update we used, channel is most likely imbalanced
+                    // Note: we may have it disabled and new update comes enabled: still same update
+                    opm doProcess ChannelFailed(edge.toDescAndCapacity, increment = 1)
 
-                case _ =>
-                  // Something like higher feerates or CLTV, channel is updated in graph and may be chosen once again
-                  // But remote node may send oscillating updates infinitely so increment this specific type of failure
-                  opm doProcess NodeFailed(originNodeId, increment = 1)
+                  case _ =>
+                    // Something like higher feerates or CLTV, channel is updated in graph and may be chosen once again
+                    // But remote node may send oscillating updates infinitely so increment this specific type of failure
+                    opm doProcess NodeFailed(originNodeId, increment = 1)
+                }
+              } else {
+                // Invalid sig is a severe violation, ban sender node for 6 subsequent payments
+                opm doProcess NodeFailed(originNodeId, data.cmd.routerConf.maxStrangeNodeFailures * 32)
               }
-            } else {
-              // Invalid sig is a severe violation, ban sender node for 6 subsequent payments
-              opm doProcess NodeFailed(originNodeId, data.cmd.routerConf.maxStrangeNodeFailures * 32)
+
+              // Record a remote error and keep trying the rest of routes
+              resolveRemoteFail(data.withRemoteFailure(route, pkt), wait)
+
+            case pkt @ Sphinx.DecryptedFailurePacket(nodeId, _: Node) =>
+              // Node may become fine on next payment, but ban it for current attempts
+              opm doProcess NodeFailed(nodeId, data.cmd.routerConf.maxStrangeNodeFailures)
+              resolveRemoteFail(data.withRemoteFailure(route, pkt), wait)
+
+            case pkt @ Sphinx.DecryptedFailurePacket(nodeId, _) =>
+              // TODO: absent if error happened beyond trampoline in TMPP
+              route.getEdgeForNode(nodeId).map(_.toDescAndCapacity) match {
+                case Some(dnc) => opm doProcess ChannelFailed(dnc, data.cmd.routerConf.maxChannelFailures * 2)
+                case None => opm doProcess NodeFailed(nodeId, data.cmd.routerConf.maxStrangeNodeFailures)
+              }
+
+              // Record an error and keep trying out the rest of routes
+              resolveRemoteFail(data.withRemoteFailure(route, pkt), wait)
+
+          } getOrElse {
+            // Select nodes between peer and payee
+            val nodesInBetween = route.hops.map(_.nextNodeId).drop(1).dropRight(1)
+            val data1 = data.copy(failures = UnreadableRemoteFailure(route) +: data.failures)
+            if (nodesInBetween.isEmpty) me abortMaybeNotify data1.withoutPartId(wait.partId) else {
+              // We don't know which exact remote node is sending garbage, exclude a random one for current attempts
+              opm doProcess NodeFailed(shuffle(nodesInBetween).head, data.cmd.routerConf.maxStrangeNodeFailures)
+              resolveRemoteFail(data1, wait)
             }
-
-            // Record a remote error and keep trying the rest of routes
-            resolveRemoteFail(data.withRemoteFailure(route, pkt), wait)
-
-          case pkt @ Sphinx.DecryptedFailurePacket(nodeId, _: Node) =>
-            // Node may become fine on next payment, but ban it for current attempts
-            opm doProcess NodeFailed(nodeId, data.cmd.routerConf.maxStrangeNodeFailures)
-            resolveRemoteFail(data.withRemoteFailure(route, pkt), wait)
-
-          case pkt @ Sphinx.DecryptedFailurePacket(nodeId, _) =>
-            // TODO: absent if error happened beyond trampoline in TMPP
-            route.getEdgeForNode(nodeId).map(_.toDescAndCapacity) match {
-              case Some(dnc) => opm doProcess ChannelFailed(dnc, data.cmd.routerConf.maxChannelFailures * 2)
-              case None => opm doProcess NodeFailed(nodeId, data.cmd.routerConf.maxStrangeNodeFailures)
-            }
-
-            // Record an error and keep trying out the rest of routes
-            resolveRemoteFail(data.withRemoteFailure(route, pkt), wait)
-
-        } getOrElse {
-          // Select nodes between peer and payee
-          val nodesInBetween = route.hops.map(_.nextNodeId).drop(1).dropRight(1)
-          val data1 = data.copy(failures = UnreadableRemoteFailure(route) +: data.failures)
-          if (nodesInBetween.isEmpty) me abortMaybeNotify data1.withoutPartId(wait.partId) else {
-            // We don't know which exact remote node is sending garbage, exclude a random one for current attempts
-            opm doProcess NodeFailed(shuffle(nodesInBetween).head, data.cmd.routerConf.maxStrangeNodeFailures)
-            resolveRemoteFail(data1, wait)
           }
-        }
       }
 
     case (cut: CutIntoHalves, PENDING) =>
@@ -454,9 +461,8 @@ class OutgoingPaymentSender(val fullTag: FullPaymentTag, val listener: OutgoingP
         // Example: channel leftover=300, chanSendable=400 -> sending 300
 
         val noFeeAmount = leftover.min(chanSendable)
-        val wait = WaitForRouteOrInFlight(randomKey, noFeeAmount, cnc, None, Nil, 0)
-        if (noFeeAmount < cnc.commits.minSendable) (accumulator, leftover)
-        else (accumulator + wait.tuple, leftover - noFeeAmount)
+        val wait = WaitForRouteOrInFlight(randomKey, noFeeAmount, cnc)
+        (accumulator + wait.tuple, leftover - wait.amount)
 
       case (collected, _) =>
         // No more amount to assign
@@ -465,7 +471,7 @@ class OutgoingPaymentSender(val fullTag: FullPaymentTag, val listener: OutgoingP
 
     } match {
       case (newParts, rest) if rest <= 0L.msat =>
-        // A whole mount has been fully split across our local channels
+        // A whole amount has been fully split across our local channels
         // leftover may be slightly negative due to min sendable corrections
         become(data1.copy(parts = data1.parts ++ newParts), PENDING)
 

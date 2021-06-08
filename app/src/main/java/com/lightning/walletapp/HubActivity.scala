@@ -17,15 +17,14 @@ import scala.util.{Success, Try}
 import java.lang.{Integer => JInt}
 import android.view.{MenuItem, View, ViewGroup}
 import rx.lang.scala.{Observable, Subscription}
-import immortan.fsm.{CreateSenderFSM, InFlightInfo}
 import com.androidstudy.networkmanager.{Monitor, Tovuti}
 import fr.acinq.eclair.wire.{FullPaymentTag, PaymentTagTlv}
+import immortan.ChannelMaster.{OutgoingAdds, RevealedLocalFulfills}
 import fr.acinq.bitcoin.{ByteVector32, Crypto, Satoshi, SatoshiLong}
 import fr.acinq.eclair.blockchain.fee.{FeeratePerKw, FeeratePerVByte}
 import fr.acinq.eclair.blockchain.electrum.ElectrumWallet.WalletReady
 import com.lightning.walletapp.BaseActivity.StringOps
 import org.ndeftools.util.activity.NfcReaderActivity
-import immortan.ChannelMaster.RevealedLocalFulfills
 import concurrent.ExecutionContext.Implicits.global
 import fr.acinq.eclair.transactions.RemoteFulfill
 import com.github.mmin18.widget.RealtimeBlurView
@@ -39,6 +38,7 @@ import com.indicator.ChannelIndicatorLine
 import androidx.appcompat.app.AlertDialog
 import immortan.crypto.CanBeRepliedTo
 import java.util.concurrent.TimeUnit
+import immortan.fsm.CreateSenderFSM
 import android.content.Intent
 import immortan.sqlite.Table
 import org.ndeftools.Message
@@ -59,7 +59,6 @@ object HubActivity {
 }
 
 class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataChecker with ChoiceReceiver with ChannelListener with CanBeRepliedTo { me =>
-  def inFlightOutgoingForTag(fullTag: FullPaymentTag): Seq[InFlightInfo] = LNParams.cm.opm.data.payments.get(fullTag).toList.flatMap(_.data.inFlightParts)
   def lnBalance: MilliSatoshi = LNParams.cm.all.values.filter(Channel.isOperationalOrWaiting).map(Channel.estimateBalance).sum
 
   private[this] lazy val bottomBlurringArea = findViewById(R.id.bottomBlurringArea).asInstanceOf[RealtimeBlurView]
@@ -109,14 +108,17 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
     def process(query: String, searchLoadResultEffect: Unit): Unit = UITask(updatePaymentList).run
   }
 
-  var currentHolders: Set[PaymentLineViewHolder] = _
+  var lastSeenViewHolders: Set[PaymentLineViewHolder] = _
+  var lastSeenInChannelOutgoing: Map[FullPaymentTag, OutgoingAdds] = _
+
   val paymentsAdapter: BaseAdapter = new BaseAdapter {
     override def getItem(pos: Int): TransactionDetails = allInfos(pos)
     override def getItemId(position: Int): Long = position
     override def getCount: Int = allInfos.size
 
     override def notifyDataSetChanged: Unit = {
-      currentHolders = Set.empty[PaymentLineViewHolder]
+      lastSeenViewHolders = Set.empty[PaymentLineViewHolder]
+      lastSeenInChannelOutgoing = LNParams.cm.allInChannelOutgoing
       super.notifyDataSetChanged
     }
 
@@ -124,7 +126,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
       val view = if (null == savedView) getLayoutInflater.inflate(R.layout.frag_payment_line, null) else savedView
       val holder = if (null == view.getTag) new PaymentLineViewHolder(view) else view.getTag.asInstanceOf[PaymentLineViewHolder]
       holder.currentDetails = getItem(position)
-      currentHolders += holder
+      lastSeenViewHolders += holder
       holder.updDetails
       holder.updMeta
       view
@@ -198,9 +200,9 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
           else meta setText valueHuman.getOrElse(pctCollected.head).html // Show either value collected so far or that we are still waiting
 
         case info: PaymentInfo =>
-          val currentInFlight = inFlightOutgoingForTag(info.fullTag)
-          val isActive = PaymentStatus.PENDING == info.status || currentInFlight.nonEmpty
-          if (isActive) meta setText WalletApp.app.plurOrZero(partsInFlight)(currentInFlight.size).html // Show either number of parts or that we are still preparing
+          val currentInChannel = lastSeenInChannelOutgoing.getOrElse(info.fullTag, Nil)
+          val isActive = PaymentStatus.PENDING == info.status || currentInChannel.nonEmpty
+          if (isActive) meta setText WalletApp.app.plurOrZero(partsInFlight)(currentInChannel.size).html // Show either number of parts or that we are still preparing
           else meta setText WalletApp.app.when(info.date).html // Payment has either succeeded or failed AND no leftovers are present in FSM, show timestamp
       }
 
@@ -267,7 +269,9 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
 
     private def paymentBackground(fullTag: FullPaymentTag): Int =
       if (ChannelMaster.dangerousHCRevealed(hashToReveals, LNParams.blockCount.get, fullTag.paymentHash).nonEmpty) R.drawable.border_red
-      else if (LNParams.cm.inProcessors.contains(fullTag) || inFlightOutgoingForTag(fullTag).nonEmpty) R.drawable.border_blue
+      else if (LNParams.cm.opm.data.payments contains fullTag) R.drawable.border_blue // An active outgoing FSM is present for this tag
+      else if (lastSeenInChannelOutgoing contains fullTag) R.drawable.border_blue // Payments in channel are present for this tag
+      else if (LNParams.cm.inProcessors contains fullTag) R.drawable.border_blue // An active incoming FSM exists for this tag
       else R.drawable.border_dark_gray
   }
 
@@ -405,12 +409,11 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
   private val MAX_ERROR_COUNT_WITHIN_WINDOW = 4
   private val channelErrors = CacheBuilder.newBuilder.expireAfterAccess(30, TimeUnit.SECONDS).maximumSize(500).build[ByteVector32, JInt]
 
-  private def chanError(channelId: ByteVector32, message: String, remoteInfo: RemoteNodeInfo) = UITask {
-    Option(channelErrors getIfPresent channelId).filter(errorCountSoFar => MAX_ERROR_COUNT_WITHIN_WINDOW > errorCountSoFar).foreach { count =>
-      val builder = new AlertDialog.Builder(me).setCustomTitle(getString(error_channel).format(remoteInfo.nodeId.toString.take(16).humanFour).asDefView)
-      mkCheckForm(none, share(message), builder.setMessage(message.html), dialog_ok, dialog_share)
-      channelErrors.put(channelId, count + 1)
-    }
+  private def chanError(chanId: ByteVector32, msg: String, info: RemoteNodeInfo) = UITask {
+    val currentErrorCount = Option(channelErrors getIfPresent chanId).getOrElse(default = 0: JInt)
+    val builder = new AlertDialog.Builder(me).setCustomTitle(getString(error_channel).format(info.nodeId.toString.take(16).humanFour).asDefView)
+    if (currentErrorCount < MAX_ERROR_COUNT_WITHIN_WINDOW) mkCheckForm(none, share(msg), builder.setMessage(msg.html), dialog_ok, dialog_share)
+    channelErrors.put(chanId, currentErrorCount + 1)
   }
 
   override def onException: PartialFunction[Malfunction, Unit] = {
@@ -634,7 +637,8 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
       statusSubscription = Rx.uniqueFirstAndLastWithinWindow(ChannelMaster.statusUpdateStream, window).merge(stateEvents).subscribe(_ => UITask(walletCards.updateView).run).asSome
       paymentSubscription = ChannelMaster.hashRevealStream.merge(ChannelMaster.remoteFulfillStream).throttleFirst(window).subscribe(_ => Vibrator.vibrate).asSome
       preimageSubscription = ChannelMaster.remoteFulfillStream.subscribe(resolveAction, none).asSome
-      timer.scheduleAtFixedRate(UITask(for (holder <- currentHolders) holder.updMeta), 30000, 30000)
+
+      timer.scheduleAtFixedRate(UITask(for (holder <- lastSeenViewHolders) holder.updMeta), 30000, 30000)
       // Run this check after establishing subscriptions since it will trigger an event stream
       markAsFailedOnce
     } else {

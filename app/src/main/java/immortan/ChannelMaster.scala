@@ -209,8 +209,9 @@ class ChannelMaster(val payBag: PaymentBag, val chanBag: ChannelBag, val dataBag
   def maxSendable: MilliSatoshi = {
     val chans = all.values.filter(Channel.isOperational)
     val sendableNoFee = opm.getSendable(chans, maxFee = 0L.msat).values.sum
-    // Subtract max send fee from EACH channel since ANY channel MAY use all of it
-    opm.getSendable(chans, maxFee = sendableNoFee * LNParams.maxOffChainFeeRatio).values.sum
+    val theoreticalMaxFee = LNParams.maxOffChainFeeAboveRatio.max(sendableNoFee * LNParams.maxOffChainFeeRatio)
+    // Subtract max theoretical fee from EACH channel since ANY channel MAY use ALL of fee reserve
+    opm.getSendable(chans, maxFee = theoreticalMaxFee).values.sum
   }
 
   def checkIfSendable(paymentHash: ByteVector32): Option[Int] =

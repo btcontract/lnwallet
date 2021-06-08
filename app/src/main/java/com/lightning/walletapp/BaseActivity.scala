@@ -448,13 +448,19 @@ trait BaseActivity extends AppCompatActivity { me =>
     def isPayEnabled: Boolean
 
     def makeSendCmd(prExt: PaymentRequestExt, toSend: MilliSatoshi): SendMultiPart = {
-      val extraEdges = RouteCalculation.makeExtraEdges(prExt.pr.routingInfo, prExt.pr.nodeId)
-      // Supply relative expiry in case if we initiate a payment when chain tip is not yet known
-      val cltvExpiry = Right(prExt.pr.minFinalCltvExpiryDelta getOrElse LNParams.minInvoiceExpiryDelta)
+      val extraEdges = RouteCalculation.makeExtraEdges(prExt.pr.routingInfo, target = prExt.pr.nodeId)
       val fullTag = FullPaymentTag(prExt.pr.paymentHash, prExt.pr.paymentSecret.get, PaymentTagTlv.LOCALLY_SENT)
-      // An assumption here is that maxSendable is at most ChannelMaster.maxSendable so max off-chain fee ratio is already counted in so we can send amount + fee
-      val feeReserve = toSend * LNParams.maxOffChainFeeRatio match { case percent if percent > typicalChainTxFee && WalletApp.capLNFeeToChain => typicalChainTxFee case percent => percent }
-      SendMultiPart(fullTag, cltvExpiry, SplitInfo(totalSum = 0L.msat, toSend), LNParams.routerConf, prExt.pr.nodeId, feeReserve, LNParams.cm.all.values.toSeq, fullTag.paymentSecret, extraEdges)
+
+      val feeReserve = toSend * LNParams.maxOffChainFeeRatio match {
+        case percent if percent < LNParams.maxOffChainFeeAboveRatio => LNParams.maxOffChainFeeAboveRatio
+        case percent if percent > typicalChainTxFee && WalletApp.capLNFeeToChain => typicalChainTxFee
+        case percent => percent
+      }
+
+      // Supply relative cltv expiry in case if we initiate a payment when chain tip is not yet known
+      // An assumption is that toSend is at most ChannelMaster.maxSendable so max theoretically possible off-chain fee is already counted in so we can send amount + fee
+      SendMultiPart(fullTag, chainExpiry = Right(prExt.pr.minFinalCltvExpiryDelta getOrElse LNParams.minInvoiceExpiryDelta), SplitInfo(totalSum = 0L.msat, toSend),
+        LNParams.routerConf, targetNodeId = prExt.pr.nodeId, feeReserve, LNParams.cm.all.values.toSeq, fullTag.paymentSecret, extraEdges)
     }
 
     def baseSendNow(prExt: PaymentRequestExt, alert: AlertDialog): Unit = {

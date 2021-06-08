@@ -5,10 +5,10 @@ import fr.acinq.eclair.channel._
 import scala.concurrent.duration._
 import akka.actor.{Actor, ActorRef, Props}
 import immortan.crypto.{CanBeRepliedTo, StateMachine}
-import fr.acinq.eclair.wire.{LightningMessage, UpdateFailHtlc, UpdateFailMalformedHtlc, UpdateMessage}
-import fr.acinq.eclair.transactions.{CommitmentSpec, RemoteFulfill, RemoteReject, RemoteUpdateFail, RemoteUpdateMalform}
+import fr.acinq.eclair.transactions.{RemoteFulfill, RemoteReject}
 import fr.acinq.eclair.blockchain.CurrentBlockCount
 import scala.concurrent.ExecutionContextExecutor
+import fr.acinq.eclair.wire.LightningMessage
 import immortan.Channel.channelContext
 import java.util.concurrent.Executors
 import fr.acinq.bitcoin.ByteVector32
@@ -92,12 +92,6 @@ trait Channel extends StateMachine[ChannelData] with CanBeRepliedTo { me =>
     STORE(data1)
     BECOME(data1, state1)
     SEND(lnMessage:_*)
-  }
-
-  def notifyRemoteRejects(signed: List[UpdateMessage], spec: CommitmentSpec): Unit = signed.foreach {
-    case fail: UpdateFailHtlc => events addRejectedRemotely RemoteUpdateFail(fail, spec.findIncomingHtlcById(fail.id).get.add)
-    case malform: UpdateFailMalformedHtlc => events addRejectedRemotely RemoteUpdateMalform(malform, spec.findIncomingHtlcById(malform.id).get.add)
-    case _ =>
   }
 
   var listeners = Set.empty[ChannelListener]

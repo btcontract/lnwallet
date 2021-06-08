@@ -46,7 +46,7 @@ abstract class PathFinder(val normalBag: NetworkBag, val hostedBag: NetworkBag) 
   private val CMDResync = "cmd-resync"
   private val RESYNC_PERIOD: Long = 1000L * 3600 * 24 * 2
   // We don't load routing data on every startup but when user (or system) actually needs it
-  become(Data(channels = Map.empty, hostedChannels = Map.empty, DirectedGraph.apply), WAITING)
+  become(Data(channels = Map.empty, hostedChannels = Map.empty, DirectedGraph.empty), WAITING)
 
   val subscription: Subscription = {
     // Init first resync with persistent delay on startup
@@ -68,8 +68,11 @@ abstract class PathFinder(val normalBag: NetworkBag, val hostedBag: NetworkBag) 
   def doProcess(change: Any): Unit = (change, state) match {
     // Graph is loaded but it is empty: likely this is first launch or synchronizing
     case (fr: FindRoute, OPERATIONAL) if data.channels.isEmpty => fr.sender process NotifyRejected
-    // In OPERATIONAL state we always instruct graph to search through the single pre-selected local channel
-    case (fr: FindRoute, OPERATIONAL) => fr.sender process handleRouteRequest(data.graph replaceEdge fr.request.localEdge, fr.request)
+
+    case (fr: FindRoute, OPERATIONAL) =>
+      // Search through single pre-selected local channel
+      val augmentedGraph = data.graph replaceEdge fr.request.localEdge
+      fr.sender process handleRouteRequest(augmentedGraph, fr.request)
 
     case (fr: FindRoute, WAITING) if debugMode =>
       // Do not proceed, just inform the sender
@@ -206,6 +209,7 @@ abstract class PathFinder(val normalBag: NetworkBag, val hostedBag: NetworkBag) 
         // Save in db because update is fresh
         store.addChannelUpdateByPosition(edge.updExt.update)
         // But remove from runtime graph because it's disabled
+        // TODO: disabled channel may become enabled soon, maybe don't remove?
         data.copy(graph = data.graph removeEdge edge.desc)
 
       case None if isEnabled =>
@@ -216,6 +220,7 @@ abstract class PathFinder(val normalBag: NetworkBag, val hostedBag: NetworkBag) 
 
       case None =>
         // Disabled private/unknown-public update, remove from graph
+        // TODO: disabled channel may become enabled soon, maybe don't remove?
         data.copy(graph = data.graph removeEdge edge.desc)
     }
   }

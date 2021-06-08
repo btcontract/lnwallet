@@ -372,8 +372,14 @@ abstract class ChannelNormal(bag: ChannelBag) extends Channel { me =>
 
 
       case (norm: DATA_NORMAL, revocation: RevokeAndAck, OPEN) =>
-        StoreBecomeSend(norm.copy(commitments = norm.commitments receiveRevocation revocation), OPEN)
-        notifyRemoteRejects(norm.commitments.remoteChanges.signed, norm.commitments.remoteCommit.spec)
+        val commits1 = norm.commitments.receiveRevocation(revocation)
+        val remoteRejects: Seq[RemoteReject] = norm.commitments.remoteChanges.signed.collect {
+          case fail: UpdateFailHtlc => RemoteUpdateFail(fail, norm.commitments.remoteCommit.spec.findIncomingHtlcById(fail.id).get.add)
+          case malform: UpdateFailMalformedHtlc => RemoteUpdateMalform(malform, norm.commitments.remoteCommit.spec.findIncomingHtlcById(malform.id).get.add)
+        }
+
+        StoreBecomeSend(norm.copy(commitments = commits1), OPEN)
+        for (reject <- remoteRejects) events addRejectedRemotely reject
         events.notifyResolvers
 
 
