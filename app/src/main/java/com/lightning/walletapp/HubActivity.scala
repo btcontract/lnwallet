@@ -347,7 +347,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
       val currentPublished = LNParams.cm.closingsPublished
       val currentRefunds = LNParams.cm.pendingRefundsAmount(currentPublished).toMilliSatoshi
       pendingRefundsSum setText LNParams.denomination.parsedWithSign(currentRefunds, cardZero).html
-      setVis(currentPublished.nonEmpty, pendingRefunds)
+      setVis(currentPublished.nonEmpty && currentRefunds > 0L.sat, pendingRefunds)
     }
   }
 
@@ -412,7 +412,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
   private def chanError(chanId: ByteVector32, msg: String, info: RemoteNodeInfo) = UITask {
     val currentErrorCount = Option(channelErrors getIfPresent chanId).getOrElse(default = 0: JInt)
     val builder = new AlertDialog.Builder(me).setCustomTitle(getString(error_channel).format(info.nodeId.toString.take(16).humanFour).asDefView)
-    if (currentErrorCount < MAX_ERROR_COUNT_WITHIN_WINDOW) mkCheckForm(none, share(msg), builder.setMessage(msg.html), dialog_ok, dialog_share)
+    if (currentErrorCount < MAX_ERROR_COUNT_WITHIN_WINDOW) mkCheckForm(_.dismiss, share(msg), builder.setMessage(msg.html), dialog_ok, dialog_share)
     channelErrors.put(chanId, currentErrorCount + 1)
   }
 

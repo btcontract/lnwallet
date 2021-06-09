@@ -149,7 +149,7 @@ class RemotePeerActivity extends BaseActivity with ExternalDataChecker { me =>
 
   def fundNewChannel(view: View): Unit = {
     val body = getLayoutInflater.inflate(R.layout.frag_input_on_chain, null).asInstanceOf[ViewGroup]
-    val manager = new RateManager(body, None, visHintRes = -1, LNParams.fiatRates.info.rates, WalletApp.fiatCode)
+    val manager = new RateManager(body, extraText = None, visHintRes = -1, LNParams.fiatRates.info.rates, WalletApp.fiatCode)
     val canSend = LNParams.denomination.parsedWithSign(WalletApp.lastChainBalance.totalBalance, Colors.cardZero)
     val canSendFiat = WalletApp.currentMsatInFiatHuman(WalletApp.lastChainBalance.totalBalance)
 

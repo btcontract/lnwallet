@@ -102,7 +102,6 @@
                     android:textColor="@color/colorAccent"
                     android:background="@drawable/border_yellow"
                     android:layout_toEndOf="@id/unusedAnchorId1"
-                    android:layout_centerVertical="true"
                     android:id="@+id/btcSyncIndicator"
                     android:text="@string/sync"
                     android:visibility="gone"
@@ -220,6 +219,7 @@
                 android:paddingEnd="15dp"
                 android:paddingStart="15dp"
                 android:paddingBottom="10dp"
+                android:background="@drawable/border_yellow"
                 style="@style/FillingView">
 
                 <TextView
@@ -241,21 +241,32 @@
         <!-- Caption and search bar -->
 
         <RelativeLayout
-            android:visibility="gone"
             android:layout_marginTop="15dp"
             android:id="@+id/listCaption"
             style="@style/FillingView">
 
-            <TextView
-                android:text="@string/recent_activity"
-                android:layout_centerVertical="true"
-                style="@style/FillingView"/>
+            <com.google.android.material.button.MaterialButtonToggleGroup
+                card_view:singleSelection="true"
+                style="@style/BoundedView">
+
+                <com.google.android.material.button.MaterialButton
+                    android:text="@string/recent_activity"
+                    style="@style/ToggleButton"/>
+
+                <com.google.android.material.button.MaterialButton
+                    card_view:icon="@drawable/baseline_storefront_24"
+                    card_view:iconGravity="textStart"
+                    style="@style/ToggleButton"
+                    card_view:iconSize="18dp"/>
+
+            </com.google.android.material.button.MaterialButtonToggleGroup>
 
             <ImageButton
                 android:padding="6dp"
                 android:onClick="bringSearch"
                 android:tint="@color/colorAccent"
                 android:layout_alignParentEnd="true"
+                android:layout_centerVertical="true"
                 android:src="@drawable/ic_search_black_24dp"
                 android:background="?android:selectableItemBackground"
                 style="@style/BoundedView"/>

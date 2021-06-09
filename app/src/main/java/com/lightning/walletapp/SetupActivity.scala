@@ -41,7 +41,7 @@ class SetupActivity extends BaseActivity { me =>
   def makeFromMnemonics(mnemonics: List[String] = Nil): Unit = {
     val walletSeeed = MnemonicCode.toSeed(mnemonics, passphrase = new String)
     val keys = LightningNodeKeys.makeFromSeed(seed = walletSeeed.toArray)
-    val secret = WalletSecret(Set.empty, keys, mnemonics, walletSeeed)
+    val secret = WalletSecret(keys, mnemonics, walletSeeed)
 
     try {
       // Implant graph into db file from resources

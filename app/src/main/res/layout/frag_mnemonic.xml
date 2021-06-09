@@ -3,8 +3,8 @@
     xmlns:android="http://schemas.android.com/apk/res/android">
 
     <com.hootsuite.nachos.NachoTextView
-        style="@style/XYSmallMarginFillingView"
-        android:hint="@string/action_recovery_phrase_hint"
-        android:id="@+id/recoveryPhrase"/>
+        android:id="@+id/recoveryPhrase"
+        style="@style/XYMarginFillingView"
+        android:hint="@string/action_recovery_phrase_hint"/>
 
 </LinearLayout>

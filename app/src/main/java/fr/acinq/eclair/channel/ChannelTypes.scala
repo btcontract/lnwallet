@@ -52,12 +52,12 @@ sealed trait ReasonableResolution extends IncomingResolution {
 }
 
 case class ReasonableTrampoline(packet: IncomingPacket.NodeRelayPacket, secret: PrivateKey) extends ReasonableResolution {
-  val fullTag: FullPaymentTag = FullPaymentTag(packet.add.paymentHash, packet.outerPayload.paymentSecret.get, PaymentTagTlv.TRAMPLOINE_ROUTED)
+  val fullTag: FullPaymentTag = FullPaymentTag(packet.add.paymentHash, packet.outerPayload.paymentSecret, PaymentTagTlv.TRAMPLOINE_ROUTED)
   val add: UpdateAddHtlc = packet.add
 }
 
 case class ReasonableLocal(packet: IncomingPacket.FinalPacket, secret: PrivateKey) extends ReasonableResolution {
-  val fullTag: FullPaymentTag = FullPaymentTag(packet.add.paymentHash, packet.payload.paymentSecret.get, PaymentTagTlv.FINAL_INCOMING)
+  val fullTag: FullPaymentTag = FullPaymentTag(packet.add.paymentHash, packet.payload.paymentSecret, PaymentTagTlv.FINAL_INCOMING)
   val add: UpdateAddHtlc = packet.add
 }
 

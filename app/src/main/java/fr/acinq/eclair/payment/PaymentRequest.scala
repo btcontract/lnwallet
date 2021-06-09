@@ -125,7 +125,7 @@ object PaymentRequest {
 
   val prefixes: Map[ByteVector32, String] = Map(Block.RegtestGenesisBlock.hash -> "lnbcrt", Block.TestnetGenesisBlock.hash -> "lntb", Block.LivenetGenesisBlock.hash -> "lnbc")
 
-  val basicFeatures: PaymentRequestFeatures = PaymentRequestFeatures(Features.VariableLengthOnion.optional, Features.PaymentSecret.optional, Features.BasicMultiPartPayment.optional)
+  val basicFeatures: PaymentRequestFeatures = PaymentRequestFeatures(Features.VariableLengthOnion.mandatory, Features.PaymentSecret.mandatory, Features.BasicMultiPartPayment.optional)
 
   def apply(chainHash: ByteVector32, amount: Option[MilliSatoshi], paymentHash: ByteVector32, privateKey: PrivateKey, description: String,
             minFinalCltvExpiryDelta: CltvExpiryDelta, extraHops: List[ExtraHops], features: Option[PaymentRequestFeatures] = Some(basicFeatures),
@@ -136,12 +136,12 @@ object PaymentRequest {
       val defaultTags = List(
         Some(PaymentHash(paymentHash)),
         Some(Description(description)),
+        Some(PaymentSecret(randomBytes32)),
         fallbackAddress.map(FallbackAddress.apply),
         Some(Expiry(OUR_EXPIRY_SECONDS)),
         Some(MinFinalCltvExpiry(minFinalCltvExpiryDelta.toInt)),
         features).flatten
-      val paymentSecretTag = if (features.exists(_.allowPaymentSecret)) PaymentSecret(randomBytes32) :: Nil else Nil
-      defaultTags ++ paymentSecretTag ++ extraHops.map(RoutingInfo)
+      defaultTags ++ extraHops.map(RoutingInfo)
     }
 
     PaymentRequest(
@@ -476,7 +476,7 @@ object PaymentRequest {
   }
 
   // char -> 5 bits value
-  val charToint5: Map[Char, BitVector] = Bech32.alphabet.zipWithIndex.toMap.mapValues(BitVector.fromInt(_, size = 5, ordering = ByteOrdering.BigEndian)).toMap
+  val charToint5: Map[Char, BitVector] = Bech32.alphabet.zipWithIndex.toMap.mapValues(BitVector.fromInt(_, size = 5, ordering = ByteOrdering.BigEndian))
 
   // TODO: could be optimized by preallocating the resulting buffer
   def string2Bits(data: String): BitVector = data.map(charToint5).foldLeft(BitVector.empty)(_ ++ _)

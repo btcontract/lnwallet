@@ -9,10 +9,12 @@
     <string name="lightning_wallet">Lightning</string>
     <string name="total_balance">Total balance</string>
     <string name="pending_refunds">Pending refunds</string>
-    <string name="recent_activity">Recent activity</string>
-    <string name="search_recent">Search recent activity</string>
     <string name="copied_to_clipboard">Copied to clipboard</string>
     <string name="add_address">More fresh addresses</string>
+
+    <string name="recent_activity">Recent activity</string>
+    <string name="search_links">Search payment links</string>
+    <string name="search_recent">Search recent activity</string>
 
     <string name="emergency_mode">Something went wrong</string>
     <string name="emergency_share">Share error report</string>
@@ -139,7 +141,7 @@
 
     <string name="tx_description_op_return">Preimage broadcast</string>
     <string name="tx_description_funding">Lightning channel funding</string>
-    <string name="tx_description_refunding">Closed channel refunding</string>
+    <string name="tx_description_refunding">Channel balance refunding</string>
     <string name="tx_description_htlc_claim">Lightning payment refunding</string>
     <string name="tx_description_penalty">Channel breach penalty</string>
 

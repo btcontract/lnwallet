@@ -27,7 +27,7 @@ object ChannelTable extends Table {
 
   val updSql = s"UPDATE $table SET $data = ? WHERE $channelId = ?"
 
-  val killSql = s"DELETE FROM $table WHERE WHERE $channelId = ?"
+  val killSql = s"DELETE FROM $table WHERE $channelId = ?"
 
   val selectAllSql = s"SELECT * FROM $table ORDER BY $id ASC"
 

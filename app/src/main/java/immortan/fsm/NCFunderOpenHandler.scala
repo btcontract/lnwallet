@@ -43,7 +43,8 @@ abstract class NCFunderOpenHandler(info: RemoteNodeInfo, fakeFunding: MakeFundin
     override def onMessage(worker: CommsTower.Worker, message: LightningMessage): Unit = message match {
       case msg: HasTemporaryChannelId if msg.temporaryChannelId == tempChannelId => freshChannel process msg
       case msg: HasChannelId if assignedChanId.contains(msg.channelId) => freshChannel process msg
-      case _ => // Do nothing to avoid conflicts
+      case msg: HasChannelId if msg.channelId == tempChannelId => freshChannel process msg
+      case _ =>
     }
 
     override def onOperational(worker: CommsTower.Worker, theirInit: Init): Unit = {

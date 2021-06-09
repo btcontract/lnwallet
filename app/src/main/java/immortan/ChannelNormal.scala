@@ -34,19 +34,24 @@ object ChannelNormal {
 }
 
 abstract class ChannelNormal(bag: ChannelBag) extends Channel { me =>
-  val chainWallet: WalletExt
+  def watchConfirmedSpent(cs: NormalCommits, watchConfirmed: Boolean, watchSpent: Boolean): Unit = {
+    if (watchConfirmed) chainWallet.watcher ! WatchConfirmed(receiver, cs.commitInput.outPoint.txid, cs.commitInput.txOut.publicKeyScript, LNParams.minDepthBlocks, BITCOIN_FUNDING_DEPTHOK)
+    if (watchSpent) chainWallet.watcher ! WatchSpent(receiver, cs.commitInput.outPoint.txid, cs.commitInput.outPoint.index.toInt, cs.commitInput.txOut.publicKeyScript, BITCOIN_FUNDING_SPENT)
+  }
 
+  val chainWallet: WalletExt
   def doProcess(change: Any): Unit =
     Tuple3(data, change, state) match {
 
       // OPENING PHASE: FUNDER FLOW
 
       case (null, init: INPUT_INIT_FUNDER, -1) =>
+        val ChannelKeys(_, _, fundingKey, revocationKey, _, delayedPaymentKey, htlcKey) = init.localParams.keys
         val emptyUpfrontShutdown: TlvStream[OpenChannelTlv] = TlvStream(ChannelTlv UpfrontShutdownScript ByteVector.empty)
-        val open = OpenChannel(LNParams.chainHash, init.temporaryChannelId, init.fakeFunding.fundingAmount, init.pushAmount, init.localParams.dustLimit,
-          init.localParams.maxHtlcValueInFlightMsat, init.localParams.channelReserve, init.localParams.htlcMinimum, init.initialFeeratePerKw, init.localParams.toSelfDelay,
-          init.localParams.maxAcceptedHtlcs, init.localParams.keys.fundingKey.publicKey, init.localParams.keys.revocationKey.publicKey, init.localParams.walletStaticPaymentBasepoint,
-          init.localParams.keys.delayedPaymentKey.publicKey, init.localParams.keys.fundingKey.publicKey, init.localParams.keys.commitmentPoint(index = 0L), init.channelFlags, emptyUpfrontShutdown)
+        val open = OpenChannel(LNParams.chainHash, init.temporaryChannelId, init.fakeFunding.fundingAmount, init.pushAmount, init.localParams.dustLimit, init.localParams.maxHtlcValueInFlightMsat,
+          init.localParams.channelReserve, init.localParams.htlcMinimum, init.initialFeeratePerKw, init.localParams.toSelfDelay, init.localParams.maxAcceptedHtlcs, fundingPubkey = fundingKey.publicKey,
+          revocationBasepoint = revocationKey.publicKey, paymentBasepoint = init.localParams.walletStaticPaymentBasepoint, delayedPaymentBasepoint = delayedPaymentKey.publicKey,
+          htlcBasepoint = htlcKey.publicKey, init.localParams.keys.commitmentPoint(index = 0L), init.channelFlags, emptyUpfrontShutdown)
 
         val data1 = DATA_WAIT_FOR_ACCEPT_CHANNEL(init, open)
         BECOME(data1, WAIT_FOR_ACCEPT)
@@ -95,20 +100,21 @@ abstract class ChannelNormal(bag: ChannelBag) extends Channel { me =>
           postCloseOutgoingResolvedIds = Set.empty, wait.remoteInfo, wait.localParams, wait.remoteParams, LocalCommit(index = 0L, wait.localSpec, publishableTxs),
           wait.remoteCommit, LocalChanges(Nil, Nil, Nil), RemoteChanges(Nil, Nil, Nil), localNextHtlcId = 0L, remoteNextHtlcId = 0L, signedLocalCommitTx.input)
 
-        chainWallet.watcher ! WatchSpent(receiver, commits.commitInput.outPoint.txid, commits.commitInput.outPoint.index.toInt, commits.commitInput.txOut.publicKeyScript, BITCOIN_FUNDING_SPENT)
-        chainWallet.watcher ! WatchConfirmed(receiver, commits.commitInput.outPoint.txid, commits.commitInput.txOut.publicKeyScript, LNParams.minDepthBlocks, BITCOIN_FUNDING_DEPTHOK)
+        watchConfirmedSpent(commits, watchConfirmed = true, watchSpent = true)
         // Persist a channel unconditionally, try to re-publish a funding tx on restart unconditionally (don't react to commit=false, we can't trust remote servers on this)
         StoreBecomeSend(DATA_WAIT_FOR_FUNDING_CONFIRMED(commits, wait.fundingTx.asSome, System.currentTimeMillis, Left(wait.lastSent), deferred = None), WAIT_FUNDING_DONE)
+        bag.addChannelTxFee(wait.fundingTxFee, wait.fundingTx.txid.toHex, ChannelTxFeesTable.TAG_CHAIN_FEE)
         chainWallet.wallet.commit(wait.fundingTx)
 
       // OPENING PHASE: FUNDEE FLOW
 
       case (null, init: INPUT_INIT_FUNDEE, -1) =>
+        val ChannelKeys(_, _, fundingKey, revocationKey, _, delayedPaymentKey, htlcKey) = init.localParams.keys
         val emptyUpfrontShutdown: TlvStream[AcceptChannelTlv] = TlvStream(ChannelTlv UpfrontShutdownScript ByteVector.empty)
         val accept = AcceptChannel(init.theirOpen.temporaryChannelId, init.localParams.dustLimit, init.localParams.maxHtlcValueInFlightMsat, init.localParams.channelReserve,
-          init.localParams.htlcMinimum, LNParams.minDepthBlocks, init.localParams.toSelfDelay, init.localParams.maxAcceptedHtlcs, init.localParams.keys.fundingKey.publicKey,
-          init.localParams.keys.revocationKey.publicKey, init.localParams.walletStaticPaymentBasepoint, init.localParams.keys.delayedPaymentKey.publicKey,
-          init.localParams.keys.htlcKey.publicKey, init.localParams.keys.commitmentPoint(index = 0L), emptyUpfrontShutdown)
+          init.localParams.htlcMinimum, minimumDepth = LNParams.minDepthBlocks, init.localParams.toSelfDelay, init.localParams.maxAcceptedHtlcs, fundingPubkey = fundingKey.publicKey,
+          revocationBasepoint = revocationKey.publicKey, paymentBasepoint = init.localParams.walletStaticPaymentBasepoint, delayedPaymentBasepoint = delayedPaymentKey.publicKey,
+          htlcBasepoint = htlcKey.publicKey, init.localParams.keys.commitmentPoint(index = 0L), emptyUpfrontShutdown)
 
         val data1 = DATA_WAIT_FOR_FUNDING_CREATED(init, RemoteParams(init.theirOpen.dustLimitSatoshis, init.theirOpen.maxHtlcValueInFlightMsat,
           init.theirOpen.channelReserveSatoshis, init.theirOpen.htlcMinimumMsat, init.theirOpen.toSelfDelay, init.theirOpen.maxAcceptedHtlcs,
@@ -139,9 +145,9 @@ abstract class ChannelNormal(bag: ChannelBag) extends Channel { me =>
         require(Transactions.checkSpendable(signedLocalCommitTx).isSuccess)
         Helpers.validateParamsFundee(wait.initFundee.theirOpen, commits)
 
-        chainWallet.watcher ! WatchSpent(receiver, commits.commitInput.outPoint.txid, commits.commitInput.outPoint.index.toInt, commits.commitInput.txOut.publicKeyScript, BITCOIN_FUNDING_SPENT)
-        chainWallet.watcher ! WatchConfirmed(receiver, commits.commitInput.outPoint.txid, commits.commitInput.txOut.publicKeyScript, LNParams.minDepthBlocks, BITCOIN_FUNDING_DEPTHOK)
-        StoreBecomeSend(DATA_WAIT_FOR_FUNDING_CONFIRMED(commits, None, System.currentTimeMillis, Right(fundingSigned), deferred = None), WAIT_FUNDING_DONE, fundingSigned)
+        val data1 = DATA_WAIT_FOR_FUNDING_CONFIRMED(commits, None, System.currentTimeMillis, fundingSigned.asRight)
+        watchConfirmedSpent(commits, watchConfirmed = true, watchSpent = true)
+        StoreBecomeSend(data1, WAIT_FUNDING_DONE, fundingSigned)
 
       // Convert remote error into local exception in opening phase, it should be dealt with upstream
 
@@ -153,14 +159,14 @@ abstract class ChannelNormal(bag: ChannelBag) extends Channel { me =>
 
       // AWAITING CONFIRMATION
 
-      case (wait: DATA_WAIT_FOR_FUNDING_CONFIRMED, event: WatchEventConfirmed, WAIT_FUNDING_DONE) =>
+      case (wait: DATA_WAIT_FOR_FUNDING_CONFIRMED, event: WatchEventConfirmed, SLEEPING | WAIT_FUNDING_DONE) =>
         // Remote peer may send a tx which is unrelated to our agreed upon channel funding, that is, we won't be able to spend our commit tx, check this right away!
         def correct: Unit = Transaction.correctlySpends(wait.commitments.localCommit.publishableTxs.commitTx.tx, Seq(event.tx), ScriptFlags.STANDARD_SCRIPT_VERIFY_FLAGS)
 
         if (Try(correct).isFailure) StoreBecomeSend(DATA_CLOSING(wait.commitments, System.currentTimeMillis), CLOSING) else {
           val shortChannelId = ShortChannelId(event.blockHeight, event.txIndex, wait.commitments.commitInput.outPoint.index.toInt)
           val fundingLocked = FundingLocked(nextPerCommitmentPoint = wait.commitments.localParams.keys.commitmentPoint(1L), channelId = wait.channelId)
-          StoreBecomeSend(DATA_WAIT_FOR_FUNDING_LOCKED(wait.commitments, shortChannelId, fundingLocked), WAIT_FUNDING_DONE, fundingLocked)
+          StoreBecomeSend(DATA_WAIT_FOR_FUNDING_LOCKED(wait.commitments, shortChannelId, fundingLocked), state, fundingLocked)
           wait.deferred.foreach(process)
         }
 
@@ -243,9 +249,9 @@ abstract class ChannelNormal(bag: ChannelBag) extends Channel { me =>
         val norm1 = norm.copy(localShutdown = shutdown.asSome)
 
         if (cmd.force) {
-          if (!isValidFinalScriptPubkey) spendLocalCurrent(norm)
-          else if (norm.localShutdown.isDefined) spendLocalCurrent(norm)
-          else if (hasLocalHasUnsignedOutgoingHtlcs) spendLocalCurrent(norm)
+          if (!isValidFinalScriptPubkey) spendLocalCurrent(norm1)
+          else if (norm.localShutdown.isDefined) spendLocalCurrent(norm1)
+          else if (hasLocalHasUnsignedOutgoingHtlcs) spendLocalCurrent(norm1)
           else StoreBecomeSend(norm1, state, shutdown)
         } else {
           if (!isValidFinalScriptPubkey) throw CMDException(CMD_CLOSE.INVALID_CLOSING_PUBKEY, cmd)
@@ -537,7 +543,7 @@ abstract class ChannelNormal(bag: ChannelBag) extends Channel { me =>
 
       case (closing: DATA_CLOSING, WatchEventSpent(BITCOIN_OUTPUT_SPENT, tx), CLOSING) =>
         // One of outputs in local/remote/revoked commit was spent, we should watch it gets confirmed
-        chainWallet.watcher ! WatchConfirmed(receiver, tx, BITCOIN_TX_CONFIRMED(tx), LNParams.minDepthBlocks)
+        chainWallet.watcher ! WatchConfirmed(receiver, tx, event = BITCOIN_TX_CONFIRMED(tx), minDepth = 1L)
         // Peer might have just used a preimage on chain to claim our timeout HTLCs UTXO: consider a payment sent then
         val remoteFulfills = Closing.extractPreimages(closing.commitments.localCommit, tx).map(RemoteFulfill.tupled)
         val settledOutgoingHtlcIds = remoteFulfills.map(_.ourAdd.id)
@@ -558,37 +564,36 @@ abstract class ChannelNormal(bag: ChannelBag) extends Channel { me =>
         events.notifyResolvers
 
 
-      case (closing: DATA_CLOSING, confirmed: BITCOIN_TX_CONFIRMED, CLOSING) =>
-        val lcp1Opt = for (lcp <- closing.localCommitPublished) yield Closing.updateLocalCommitPublished(lcp, confirmed.tx)
-        val rcp1Opt = for (rcp <- closing.remoteCommitPublished) yield Closing.updateRemoteCommitPublished(rcp, confirmed.tx)
-        val fcp1Opt = for (fcp <- closing.futureRemoteCommitPublished) yield Closing.updateRemoteCommitPublished(fcp, confirmed.tx)
-        val rcp1NextOpt = for (rcp <- closing.nextRemoteCommitPublished) yield Closing.updateRemoteCommitPublished(rcp, confirmed.tx)
-        val revCp1Opt = for (revokedCp <- closing.revokedCommitPublished) yield Closing.updateRevokedCommitPublished(revokedCp, confirmed.tx)
+      case (closing: DATA_CLOSING, event: WatchEventConfirmed, CLOSING) =>
+        val lcp1Opt = for (lcp <- closing.localCommitPublished) yield Closing.updateLocalCommitPublished(lcp, event.tx)
+        val rcp1Opt = for (rcp <- closing.remoteCommitPublished) yield Closing.updateRemoteCommitPublished(rcp, event.tx)
+        val fcp1Opt = for (fcp <- closing.futureRemoteCommitPublished) yield Closing.updateRemoteCommitPublished(fcp, event.tx)
+        val rcp1NextOpt = for (rcp <- closing.nextRemoteCommitPublished) yield Closing.updateRemoteCommitPublished(rcp, event.tx)
+        val revCp1Opt = for (revokedCp <- closing.revokedCommitPublished) yield Closing.updateRevokedCommitPublished(revokedCp, event.tx)
 
         val closing1: DATA_CLOSING =
           DATA_CLOSING(closing.commitments, closing.waitingSince, closing.mutualCloseProposed,
-            closing.mutualCloseProposed, lcp1Opt, rcp1Opt, rcp1NextOpt, fcp1Opt, revCp1Opt)
+            closing.mutualClosePublished, lcp1Opt, rcp1Opt, rcp1NextOpt, fcp1Opt, revCp1Opt)
 
         val isClosed: Boolean =
-          closing1.mutualClosePublished.contains(confirmed.tx) || lcp1Opt.exists(Closing.isLocalCommitDone) ||
+          closing1.mutualClosePublished.contains(event.tx) || lcp1Opt.exists(Closing.isLocalCommitDone) ||
             rcp1Opt.exists(Closing.isRemoteCommitDone) || rcp1NextOpt.exists(Closing.isRemoteCommitDone) ||
             revCp1Opt.exists(Closing.isRevokedCommitDone) || fcp1Opt.exists(Closing.isRemoteCommitDone)
 
-        val overRiddenHtlcs = Closing.overriddenOutgoingHtlcs(closing1, confirmed.tx)
+        val overRiddenHtlcs = Closing.overriddenOutgoingHtlcs(closing1, event.tx)
         val (timedOutHtlcs, isDustOutgoingHtlcs) = Closing.isClosingTypeAlreadyKnown(closing1) map {
-          case local: Closing.LocalClose => Closing.timedoutHtlcs(closing1.commitments, local.localCommit, local.localCommitPublished, confirmed.tx)
-          case remote: Closing.RemoteClose => Closing.timedoutHtlcs(closing1.commitments, remote.remoteCommit, remote.remoteCommitPublished, confirmed.tx)
-          case _: Closing.MutualClose | _: Closing.RecoveryClose | _: Closing.RevokedClose => (Set.empty, false) // We can not have pending HTLCs in these states
+          case local: Closing.LocalClose => Closing.timedoutHtlcs(closing1.commitments, local.localCommit, local.localCommitPublished, event.tx)
+          case remote: Closing.RemoteClose => Closing.timedoutHtlcs(closing1.commitments, remote.remoteCommit, remote.remoteCommitPublished, event.tx)
+          case _: Closing.MutualClose | _: Closing.RecoveryClose | _: Closing.RevokedClose => (Set.empty, false)
         } getOrElse (Set.empty, false)
 
-        // Update state and notify system about failed HTLCs
         val settledOutgoingHtlcIds = (overRiddenHtlcs ++ timedOutHtlcs).map(_.id)
         StoreBecomeSend(closing1.modify(_.commitments.postCloseOutgoingResolvedIds).using(_ ++ settledOutgoingHtlcIds), CLOSING)
         for (add <- overRiddenHtlcs ++ timedOutHtlcs) events addRejectedLocally InPrincipleNotSendable(localAdd = add)
 
-        Helpers.chainFeePaid(confirmed.tx, closing1).foreach { chainFee =>
+        Helpers.chainFeePaid(event.tx, closing1).foreach { chainFee =>
           // This happens when we get a confimed (mutual|commit)-as-funder/timeout/success tx
-          bag.addChannelTxFee(chainFee, confirmed.tx.txid.toHex, ChannelTxFeesTable.TAG_CHAIN_FEE)
+          bag.addChannelTxFee(chainFee, event.tx.txid.toHex, ChannelTxFeesTable.TAG_CHAIN_FEE)
         }
 
         if (isDustOutgoingHtlcs) bag.db txWrap {
@@ -609,21 +614,18 @@ abstract class ChannelNormal(bag: ChannelBag) extends Channel { me =>
         val (commits1, ourFulfillMsg) = closing.commitments.sendFulfill(cmd)
         val conf = LNParams.feeRates.info.onChainFeeConf
 
-        val lcp1Opt = for (lcp <- closing.localCommitPublished) yield Closing.claimCurrentLocalCommitTxOutputs(commits1, lcp.commitTx, conf)
-        val rcp1Opt = for (rcp <- closing.remoteCommitPublished) yield Closing.claimRemoteCommitTxOutputs(commits1, commits1.remoteCommit, rcp.commitTx, conf.feeEstimator)
-
         val rcp1NextOpt = for {
           rcp <- closing.nextRemoteCommitPublished
           nextRemoteCommit <- commits1.remoteNextCommitInfo.left.toOption.map(_.nextRemoteCommit)
         } yield Closing.claimRemoteCommitTxOutputs(commits1, nextRemoteCommit, rcp.commitTx, conf.feeEstimator)
 
-        // Store an updated closing data so this case won't be executed again, publish our chain redeem txs and send preimage off-chain to give them one more chance to obtain it
+        val lcp1Opt = for (lcp <- closing.localCommitPublished) yield Closing.claimCurrentLocalCommitTxOutputs(commits1, lcp.commitTx, conf)
+        val rcp1Opt = for (rcp <- closing.remoteCommitPublished) yield Closing.claimRemoteCommitTxOutputs(commits1, commits1.remoteCommit, rcp.commitTx, conf.feeEstimator)
         val closing1 = closing.copy(commitments = commits1, localCommitPublished = lcp1Opt, remoteCommitPublished = rcp1Opt, nextRemoteCommitPublished = rcp1NextOpt)
         StoreBecomeSend(closing1, CLOSING, ourFulfillMsg)
         rcp1NextOpt.foreach(doPublish)
         rcp1Opt.foreach(doPublish)
         lcp1Opt.foreach(doPublish)
-
 
       // RESTORING FROM STORED DATA
 
@@ -636,13 +638,13 @@ abstract class ChannelNormal(bag: ChannelBag) extends Channel { me =>
         data1.futureRemoteCommitPublished.foreach(doPublish)
         BECOME(data1, CLOSING)
 
+      case (null, data1: DATA_WAIT_FOR_FUNDING_CONFIRMED, -1) =>
+        watchConfirmedSpent(data1.commitments, watchConfirmed = true, watchSpent = true)
+        BECOME(data1, SLEEPING)
 
-      case (null, normalData: HasNormalCommitments, -1) =>
-        val commitInput: Transactions.InputInfo = normalData.commitments.commitInput
-        chainWallet.watcher ! WatchSpent(receiver, commitInput.outPoint.txid, commitInput.outPoint.index.toInt, commitInput.txOut.publicKeyScript, BITCOIN_FUNDING_SPENT)
-        chainWallet.watcher ! WatchConfirmed(receiver, commitInput.outPoint.txid, commitInput.txOut.publicKeyScript, LNParams.minDepthBlocks, BITCOIN_FUNDING_DEPTHOK)
-        BECOME(normalData, SLEEPING)
-
+      case (null, data1: HasNormalCommitments, -1) =>
+        watchConfirmedSpent(data1.commitments, watchConfirmed = false, watchSpent = true)
+        BECOME(data1, SLEEPING)
 
       case _ =>
     }
@@ -765,7 +767,7 @@ abstract class ChannelNormal(bag: ChannelBag) extends Channel { me =>
   // Publish handlers
 
   private def doPublish(closingTx: Transaction): Unit = {
-    chainWallet.watcher ! WatchConfirmed(receiver, closingTx, BITCOIN_TX_CONFIRMED(closingTx), LNParams.minDepthBlocks)
+    chainWallet.watcher ! WatchConfirmed(receiver, closingTx, BITCOIN_TX_CONFIRMED(closingTx), minDepth = 1L)
     chainWallet.watcher ! PublishAsap(closingTx)
   }
 
@@ -775,7 +777,7 @@ abstract class ChannelNormal(bag: ChannelBag) extends Channel { me =>
   // Watch utxos only we can spend to get basically resolved
   private def watchConfirmedIfNeeded(txes: Iterable[Transaction], irrevocablySpent: Map[OutPoint, ByteVector32] = Map.empty): Unit =
     txes.filterNot(Closing inputsAlreadySpent irrevocablySpent).map(BITCOIN_TX_CONFIRMED).foreach { replyEvent =>
-      chainWallet.watcher ! WatchConfirmed(receiver, replyEvent.tx, replyEvent, LNParams.minDepthBlocks)
+      chainWallet.watcher ! WatchConfirmed(receiver, replyEvent.tx, replyEvent, minDepth = 1L)
     }
 
   // Watch utxos that both we and peer can spend to get triggered (spent, but not confirmed yet)

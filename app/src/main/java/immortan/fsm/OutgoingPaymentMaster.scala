@@ -277,11 +277,13 @@ class OutgoingPaymentSender(val fullTag: FullPaymentTag, val listener: OutgoingP
 
   def doProcess(msg: Any): Unit = (msg, state) match {
     case (reject: RemoteReject, ABORTED) => me abortMaybeNotify data.withoutPartId(reject.ourAdd.partId)
+    case (reject: LocalReject, ABORTED) => me abortMaybeNotify data.withoutPartId(reject.localAdd.partId)
     case (reject: RemoteReject, INIT) => me abortMaybeNotify data.withLocalFailure(NOT_RETRYING_NO_DETAILS, reject.ourAdd.amountMsat)
+    case (reject: LocalReject, INIT) => me abortMaybeNotify data.withLocalFailure(NOT_RETRYING_NO_DETAILS, reject.localAdd.amountMsat)
     case (reject: RemoteReject, SUCCEEDED) if reject.ourAdd.paymentHash == fullTag.paymentHash => become(data.withoutPartId(reject.ourAdd.partId), SUCCEEDED)
+    case (reject: LocalReject, SUCCEEDED) if reject.localAdd.paymentHash == fullTag.paymentHash => become(data.withoutPartId(reject.localAdd.partId), SUCCEEDED)
     case (fulfill: RemoteFulfill, SUCCEEDED) if fulfill.ourAdd.paymentHash == fullTag.paymentHash => become(data.withoutPartId(fulfill.ourAdd.partId), SUCCEEDED)
     case (bag: InFlightPayments, SUCCEEDED) if data.inFlightParts.isEmpty && !bag.out.contains(fullTag) => listener.wholePaymentSucceeded(data)
-    case (reject: LocalReject, ABORTED) => me abortMaybeNotify data.withoutPartId(reject.localAdd.partId)
 
     case (cmd: SendMultiPart, INIT | ABORTED) =>
       val chans = opm.rightNowSendable(cmd.allowedChans, cmd.totalFeeReserve)
@@ -447,7 +449,10 @@ class OutgoingPaymentSender(val fullTag: FullPaymentTag, val listener: OutgoingP
 
   def feeLeftover: MilliSatoshi = data.cmd.totalFeeReserve - data.usedFee
 
-  def canBeSplit(totalAmount: MilliSatoshi): Boolean = totalAmount / 2 > LNParams.minPayment && data.inFlightParts.size < data.cmd.routerConf.maxParts
+  def canBeSplit(totalAmount: MilliSatoshi): Boolean = {
+    // TODO: figure out early stopping conditions (when it's possible but does not make sense to split further)
+    totalAmount / 2 > LNParams.minPayment && data.inFlightParts.size < data.cmd.routerConf.maxParts
+  }
 
   def assignToChans(sendable: mutable.Map[ChanAndCommits, MilliSatoshi], data1: OutgoingPaymentSenderData, amount: MilliSatoshi): Unit = {
     // This is a terminal method in a sense that it either successfully assigns a given amount to channels or turns a payment into failed state

@@ -177,11 +177,11 @@ case class NormalCommits(channelFlags: Byte, channelId: ByteVector32, channelVer
     val fees = commitTxFee(commitments1.remoteParams.dustLimit, commitments1.latestReducedRemoteSpec, channelVersion.commitmentFormat)
 
     val missingForReceiver = if (commitments1.localParams.isFunder) receiverWithReserve else receiverWithReserve - fees
-    val missingForSender = if (commitments1.localParams.isFunder) senderWithReserve - (fees max funderFeeBuffer.truncateToSatoshi) else senderWithReserve
+    val missingForSender = if (commitments1.localParams.isFunder) senderWithReserve - fees.max(funderFeeBuffer.truncateToSatoshi) else senderWithReserve
 
     if (missingForSender < 0L.sat) return ChannelNotAbleToSend(cmd.incompleteAdd).asLeft
-    if (missingForReceiver < 0L.sat && localParams.isFunder) return ChannelNotAbleToSend(cmd.incompleteAdd).asLeft
-    if (commitments1.allOutgoing.foldLeft(0L.msat)(_ + _.amountMsat) > maxSendInFlight) ChannelNotAbleToSend(cmd.incompleteAdd).asLeft
+    if (missingForReceiver < 0L.sat && !localParams.isFunder) return ChannelNotAbleToSend(cmd.incompleteAdd).asLeft
+    if (commitments1.allOutgoing.foldLeft(0L.msat)(_ + _.amountMsat) > maxSendInFlight) return ChannelNotAbleToSend(cmd.incompleteAdd).asLeft
     if (totalOutgoingHtlcs > commitments1.remoteParams.maxAcceptedHtlcs) return ChannelNotAbleToSend(cmd.incompleteAdd).asLeft // This is from spec and prevents remote force-close
     if (totalOutgoingHtlcs > commitments1.localParams.maxAcceptedHtlcs) return ChannelNotAbleToSend(cmd.incompleteAdd).asLeft // This is needed for peer backup and routing to safely work
     Right(commitments1, completeAdd)
@@ -241,6 +241,7 @@ case class NormalCommits(channelFlags: Byte, channelId: ByteVector32, channelVer
   def receiveFee(fee: UpdateFee): NormalCommits = {
     if (localParams.isFunder) throw ChannelTransitionFail(channelId)
     if (fee.feeratePerKw < FeeratePerKw.MinimumFeeratePerKw) throw ChannelTransitionFail(channelId)
+    // TODO: when their update is radically lower, check if our chain conditions confirm that and force-close if definitely not
     val commitments1 = me.modify(_.remoteChanges.proposed).using(changes => changes.filter { case _: UpdateFee => false case _ => true } :+ fee)
     val reduced = CommitmentSpec.reduce(commitments1.localCommit.spec, commitments1.localChanges.acked, commitments1.remoteChanges.proposed)
     val fees = commitTxFee(commitments1.remoteParams.dustLimit, reduced, channelVersion.commitmentFormat)

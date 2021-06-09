@@ -267,6 +267,8 @@ object Graph {
     object DirectedGraph {
       def empty: DirectedGraph = new DirectedGraph(Map.empty)
 
+      def apply(edges: GraphEdges): DirectedGraph = empty.addEdges(edges)
+
       def makeGraph(channels: Map[ShortChannelId, PublicChannel] = Map.empty): DirectedGraph = {
         // Initialize the map with the appropriate size to avoid resizing during the graph initialization
         val mutableMap = new DefaultHashMap[PublicKey, GraphEdges](Nil, channels.size + 1)

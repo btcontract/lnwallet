@@ -30,8 +30,7 @@ object ExtCodecs {
   }.as[LightningNodeKeys]
 
   val walletSecretCodec = {
-    (setCodec(nodeAnnouncementCodec) withContext "outstandingProviders") ::
-      (lightningNodeKeysCodec withContext "keys") ::
+    (lightningNodeKeysCodec withContext "keys") ::
       (listOfN(uint8, text) withContext "mnemonic") ::
       (varsizebinarydata withContext "seed")
   }.as[WalletSecret]

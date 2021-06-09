@@ -254,7 +254,7 @@ abstract class ChannelHosted extends Channel { me =>
 
     case (null, wait: WaitRemoteHostedReply, -1) => super.become(wait, WAIT_FOR_INIT)
     case (null, hc: HostedCommits, -1) => super.become(hc, SLEEPING)
-    case _ => println(s"-- UNHANDLED $state, ${change.getClass.getSimpleName}")
+    case _ =>
   }
 
   def rejectOverriddenOutgoingAdds(hc: HostedCommits, hc1: HostedCommits): Unit =
