@@ -48,6 +48,7 @@ abstract class ChannelNormal(bag: ChannelBag) extends Channel { me =>
       case (null, init: INPUT_INIT_FUNDER, -1) =>
         val ChannelKeys(_, _, fundingKey, revocationKey, _, delayedPaymentKey, htlcKey) = init.localParams.keys
         val emptyUpfrontShutdown: TlvStream[OpenChannelTlv] = TlvStream(ChannelTlv UpfrontShutdownScript ByteVector.empty)
+
         val open = OpenChannel(LNParams.chainHash, init.temporaryChannelId, init.fakeFunding.fundingAmount, init.pushAmount, init.localParams.dustLimit, init.localParams.maxHtlcValueInFlightMsat,
           init.localParams.channelReserve, init.localParams.htlcMinimum, init.initialFeeratePerKw, init.localParams.toSelfDelay, init.localParams.maxAcceptedHtlcs, fundingPubkey = fundingKey.publicKey,
           revocationBasepoint = revocationKey.publicKey, paymentBasepoint = init.localParams.walletStaticPaymentBasepoint, delayedPaymentBasepoint = delayedPaymentKey.publicKey,
@@ -111,25 +112,24 @@ abstract class ChannelNormal(bag: ChannelBag) extends Channel { me =>
       case (null, init: INPUT_INIT_FUNDEE, -1) =>
         val ChannelKeys(_, _, fundingKey, revocationKey, _, delayedPaymentKey, htlcKey) = init.localParams.keys
         val emptyUpfrontShutdown: TlvStream[AcceptChannelTlv] = TlvStream(ChannelTlv UpfrontShutdownScript ByteVector.empty)
+
         val accept = AcceptChannel(init.theirOpen.temporaryChannelId, init.localParams.dustLimit, init.localParams.maxHtlcValueInFlightMsat, init.localParams.channelReserve,
           init.localParams.htlcMinimum, minimumDepth = LNParams.minDepthBlocks, init.localParams.toSelfDelay, init.localParams.maxAcceptedHtlcs, fundingPubkey = fundingKey.publicKey,
           revocationBasepoint = revocationKey.publicKey, paymentBasepoint = init.localParams.walletStaticPaymentBasepoint, delayedPaymentBasepoint = delayedPaymentKey.publicKey,
           htlcBasepoint = htlcKey.publicKey, init.localParams.keys.commitmentPoint(index = 0L), emptyUpfrontShutdown)
 
-        val data1 = DATA_WAIT_FOR_FUNDING_CREATED(init, RemoteParams(init.theirOpen.dustLimitSatoshis, init.theirOpen.maxHtlcValueInFlightMsat,
-          init.theirOpen.channelReserveSatoshis, init.theirOpen.htlcMinimumMsat, init.theirOpen.toSelfDelay, init.theirOpen.maxAcceptedHtlcs,
-          init.theirOpen.fundingPubkey, init.theirOpen.revocationBasepoint, init.theirOpen.paymentBasepoint,
-          init.theirOpen.delayedPaymentBasepoint, init.theirOpen.htlcBasepoint), accept)
+        val data1 = DATA_WAIT_FOR_FUNDING_CREATED(init, RemoteParams(init.theirOpen.dustLimitSatoshis, init.theirOpen.maxHtlcValueInFlightMsat, init.theirOpen.channelReserveSatoshis,
+          init.theirOpen.htlcMinimumMsat, init.theirOpen.toSelfDelay, init.theirOpen.maxAcceptedHtlcs, init.theirOpen.fundingPubkey, init.theirOpen.revocationBasepoint,
+          init.theirOpen.paymentBasepoint, init.theirOpen.delayedPaymentBasepoint, init.theirOpen.htlcBasepoint), accept)
 
         BECOME(data1, WAIT_FOR_ACCEPT)
         SEND(accept)
 
 
       case (wait: DATA_WAIT_FOR_FUNDING_CREATED, created: FundingCreated, WAIT_FOR_ACCEPT) =>
-        val (localSpec, localCommitTx, remoteSpec, remoteCommitTx) = Helpers.Funding.makeFirstCommitTxs(wait.initFundee.channelVersion,
-          wait.initFundee.localParams, wait.remoteParams, wait.initFundee.theirOpen.fundingSatoshis, wait.initFundee.theirOpen.pushMsat,
-          wait.initFundee.theirOpen.feeratePerKw, created.fundingTxid, created.fundingOutputIndex,
-          wait.initFundee.theirOpen.firstPerCommitmentPoint)
+        val (localSpec, localCommitTx, remoteSpec, remoteCommitTx) = Helpers.Funding.makeFirstCommitTxs(wait.initFundee.channelVersion, wait.initFundee.localParams,
+          wait.remoteParams, wait.initFundee.theirOpen.fundingSatoshis, wait.initFundee.theirOpen.pushMsat, wait.initFundee.theirOpen.feeratePerKw, created.fundingTxid,
+          created.fundingOutputIndex, wait.initFundee.theirOpen.firstPerCommitmentPoint)
 
         val localSigOfLocalTx = Transactions.sign(localCommitTx, wait.initFundee.localParams.keys.fundingKey.privateKey, TxOwner.Local, wait.initFundee.channelVersion.commitmentFormat)
         val signedLocalCommitTx = Transactions.addSigs(localCommitTx, wait.initFundee.localParams.keys.fundingKey.publicKey, wait.remoteParams.fundingPubKey, localSigOfLocalTx, created.signature)
@@ -638,9 +638,11 @@ abstract class ChannelNormal(bag: ChannelBag) extends Channel { me =>
         data1.futureRemoteCommitPublished.foreach(doPublish)
         BECOME(data1, CLOSING)
 
+
       case (null, data1: DATA_WAIT_FOR_FUNDING_CONFIRMED, -1) =>
         watchConfirmedSpent(data1.commitments, watchConfirmed = true, watchSpent = true)
         BECOME(data1, SLEEPING)
+
 
       case (null, data1: HasNormalCommitments, -1) =>
         watchConfirmedSpent(data1.commitments, watchConfirmed = false, watchSpent = true)
