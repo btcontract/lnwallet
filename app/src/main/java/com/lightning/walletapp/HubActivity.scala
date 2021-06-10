@@ -642,7 +642,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
       paymentSubscription = ChannelMaster.hashRevealStream.merge(ChannelMaster.remoteFulfillStream).throttleFirst(window).subscribe(_ => Vibrator.vibrate).asSome
       preimageSubscription = ChannelMaster.remoteFulfillStream.subscribe(resolveAction, none).asSome
 
-      timer.scheduleAtFixedRate(UITask(for (holder <- lastSeenViewHolders) holder.updMeta), 30000, 30000)
+      timer.scheduleAtFixedRate(UITask { for (holder <- lastSeenViewHolders) holder.updMeta }, 30000, 30000)
       // Run this check after establishing subscriptions since it will trigger an event stream
       markAsFailedOnce
     } else {

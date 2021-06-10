@@ -66,12 +66,12 @@ object BaseActivity {
 }
 
 object Colors {
-  val cardIn = "#FFFFFF"
-  val cardOut = "#88FF88"
-  val cardZero = "#888888"
-  val totalZero = "#555555"
-  val btcCardZero = "#B38722"
-  val lnCardZero = "#7D7DB8"
+  val cardIn: String = "#" + WalletApp.app.getResources.getString(R.color.colorAccent).substring(3)
+  val cardOut: String = "#" + WalletApp.app.getResources.getString(R.color.cardOutText).substring(3)
+  val cardZero: String = "#" + WalletApp.app.getResources.getString(R.color.cardZeroText).substring(3)
+  val totalZero: String = "#" + WalletApp.app.getResources.getString(R.color.totalZeroText).substring(3)
+  val btcCardZero: String = "#" + WalletApp.app.getResources.getString(R.color.btcCardZeroText).substring(3)
+  val lnCardZero: String = "#" + WalletApp.app.getResources.getString(R.color.lnCardZeroText).substring(3)
 }
 
 trait ExternalDataChecker {

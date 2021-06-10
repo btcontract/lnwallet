@@ -31,8 +31,12 @@
     <color name="buttonGrayRipple">#868899</color>
     <color name="buttonGrayBorder">#494949</color>
 
-    <color name="white">#FFFFFF</color>
     <color name="almostBlack">#1A1A1A</color>
+    <color name="cardOutText">#88FF88</color>
+    <color name="cardZeroText">#888888</color>
+    <color name="totalZeroText">#555555</color>
+    <color name="btcCardZeroText">#B38722</color>
+    <color name="lnCardZeroText">#7D7DB8</color>
 
     <!-- nachos -->
 
