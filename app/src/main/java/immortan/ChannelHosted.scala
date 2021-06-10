@@ -186,7 +186,7 @@ abstract class ChannelHosted extends Channel { me =>
       StoreBecomeSend(hc.addLocalProposal(msg), OPEN, msg)
 
 
-    case (hc: HostedCommits, CMD_SOCKET_ONLINE, OPEN | SLEEPING) =>
+    case (hc: HostedCommits, CMD_SOCKET_ONLINE, SLEEPING) =>
       val origRefundPubKey = hc.lastCrossSignedState.refundScriptPubKey
       val invokeMsg = InvokeHostedChannel(LNParams.chainHash, origRefundPubKey, ByteVector.empty)
       SEND(hc.error getOrElse invokeMsg)
@@ -194,12 +194,9 @@ abstract class ChannelHosted extends Channel { me =>
 
     case (hc: HostedCommits, CMD_SOCKET_OFFLINE, OPEN) => BECOME(hc, SLEEPING)
 
-
     case (hc: HostedCommits, _: InitHostedChannel, SLEEPING) => SEND(hc.lastCrossSignedState)
 
-
     case (hc: HostedCommits, remoteLCSS: LastCrossSignedState, SLEEPING) if hc.error.isEmpty => attemptInitResync(hc, remoteLCSS)
-
 
     case (hc: HostedCommits, remoteInfo: RemoteNodeInfo, SLEEPING) if hc.remoteInfo.nodeId == remoteInfo.nodeId => StoreBecomeSend(hc.copy(remoteInfo = remoteInfo), SLEEPING)
 
