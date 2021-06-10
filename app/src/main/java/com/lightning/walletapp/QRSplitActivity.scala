@@ -1,5 +1,8 @@
 package com.lightning.walletapp
 
+import com.lightning.walletapp.Colors._
+import immortan.{LNParams, SplitParams}
+
 import android.os.Bundle
 import android.widget.TextView
 import immortan.crypto.Tools.none
@@ -7,7 +10,6 @@ import immortan.utils.InputParser
 import immortan.fsm.CreateSenderFSM
 import com.ornach.nobobutton.NoboButton
 import com.lightning.walletapp.BaseActivity.StringOps
-import immortan.{LNParams, SplitParams}
 
 
 class QRSplitActivity extends QRActivity with ExternalDataChecker with HasTypicalChainFee { me =>
@@ -28,8 +30,8 @@ class QRSplitActivity extends QRActivity with ExternalDataChecker with HasTypica
 
   def showSplitInvoice(sp: SplitParams): Unit = {
     val nextSplitLink = sp.prExt.withNewSplit(sp.cmd.split.myPart)
-    val leftHuman = LNParams.denomination.parsedWithSign(sp.prExt.splitLeftover - sp.cmd.split.myPart, Colors.totalZero)
-    val mySplitHuman = LNParams.denomination.parsedWithSign(sp.cmd.split.myPart, Colors.totalZero)
+    val leftHuman = LNParams.denomination.parsedWithSign(sp.prExt.splitLeftover - sp.cmd.split.myPart, cardIn, totalZero)
+    val mySplitHuman = LNParams.denomination.parsedWithSign(sp.cmd.split.myPart, cardIn, totalZero)
     splitQrPay.setText(s"$dialogPay $mySplitHuman".html)
 
     splitQrPay setOnClickListener onButtonTap {

@@ -316,5 +316,8 @@ case class ChannelTransitionFail(channelId: ByteVector32) extends RuntimeExcepti
   override def toString: String = s"ChannelTransitionFail, details: $getMessage"
 }
 
+case class RemoteErrorException(details: String) extends RuntimeException {
+  override def toString: String = s"RemoteErrorException, details: $details"
+}
+
 case class CMDException(reason: String, cmd: Command) extends RuntimeException
-case class RemoteErrorException(details: String) extends RuntimeException

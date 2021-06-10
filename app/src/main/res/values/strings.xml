@@ -8,12 +8,12 @@
     <string name="bitcoin_wallet">Bitcoin</string>
     <string name="lightning_wallet">Lightning</string>
     <string name="total_balance">Total balance</string>
-    <string name="pending_refunds">Pending refunds</string>
+    <string name="delayed_pending"><![CDATA[<i>pending</i>]]></string>
+    <string name="delayed_refunds">Delayed channel refunds</string>
     <string name="copied_to_clipboard">Copied to clipboard</string>
     <string name="add_address">More fresh addresses</string>
 
     <string name="recent_activity">Recent activity</string>
-    <string name="search_links">Search payment links</string>
     <string name="search_recent">Search recent activity</string>
 
     <string name="emergency_mode">Something went wrong</string>
@@ -183,7 +183,7 @@
     <string name="rpa_disconnected">Remote peer disconnected</string>
     <string name="rpa_no_feature_support">Can not proceed with channels since some important features are not supported by remote peer.</string>
     <string name="rpa_hc_warn"><![CDATA[<br><b>Attention!</b><br><br>Your hosted channel funds will be stored on a host side, make sure you trust this peer to not exit scam.]]></string>
-    <string name="rpa_request_channel">Share your node ID with remote peer to get an incoming channel.Please inform peer that only private channel requests will be accepted.</string>
+    <string name="rpa_request_channel">Share your node ID with remote peer and keep this page open to get an incoming channel. Only private channel requests will be accepted.</string>
 
     <string name="rpa_request_hc">Request hosted channel</string>
     <string name="rpa_share_node_id">Share node ID</string>

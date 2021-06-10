@@ -32,9 +32,9 @@ abstract class HCOpenHandler(info: RemoteNodeInfo, peerSpecificSecret: ByteVecto
     }
 
     override def onMessage(worker: CommsTower.Worker, message: LightningMessage): Unit = message match {
-      case msg: HasChannelId if msg.channelId == channelId => freshChannel process msg // Error for example
-      case msg: ChannelUpdate => freshChannel process msg // We may receive it here, process anyway
-      case _ => // Do nothing to avoid conflicts
+      case msg: HasChannelId if msg.channelId == channelId => freshChannel process msg
+      case msg: ChannelUpdate => freshChannel process msg
+      case _ =>
     }
 
     override def onBecome: PartialFunction[Transition, Unit] = {
@@ -47,9 +47,9 @@ abstract class HCOpenHandler(info: RemoteNodeInfo, peerSpecificSecret: ByteVecto
     override def onException: PartialFunction[Malfunction, Unit] = {
       // Something went wrong while trying to establish a channel
 
-      case (error, _, _) =>
+      case (openingPhaseError, _, _) =>
         CommsTower.rmListenerNative(info, me)
-        onFailure(error)
+        onFailure(openingPhaseError)
     }
   }
 

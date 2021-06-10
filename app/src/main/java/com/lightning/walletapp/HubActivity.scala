@@ -84,8 +84,10 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
   def reloadRelayedPreimageInfos: Unit = relayedPreimageInfos = LNParams.cm.payBag.listRecentRelays(Table.DEFAULT_LIMIT.get).map(LNParams.cm.payBag.toRelayedPreimageInfo)
 
   def updAllInfos: Unit = {
+    val lnRefunds = LNParams.cm.pendingRefundsAmount.toMilliSatoshi
+    val delayedRefunds = if (lnRefunds > 0L.sat) DelayedRefunds(lnRefunds).asSome else None
     hashToReveals = LNParams.cm.allHosted.flatMap(_.commits.revealedFulfills).groupBy(_.theirAdd.paymentHash)
-    allInfos = (paymentInfos ++ relayedPreimageInfos ++ txInfos).toList.sortBy(_.seenAt)(Ordering[Long].reverse)
+    allInfos = (paymentInfos ++ relayedPreimageInfos ++ txInfos ++ delayedRefunds).toList.sortBy(_.seenAt)(Ordering[Long].reverse)
   }
 
   def loadRecent: Unit =
@@ -108,8 +110,8 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
     def process(query: String, searchLoadResultEffect: Unit): Unit = UITask(updatePaymentList).run
   }
 
-  var lastSeenViewHolders: Set[PaymentLineViewHolder] = _
-  var lastSeenInChannelOutgoing: Map[FullPaymentTag, OutgoingAdds] = _
+  var lastSeenViewHolders = Set.empty[PaymentLineViewHolder]
+  var lastSeenInChannelOutgoing = Map.empty[FullPaymentTag, OutgoingAdds]
 
   val paymentsAdapter: BaseAdapter = new BaseAdapter {
     override def getItem(pos: Int): TransactionDetails = allInfos(pos)
@@ -159,7 +161,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
         case info: RelayedPreimageInfo =>
           labelIcon setVisibility View.GONE
           detailsAndStatus setVisibility View.GONE
-          amount setText LNParams.denomination.directedWithSign(info.earned, 0L.msat, cardZero, isPlus = true).html
+          amount setText LNParams.denomination.directedWithSign(info.earned, 0L.msat, cardOut, cardIn, cardZero, isPlus = true).html
           cardContainer setBackgroundResource paymentBackground(info.fullTag)
           setVisibleIcon(id = R.id.lnRouted)
 
@@ -167,7 +169,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
           detailsAndStatus setVisibility View.VISIBLE
           description setText txDescription(info).html
           setVis(info.description.label.isDefined, labelIcon)
-          amount setText LNParams.denomination.directedWithSign(info.receivedSat.toMilliSatoshi, info.sentSat.toMilliSatoshi, cardZero, info.isIncoming).html
+          amount setText LNParams.denomination.directedWithSign(info.receivedSat, info.sentSat, cardOut, cardIn, cardZero, info.isIncoming).html
           cardContainer setBackgroundResource chainTxBackground(info)
           statusIcon setImageResource txStatusIcon(info)
           setTxTypeIcon(info)
@@ -176,16 +178,25 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
           detailsAndStatus setVisibility View.VISIBLE
           description setText paymentDescription(info).html
           setVis(info.description.label.isDefined, labelIcon)
-          amount setText LNParams.denomination.directedWithSign(info.received, info.sent, cardZero, info.isIncoming).html
+          amount setText LNParams.denomination.directedWithSign(info.received, info.sent, cardOut, cardIn, cardZero, info.isIncoming).html
           cardContainer setBackgroundResource paymentBackground(info.fullTag)
           statusIcon setImageResource paymentStatusIcon(info)
           setPaymentTypeIcon(info)
+
+        case info: DelayedRefunds =>
+          labelIcon setVisibility View.GONE
+          description setText delayed_refunds
+          detailsAndStatus setVisibility View.VISIBLE
+          amount setText LNParams.denomination.directedWithSign(info.totalAmount, 0L.msat, cardIn, cardIn, cardZero, isPlus = true).html
+          cardContainer setBackgroundResource R.drawable.border_lite_gray
+          statusIcon setImageResource R.drawable.baseline_feedback_24
+          setVisibleIcon(id = R.id.lnBtc)
       }
 
     def updMeta: Unit =
       currentDetails match {
-        case info: RelayedPreimageInfo =>
-          meta setText WalletApp.app.when(info.date).html
+        case _: DelayedRefunds => meta setText getString(delayed_pending).html
+        case info: RelayedPreimageInfo => meta setText WalletApp.app.when(info.date).html
 
         case info: TxInfo =>
           if (info.isDeeplyBuried) meta setText WalletApp.app.when(info.date).html
@@ -301,8 +312,6 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
     val inFlightRouted: TextView = view.findViewById(R.id.inFlightRouted).asInstanceOf[TextView]
     val addChannelTip: ImageView = view.findViewById(R.id.addChannelTip).asInstanceOf[ImageView]
 
-    val pendingRefunds: View = view.findViewById(R.id.pendingRefunds).asInstanceOf[View]
-    val pendingRefundsSum: TextView = view.findViewById(R.id.pendingRefundsSum).asInstanceOf[TextView]
     val listCaption: RelativeLayout = view.findViewById(R.id.listCaption).asInstanceOf[RelativeLayout]
     val searchWrap: RelativeLayout = view.findViewById(R.id.searchWrap).asInstanceOf[RelativeLayout]
     val searchField: EditText = view.findViewById(R.id.searchField).asInstanceOf[EditText]
@@ -321,11 +330,11 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
       setVis(allChannels.nonEmpty, channelStateIndicators)
       setVis(WalletApp.lastChainBalance.isTooLongAgo, btcSyncIndicator)
       totalFiatBalance setText WalletApp.currentMsatInFiatHuman(walletBalance).html
-      totalBalance setText LNParams.denomination.parsedWithSign(walletBalance, totalZero).html
+      totalBalance setText LNParams.denomination.parsedWithSign(walletBalance, cardIn, totalZero).html
       channelIndicator.createIndicators(allChannels.toArray)
 
-      totalLightningBalance setText LNParams.denomination.parsedWithSign(currentLnBalance, lnCardZero).html
-      totalBitcoinBalance setText LNParams.denomination.parsedWithSign(WalletApp.lastChainBalance.totalBalance, btcCardZero).html
+      totalLightningBalance setText LNParams.denomination.parsedWithSign(currentLnBalance, cardIn, lnCardZero).html
+      totalBitcoinBalance setText LNParams.denomination.parsedWithSign(WalletApp.lastChainBalance.totalBalance, cardIn, btcCardZero).html
       setVis(WalletApp.lastChainBalance.totalBalance != 0L.msat, totalBitcoinBalance)
       setVis(WalletApp.lastChainBalance.totalBalance == 0L.msat, receiveBitcoinTip)
       setVis(allChannels.nonEmpty, totalLightningBalance)
@@ -343,11 +352,6 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
       inFlightIncoming setText localInCount.toString
       inFlightOutgoing setText localOutCount.toString
       inFlightRouted setText trampolineCount.toString
-
-      val currentPublished = LNParams.cm.closingsPublished
-      val currentRefunds = LNParams.cm.pendingRefundsAmount(currentPublished).toMilliSatoshi
-      pendingRefundsSum setText LNParams.denomination.parsedWithSign(currentRefunds, cardZero).html
-      setVis(currentPublished.nonEmpty && currentRefunds > 0L.sat, pendingRefunds)
     }
   }
 
@@ -486,8 +490,8 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
 
             override val alert: AlertDialog = {
               val title = new TitleView(getString(dialog_split_ln) format prExt.brDescription)
-              val leftHuman = LNParams.denomination.parsedWithSign(prExt.splitLeftover, Colors.cardZero)
-              val totalHuman = LNParams.denomination.parsedWithSign(origAmount, Colors.cardZero)
+              val leftHuman = LNParams.denomination.parsedWithSign(prExt.splitLeftover, cardIn, cardZero)
+              val totalHuman = LNParams.denomination.parsedWithSign(origAmount, cardIn, cardZero)
               title.addChipText(getString(dialog_ln_requested) format s"&#160;$totalHuman")
               title.addChipText(getString(dialog_ln_left) format s"&#160;$leftHuman")
 
@@ -508,7 +512,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
 
             override val alert: AlertDialog = {
               val title = new TitleView(getString(dialog_send_ln) format prExt.brDescription)
-              val totalHuman = LNParams.denomination.parsedWithSign(origAmount, Colors.cardZero)
+              val totalHuman = LNParams.denomination.parsedWithSign(origAmount, cardIn, cardZero)
               title.addChipText(getString(dialog_ln_requested) format s"&#160;$totalHuman")
 
               val builder = titleBodyAsViewBuilder(title.asColoredView(R.color.cardLightning), manager.content)
@@ -705,7 +709,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
   def bringSendBitcoinPopup(uri: BitcoinUri): Unit = {
     val body = getLayoutInflater.inflate(R.layout.frag_input_on_chain, null).asInstanceOf[ScrollView]
     val manager = new RateManager(body, getString(dialog_add_btc_memo).asSome, dialog_visibility_private, LNParams.fiatRates.info.rates, WalletApp.fiatCode)
-    val canSend = LNParams.denomination.parsedWithSign(WalletApp.lastChainBalance.totalBalance, Colors.cardZero)
+    val canSend = LNParams.denomination.parsedWithSign(WalletApp.lastChainBalance.totalBalance, cardIn, cardZero)
     val canSendFiat = WalletApp.currentMsatInFiatHuman(WalletApp.lastChainBalance.totalBalance)
 
     def switchToLn(alert: AlertDialog): Unit = {
@@ -841,7 +845,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
         }
 
         val obs = getFinal(manager.resultMsat).doOnTerminate(removeCurrentSnack.run)
-        val amountHuman = LNParams.denomination.parsedWithSign(manager.resultMsat, cardZero).html
+        val amountHuman = LNParams.denomination.parsedWithSign(manager.resultMsat, cardIn, cardZero).html
         val msg = getString(dialog_lnurl_sending).format(amountHuman, data.callbackUri.getHost).html
         cancellingSnack(contentWindow, obs.subscribe(pf => proceed(pf).run, onFail), msg)
       }

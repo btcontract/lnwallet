@@ -223,11 +223,6 @@ abstract class ChannelHosted extends Channel { me =>
       else localSuspend(hc, ERR_HOSTED_INVALID_RESIZE)
 
 
-    case (hc: HostedCommits, remoteError: Error, WAIT_FOR_ACCEPT | OPEN) if hc.remoteError.isEmpty =>
-      StoreBecomeSend(data1 = hc.copy(remoteError = remoteError.asSome), OPEN)
-      throw RemoteErrorException(ErrorExt extractDescription remoteError)
-
-
     case (hc: HostedCommits, remoteSO: StateOverride, OPEN | SLEEPING) if hc.error.isDefined =>
       StoreBecomeSend(hc.copy(overrideProposal = remoteSO.asSome), state)
 
@@ -250,6 +245,16 @@ abstract class ChannelHosted extends Channel { me =>
       rejectOverriddenOutgoingAdds(hc, hc1)
       // We may have pendig incoming
       events.notifyResolvers
+
+
+    case (hc: HostedCommits, remote: Error, WAIT_FOR_ACCEPT | OPEN) if hc.remoteError.isEmpty =>
+      StoreBecomeSend(data1 = hc.copy(remoteError = remote.asSome), OPEN)
+      throw RemoteErrorException(ErrorExt extractDescription remote)
+
+
+    case (_, remote: Error, _) =>
+      // Convert remote error to local exception, it will be dealt with upstream
+      throw RemoteErrorException(ErrorExt extractDescription remote)
 
 
     case (null, wait: WaitRemoteHostedReply, -1) => super.become(wait, WAIT_FOR_INIT)

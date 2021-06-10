@@ -74,9 +74,9 @@ abstract class NCFunderOpenHandler(info: RemoteNodeInfo, fakeFunding: MakeFundin
     override def onException: PartialFunction[Malfunction, Unit] = {
       // Something went wrong while trying to establish a new channel
 
-      case (error, _, _) =>
+      case (openingPhaseError, _, _) =>
         CommsTower.rmListenerNative(info, me)
-        onFailure(error)
+        onFailure(openingPhaseError)
     }
   }
 

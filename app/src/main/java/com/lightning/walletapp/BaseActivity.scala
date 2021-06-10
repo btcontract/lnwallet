@@ -1,8 +1,11 @@
 package com.lightning.walletapp
 
+import immortan._
 import R.string._
 import fr.acinq.eclair._
 import com.softwaremill.quicklens._
+import com.lightning.walletapp.Colors._
+
 import java.util.{Timer, TimerTask}
 import scala.util.{Failure, Success}
 import android.view.{View, ViewGroup}
@@ -21,7 +24,6 @@ import immortan.utils.{Denomination, InputParser, PaymentRequestExt}
 import fr.acinq.eclair.blockchain.fee.{FeeratePerKw, FeeratePerVByte}
 import com.google.android.material.snackbar.{BaseTransientBottomBar, Snackbar}
 import android.widget.{ArrayAdapter, Button, EditText, ImageView, LinearLayout, ListView, TextView}
-import immortan.{Channel, LNParams, PathFinder, PaymentAction, PaymentDescription, PaymentInfo, PlainDescription, SplitParams}
 import com.cottacush.android.currencyedittext.CurrencyEditText
 import com.google.android.material.textfield.TextInputLayout
 import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
@@ -64,7 +66,9 @@ object BaseActivity {
 }
 
 object Colors {
-  val cardZero = "#777777"
+  val cardIn = "#FFFFFF"
+  val cardOut = "#88FF88"
+  val cardZero = "#888888"
   val totalZero = "#555555"
   val btcCardZero = "#B38722"
   val lnCardZero = "#7D7DB8"
@@ -369,8 +373,9 @@ trait BaseActivity extends AppCompatActivity { me =>
       setVis(showIssue, txIssues)
 
       feeOpt.foreach { fee =>
-        bitcoinFee setText LNParams.denomination.parsedWithSign(fee, Colors.cardZero).html
+        val humanFee = LNParams.denomination.parsedWithSign(fee, cardIn, cardZero).html
         fiatFee setText WalletApp.currentMsatInFiatHuman(fee).html
+        bitcoinFee setText humanFee
       }
     }
 
@@ -390,16 +395,16 @@ trait BaseActivity extends AppCompatActivity { me =>
   def lnSendGuard(prExt: PaymentRequestExt, container: View)(onOK: Option[MilliSatoshi] => Unit): Unit = LNParams.cm.checkIfSendable(prExt.pr.paymentHash) match {
     case _ if !prExt.pr.features.allowMultiPart || !prExt.pr.features.allowPaymentSecret => snack(container, getString(error_ln_send_features).html, dialog_ok, _.dismiss)
     case _ if !LNParams.cm.all.values.exists(Channel.isOperationalOrWaiting) => snack(container, getString(error_ln_no_chans).html, dialog_ok, _.dismiss)
-    case _ if LNParams.cm.all.values.forall(Channel.isWaiting) => snack(container, getString(error_ln_waiting).html, dialog_ok, _.dismiss)
+    case _ if !LNParams.cm.all.values.exists(Channel.isOperational) => snack(container, getString(error_ln_waiting).html, dialog_ok, _.dismiss)
     case _ if LNParams.isChainDisconnectTooLong => snack(container, getString(error_ln_send_chain_disconnect).html, dialog_ok, _.dismiss)
 
     case _ if LNParams.cm.allSortedSendable.last.commits.availableForSend < LNParams.minPayment =>
-      val reserveHuman = LNParams.denomination.parsedWithSign(-LNParams.cm.allSortedSendable.head.commits.availableForSend, Colors.cardZero)
+      val reserveHuman = LNParams.denomination.parsedWithSign(-LNParams.cm.allSortedSendable.head.commits.availableForSend, cardIn, cardZero)
       snack(container, getString(error_ln_send_reserve).format(reserveHuman).html, dialog_ok, _.dismiss)
 
     case _ if prExt.pr.amount.exists(_ < LNParams.minPayment) =>
-      val requestedHuman = LNParams.denomination.parsedWithSign(prExt.pr.amount.get, Colors.cardZero)
-      val minHuman = LNParams.denomination.parsedWithSign(LNParams.minPayment, Colors.cardZero)
+      val requestedHuman = LNParams.denomination.parsedWithSign(prExt.pr.amount.get, cardIn, cardZero)
+      val minHuman = LNParams.denomination.parsedWithSign(LNParams.minPayment, cardIn, cardZero)
       val msg = getString(error_ln_send_small).format(requestedHuman, minHuman).html
       snack(container, msg, dialog_ok, _.dismiss)
 
@@ -413,12 +418,12 @@ trait BaseActivity extends AppCompatActivity { me =>
 
   def lnReceiveGuard(container: View)(onOk: => Unit): Unit = LNParams.cm.allSortedReceivable.lastOption match {
     case _ if !LNParams.cm.all.values.exists(Channel.isOperationalOrWaiting) => snack(container, getString(error_ln_no_chans).html, dialog_ok, _.dismiss)
-    case _ if LNParams.cm.all.values.forall(Channel.isWaiting) => snack(container, getString(error_ln_waiting).html, dialog_ok, _.dismiss)
+    case _ if !LNParams.cm.all.values.exists(Channel.isOperational) => snack(container, getString(error_ln_waiting).html, dialog_ok, _.dismiss)
     case None => snack(container, getString(error_ln_receive_no_update).html, dialog_ok, _.dismiss)
 
     case Some(cnc) =>
       if (cnc.commits.availableForReceive < 0L.msat) {
-        val reserveHuman = LNParams.denomination.parsedWithSign(-cnc.commits.availableForReceive, Colors.cardZero)
+        val reserveHuman = LNParams.denomination.parsedWithSign(-cnc.commits.availableForReceive, cardIn, cardZero)
         snack(container, getString(error_ln_receive_reserve).format(reserveHuman).html, dialog_ok, _.dismiss)
       } else onOk
   }
@@ -428,9 +433,8 @@ trait BaseActivity extends AppCompatActivity { me =>
     val manager = new RateManager(body, getString(dialog_add_ln_memo).asSome, dialog_visibility_private, LNParams.fiatRates.info.rates, WalletApp.fiatCode)
     val alert: AlertDialog
 
-    val canSendHuman: String = LNParams.denomination.parsedWithSign(maxSendable, Colors.cardZero)
     val canSendFiatHuman: String = WalletApp.currentMsatInFiatHuman(maxSendable)
-
+    val canSendHuman: String = LNParams.denomination.parsedWithSign(maxSendable, cardIn, cardZero)
     manager.hintFiatDenom.setText(getString(dialog_can_send).format(canSendFiatHuman).html)
     manager.hintDenom.setText(getString(dialog_can_send).format(canSendHuman).html)
 
@@ -487,10 +491,9 @@ trait BaseActivity extends AppCompatActivity { me =>
     val commits: Commitments = LNParams.cm.maxReceivable(LNParams.cm.allSortedReceivable).head.commits
     val manager: RateManager = getManager
 
-    val finalMaxReceivable: MilliSatoshi = initMaxReceivable.min(commits.availableForReceive)
     val finalMinReceivable: MilliSatoshi = initMinReceivable.max(LNParams.minPayment)
-
-    val canReceiveHuman: String = LNParams.denomination.parsedWithSign(finalMaxReceivable, Colors.cardZero)
+    val finalMaxReceivable: MilliSatoshi = initMaxReceivable.min(commits.availableForReceive)
+    val canReceiveHuman: String = LNParams.denomination.parsedWithSign(finalMaxReceivable, cardIn, cardZero)
     val canReceiveFiatHuman: String = WalletApp.currentMsatInFiatHuman(finalMaxReceivable)
 
     def receive(alert: AlertDialog): Unit = {

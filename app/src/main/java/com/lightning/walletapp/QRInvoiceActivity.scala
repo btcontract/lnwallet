@@ -1,5 +1,6 @@
 package com.lightning.walletapp
 
+import com.lightning.walletapp.Colors._
 import immortan.{ChannelMaster, LNParams}
 import immortan.utils.{InputParser, PaymentRequestExt}
 import android.widget.{ImageView, RelativeLayout, TextView}
@@ -32,7 +33,7 @@ class QRInvoiceActivity extends QRActivity with ExternalDataChecker { me =>
 
   def showInvoice(prExt: PaymentRequestExt): Unit =
     runInFutureProcessOnUI(QRActivity.get(prExt.raw.toUpperCase, qrSize), onFail) { bitmap =>
-      val amountHuman = LNParams.denomination.parsedWithSign(prExt.pr.amount.get, Colors.totalZero)
+      val amountHuman = LNParams.denomination.parsedWithSign(prExt.pr.amount.get, cardIn, totalZero)
       def share: Unit = runInFutureProcessOnUI(shareData(bitmap, prExt.raw), onFail)(none)
       qrViewHolder.qrCopy setOnClickListener onButtonTap(WalletApp.app copy prExt.raw)
       qrViewHolder.qrCode setOnClickListener onButtonTap(WalletApp.app copy prExt.raw)

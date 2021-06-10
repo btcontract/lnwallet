@@ -149,14 +149,6 @@ abstract class ChannelNormal(bag: ChannelBag) extends Channel { me =>
         watchConfirmedSpent(commits, watchConfirmed = true, watchSpent = true)
         StoreBecomeSend(data1, WAIT_FUNDING_DONE, fundingSigned)
 
-      // Convert remote error into local exception in opening phase, it should be dealt with upstream
-
-      case (_: INPUT_INIT_FUNDER | _: DATA_WAIT_FOR_ACCEPT_CHANNEL | _: DATA_WAIT_FOR_FUNDING_INTERNAL | _: DATA_WAIT_FOR_FUNDING_SIGNED, remote: Error, _) =>
-        throw new RuntimeException(ErrorExt extractDescription remote)
-
-      case (_: INPUT_INIT_FUNDEE | _: DATA_WAIT_FOR_FUNDING_CREATED, remote: Error, _) =>
-        throw new RuntimeException(ErrorExt extractDescription remote)
-
       // AWAITING CONFIRMATION
 
       case (wait: DATA_WAIT_FOR_FUNDING_CONFIRMED, event: WatchEventConfirmed, SLEEPING | WAIT_FUNDING_DONE) =>
@@ -264,10 +256,6 @@ abstract class ChannelNormal(bag: ChannelBag) extends Channel { me =>
       // In all other states except normal we force-close right away
       case (some: HasNormalCommitments, _: CMD_CLOSE, OPEN | SLEEPING) =>
         spendLocalCurrent(some)
-
-
-      case (_: HasNormalCommitments, remote: Error, OPEN | SLEEPING) =>
-        throw RemoteErrorException(ErrorExt extractDescription remote)
 
 
       case (norm: DATA_NORMAL, cmd: CMD_ADD_HTLC, OPEN | SLEEPING) =>
@@ -476,14 +464,14 @@ abstract class ChannelNormal(bag: ChannelBag) extends Channel { me =>
         reestablish match {
           case rs if !Helpers.checkLocalCommit(norm, rs.nextRemoteRevocationNumber) =>
             // if NextRemoteRevocationNumber is greater than our local commitment index, it means that either we are using an outdated commitment, or they are lying
-            // but first we need to make sure that the last PerCommitmentSecret that they claim to have received from us is correct for that NextRemoteRevocationNumber minus 1
+            // we need to make sure that the last PerCommitmentSecret that they claim to have received from us is correct for that NextRemoteRevocationNumber minus 1
             val peerIsAhead = norm.commitments.localParams.keys.commitmentSecret(rs.nextRemoteRevocationNumber - 1) == rs.yourLastPerCommitmentSecret
             if (peerIsAhead) StoreBecomeSend(DATA_WAIT_FOR_REMOTE_PUBLISH_FUTURE_COMMITMENT(norm.commitments, rs), CLOSING, pleasePublishError)
             else throw ChannelTransitionFail(norm.commitments.channelId)
 
           case rs if !Helpers.checkRemoteCommit(norm, rs.nextLocalCommitmentNumber) =>
             // if NextRemoteRevocationNumber is more than one more our remote commitment index, it means that either we are using an outdated commitment, or they are lying
-            // there is no way to make sure that they are saying the truth, the best thing to do is ask them to publish their commitment right now
+            // there is no way to make sure if they are saying the truth or not, the best thing to do is ask them to publish their commitment right now
             // note that if they don't comply, we could publish our own commitment (it is not stale, otherwise we would be in the case above)
             StoreBecomeSend(DATA_WAIT_FOR_REMOTE_PUBLISH_FUTURE_COMMITMENT(norm.commitments, rs), CLOSING, pleasePublishError)
 
@@ -648,6 +636,12 @@ abstract class ChannelNormal(bag: ChannelBag) extends Channel { me =>
         watchConfirmedSpent(data1.commitments, watchConfirmed = false, watchSpent = true)
         BECOME(data1, SLEEPING)
 
+
+      case (_, remote: Error, _) =>
+        // Convert remote error to local exception, it will be dealt with upstream
+        throw RemoteErrorException(ErrorExt extractDescription remote)
+
+
       case _ =>
     }
 
@@ -748,7 +742,7 @@ abstract class ChannelNormal(bag: ChannelBag) extends Channel { me =>
     StoreBecomeSend(closing, CLOSING)
   }
 
-  private def handleRemoteSpentOther(tx: Transaction, data1: HasNormalCommitments): Unit =
+  private def handleRemoteSpentOther(tx: Transaction, data1: HasNormalCommitments): Unit = {
     Closing.claimRevokedRemoteCommitTxOutputs(data1.commitments, tx, bag, LNParams.feeRates.info.onChainFeeConf.feeEstimator) match {
       // This is most likely an old revoked state, but it might not be in some kind of exceptional circumstance (private keys leakage, old backup etc)
 
@@ -765,6 +759,7 @@ abstract class ChannelNormal(bag: ChannelBag) extends Channel { me =>
         // thanks to remote static key we get the rest of channel balance back anyway so it's not too bad
         handleRemoteSpentFuture(tx, data1.commitments)
     }
+  }
 
   // Publish handlers
 

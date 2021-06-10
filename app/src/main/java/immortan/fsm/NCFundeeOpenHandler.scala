@@ -43,9 +43,9 @@ abstract class NCFundeeOpenHandler(info: RemoteNodeInfo, theirOpen: OpenChannel,
     override def onException: PartialFunction[Malfunction, Unit] = {
       // Something went wrong while trying to establish a channel
 
-      case (error, _, _) =>
+      case (openingPhaseError, _, _) =>
         CommsTower.rmListenerNative(info, me)
-        onFailure(error)
+        onFailure(openingPhaseError)
     }
   }
 

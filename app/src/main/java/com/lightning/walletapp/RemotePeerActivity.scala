@@ -6,6 +6,7 @@ import fr.acinq.eclair._
 import fr.acinq.eclair.wire._
 import immortan.crypto.Tools._
 import fr.acinq.eclair.Features._
+import com.lightning.walletapp.Colors._
 import com.lightning.walletapp.R.string._
 
 import android.view.{View, ViewGroup}
@@ -150,7 +151,7 @@ class RemotePeerActivity extends BaseActivity with ExternalDataChecker { me =>
   def fundNewChannel(view: View): Unit = {
     val body = getLayoutInflater.inflate(R.layout.frag_input_on_chain, null).asInstanceOf[ViewGroup]
     val manager = new RateManager(body, extraText = None, visHintRes = -1, LNParams.fiatRates.info.rates, WalletApp.fiatCode)
-    val canSend = LNParams.denomination.parsedWithSign(WalletApp.lastChainBalance.totalBalance, Colors.cardZero)
+    val canSend = LNParams.denomination.parsedWithSign(WalletApp.lastChainBalance.totalBalance, cardIn, cardZero)
     val canSendFiat = WalletApp.currentMsatInFiatHuman(WalletApp.lastChainBalance.totalBalance)
 
     def attempt(alert: AlertDialog): Unit = {
@@ -203,7 +204,7 @@ class RemotePeerActivity extends BaseActivity with ExternalDataChecker { me =>
   }
 
   def sharePeerSpecificNodeId(view: View): Unit =
-    share(hasInfo.remoteInfo.nodeSpecificPubKey.toString)
+    println(s"-- ${hasInfo.remoteInfo.nodeSpecificPubKey.toString}")
 
   def requestHostedChannel(view: View): Unit =
     me askHostedChannel randomBytes32

@@ -45,8 +45,8 @@ object LNParams {
   val maxOffChainFeeRatio: Double = 0.01 // We are OK with paying up to this % of LN fee relative to payment amount
   val maxOffChainFeeAboveRatio: MilliSatoshi = MilliSatoshi(200000L) // For small amounts we always accept fee up to this
 
-  val shouldSendUpdateFeerateDiff = 5.0
-  val shouldRejectPaymentFeerateDiff = 15.0
+  val shouldSendUpdateFeerateDiff = 50.0
+  val shouldRejectPaymentFeerateDiff = 150.0
 
   val minInvoiceExpiryDelta: CltvExpiryDelta = CltvExpiryDelta(18) // If payee does not provide an explicit relative CLTV this is what we use by default
   val minForceClosableIncomingHtlcAmountToFeeRatio = 4 // When incoming HTLC gets (nearly) expired, how much higher than trim threshold should it be for us to force-close

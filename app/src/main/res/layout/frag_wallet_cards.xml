@@ -206,38 +206,6 @@
             </RelativeLayout>
         </androidx.cardview.widget.CardView>
 
-        <!-- Pending refunds -->
-
-        <androidx.cardview.widget.CardView
-            card_view:cardCornerRadius="@dimen/corner_radius"
-            android:id="@+id/pendingRefunds"
-            android:layout_marginTop="5dp"
-            style="@style/Card">
-
-            <RelativeLayout
-                android:paddingTop="10dp"
-                android:paddingEnd="15dp"
-                android:paddingStart="15dp"
-                android:paddingBottom="10dp"
-                android:background="@drawable/border_yellow"
-                style="@style/FillingView">
-
-                <TextView
-                    android:textColor="@color/colorAccent"
-                    android:text="@string/pending_refunds"
-                    android:layout_centerVertical="true"
-                    style="@style/BoundedView"/>
-
-                <TextView
-                    android:id="@+id/pendingRefundsSum"
-                    android:textColor="@color/colorAccent"
-                    android:layout_alignParentEnd="true"
-                    android:layout_centerVertical="true"
-                    style="@style/BoundedView"/>
-
-            </RelativeLayout>
-        </androidx.cardview.widget.CardView>
-
         <!-- Caption and search bar -->
 
         <RelativeLayout
