@@ -227,8 +227,13 @@ class ChannelMaster(val payBag: PaymentBag, val chanBag: ChannelBag, val dataBag
   // These are executed in Channel context
 
   override def onException: PartialFunction[Malfunction, Unit] = {
-    case (_: ChannelTransitionFail, chan: ChannelNormal, _: HasNormalCommitments) => chan process CMD_CLOSE(scriptPubKey = None, force = true)
-    case (_: ChannelTransitionFail, chan: ChannelHosted, hc: HostedCommits) if hc.error.isEmpty => chan.localSuspend(hc, ErrorCodes.ERR_HOSTED_MANUAL_SUSPEND)
+    case (_: ChannelTransitionFail, chan: ChannelNormal, _: HasNormalCommitments) =>
+      // Execute immediately in same thread to not let channel get updated
+      chan doProcess CMD_CLOSE(scriptPubKey = None, force = true)
+
+    case (_: ChannelTransitionFail, chan: ChannelHosted, hc: HostedCommits) if hc.error.isEmpty =>
+      // Execute immediately in same thread to not let channel get updated
+      chan.localSuspend(hc, ErrorCodes.ERR_HOSTED_MANUAL_SUSPEND)
   }
 
   override def onBecome: PartialFunction[Transition, Unit] = {

@@ -42,16 +42,15 @@ object LNUrl {
   }
 
   def level2DataResponse(bld: Uri.Builder): Observable[String] = Rx.ioQueue.map { _ =>
-    val requestWithCacheProtection = bld.appendQueryParameter(randomBytes(4).toHex, new String).build.toString
-    guardResponse(HttpRequest.get(requestWithCacheProtection, false).connectTimeout(15000).header("Connection", "close").body)
+    guardResponse(HttpRequest.get(bld.build.toString, false).connectTimeout(15000).header("Connection", "close").body)
   }
 }
 
 case class LNUrl(request: String) {
   val uri: Uri = LNUrl.checkHost(request)
   lazy val k1: Try[String] = Try(uri getQueryParameter "k1")
-  lazy val isAuth: Boolean = Try(uri getQueryParameter "tag" equals "login").getOrElse(false)
-  lazy val authAction: String = Try(uri getQueryParameter "action").getOrElse("login")
+  lazy val isAuth: Boolean = Try(uri.getQueryParameter("tag").toLowerCase == "login").getOrElse(false)
+  lazy val authAction: String = Try(uri.getQueryParameter("action").toLowerCase).getOrElse("login")
 
   lazy val fastWithdrawAttempt: Try[WithdrawRequest] = Try {
     require(uri getQueryParameter "tag" equals "withdrawRequest")

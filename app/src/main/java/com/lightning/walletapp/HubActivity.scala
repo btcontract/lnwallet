@@ -572,10 +572,9 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
 
     val (successRes, actionRes) = lnUrl.authAction match {
       case "register" => (lnurl_auth_register_ok, lnurl_auth_register)
-      case "login" => (lnurl_auth_login_ok, lnurl_auth_login)
       case "auth" => (lnurl_auth_auth_ok, lnurl_auth_auth)
       case "link" => (lnurl_auth_link_ok, lnurl_auth_link)
-      case _ => throw new RuntimeException
+      case _ => (lnurl_auth_login_ok, lnurl_auth_login)
     }
 
     val title = titleBodyAsViewBuilder(s"<big>${lnUrl.uri.getHost}</big>".asColoredView(R.color.cardLightning), null)
