@@ -209,15 +209,16 @@ abstract class ChannelNormal(bag: ChannelBag) extends Channel { me =>
         StoreBecomeSend(norm.modify(_.commitments.updateOpt).setTo(update.asSome), state)
 
 
+      // It is assumed that LNParams.feeRates.info is updated at this point
       case (norm: DATA_NORMAL, CMD_CHECK_FEERATE, OPEN) if norm.commitments.localParams.isFunder =>
         nextFeerate(norm, LNParams.shouldSendUpdateFeerateDiff).map(norm.commitments.sendFee).toList match {
-          case (commits1, balanceAfterFeeUpdate, ourRatesUpdateMsg) :: Nil if balanceAfterFeeUpdate.toLong > 0L =>
+          case (commits1, balanceAfterFeeUpdate, ourRatesUpdateMsg) :: Nil if balanceAfterFeeUpdate.toLong >= 0L =>
             // Technically we still require feerate update at this point since local commit feerate is not refreshed yet
             // but we may start sending new HTLCs right away because remote peer will see them AFTER update signature
             StoreBecomeSend(norm.copy(commitments = commits1, feeUpdateRequired = false), OPEN, ourRatesUpdateMsg)
             doProcess(CMD_SIGN)
 
-          case _ :: Nil =>
+          case (_, balanceAfterFeeUpdate, _) :: Nil if balanceAfterFeeUpdate.toLong < 0L =>
             // We need a feerate update but can't afford it right now so wait and reject outgoing adds
             // situation is expected to normalize by either sending it later or getting better feerates
             StoreBecomeSend(norm.copy(feeUpdateRequired = true), OPEN)

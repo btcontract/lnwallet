@@ -90,8 +90,9 @@ object Tools {
     GraphEdge(updExt = RouteCalculation.toFakeUpdate(fakeHop), desc = fakeDesc)
   }
 
-  def newFeerate(info: FeeRatesInfo, spec: CommitmentSpec, threshold: Double): Option[FeeratePerKw] = {
-    val newFeerate = info.onChainFeeConf.feeEstimator.getFeeratePerKw(info.onChainFeeConf.feeTargets.commitmentBlockTarget)
+  // Defines whether updated feerate exceeds a given threshold
+  def newFeerate(info1: FeeRatesInfo, spec: CommitmentSpec, threshold: Double): Option[FeeratePerKw] = {
+    val newFeerate = info1.onChainFeeConf.feeEstimator.getFeeratePerKw(info1.onChainFeeConf.feeTargets.commitmentBlockTarget)
     if (spec.feeratePerKw.max(newFeerate).toLong.toDouble / spec.feeratePerKw.min(newFeerate).toLong > threshold) Some(newFeerate) else None
   }
 

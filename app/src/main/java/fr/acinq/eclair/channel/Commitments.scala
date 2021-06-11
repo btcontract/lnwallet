@@ -8,11 +8,12 @@ import fr.acinq.eclair.transactions._
 import fr.acinq.eclair.transactions.DirectedHtlc._
 import fr.acinq.eclair.transactions.Transactions._
 import fr.acinq.eclair.crypto.{Generators, ShaChain}
+import immortan.crypto.Tools.{Any2Some, newFeerate, none}
 import immortan.{LNParams, RemoteNodeInfo, UpdateAddHtlcExt}
 import fr.acinq.eclair.channel.Helpers.HashToPreimage
 import fr.acinq.eclair.blockchain.fee.FeeratePerKw
 import fr.acinq.bitcoin.Crypto.PublicKey
-import immortan.crypto.Tools.Any2Some
+import immortan.utils.Rx
 
 
 case class LocalChanges(proposed: List[UpdateMessage], signed: List[UpdateMessage], acked: List[UpdateMessage] = Nil) {
@@ -241,12 +242,26 @@ case class NormalCommits(channelFlags: Byte, channelId: ByteVector32, channelVer
   def receiveFee(fee: UpdateFee): NormalCommits = {
     if (localParams.isFunder) throw ChannelTransitionFail(channelId)
     if (fee.feeratePerKw < FeeratePerKw.MinimumFeeratePerKw) throw ChannelTransitionFail(channelId)
-    // TODO: when their update is radically lower, check if our chain conditions confirm that and force-close if definitely not
     val commitments1 = me.modify(_.remoteChanges.proposed).using(changes => changes.filter { case _: UpdateFee => false case _ => true } :+ fee)
     val reduced = CommitmentSpec.reduce(commitments1.localCommit.spec, commitments1.localChanges.acked, commitments1.remoteChanges.proposed)
+
+    val threshold = Transactions.offeredHtlcTrimThreshold(remoteParams.dustLimit, localCommit.spec, channelVersion.commitmentFormat)
+    val largeRoutedExist = allOutgoing.exists(ourAdd => ourAdd.amountMsat > threshold * LNParams.minForceClosableOutgoingHtlcAmountToFeeRatio && ourAdd.fullTag.tag == PaymentTagTlv.TRAMPLOINE_ROUTED)
+    val dangerousState = largeRoutedExist && newFeerate(LNParams.feeRates.info, reduced, LNParams.shouldForceClosePaymentFeerateDiff).isDefined && fee.feeratePerKw < commitments1.localCommit.spec.feeratePerKw
+
+    if (dangerousState) {
+      // We force feerate update and block this thread while it's being executed, will have an updated info once done
+      Rx.retry(Rx.ioQueue.map(_ => LNParams.feeRates.reloadData), Rx.incSec, 1 to 3).toBlocking.subscribe(LNParams.feeRates.updateInfo, none)
+      // We have seen a suspiciously lower feerate update from peer, then force-checked current network feerates and they are NOT THAT low
+      val stillDangerousState = newFeerate(LNParams.feeRates.info, reduced, LNParams.shouldForceClosePaymentFeerateDiff).isDefined
+      // It is too dangerous to have outgoing routed HTLCs with such a low feerate since they may not get confirmed in time
+      if (stillDangerousState) throw ChannelTransitionFail(channelId)
+    }
+
     val fees = commitTxFee(commitments1.remoteParams.dustLimit, reduced, channelVersion.commitmentFormat)
     val missing = reduced.toRemote.truncateToSatoshi - commitments1.localParams.channelReserve - fees
-    if (missing < 0L.sat) throw ChannelTransitionFail(channelId) else commitments1
+    if (missing < 0L.sat) throw ChannelTransitionFail(channelId)
+    commitments1
   }
 
   def sendCommit: (NormalCommits, CommitSig, RemoteCommit) =

@@ -33,7 +33,7 @@ object Helpers {
     if (open.fundingSatoshis < LNParams.minFundingSatoshis || open.fundingSatoshis > LNParams.maxFundingSatoshis)
       throw InvalidFundingAmount(open.temporaryChannelId, open.fundingSatoshis, LNParams.minFundingSatoshis, LNParams.maxFundingSatoshis)
 
-    newFeerate(LNParams.feeRates.info, commits.localCommit.spec, LNParams.shouldRejectPaymentFeerateDiff).foreach { localFeeratePerKw =>
+    newFeerate(LNParams.feeRates.info, commits.localCommit.spec, LNParams.shouldForceClosePaymentFeerateDiff).foreach { localFeeratePerKw =>
       throw FeerateTooDifferent(open.temporaryChannelId, localFeeratePerKw, open.feeratePerKw)
     }
 

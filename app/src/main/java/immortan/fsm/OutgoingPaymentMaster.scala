@@ -71,9 +71,9 @@ case class SendMultiPart(fullTag: FullPaymentTag, chainExpiry: Either[CltvExpiry
                          assistedEdges: Set[GraphEdge] = Set.empty, onionTlvs: Seq[OnionTlv] = Nil, userCustomTlvs: Seq[GenericTlv] = Nil)
 
 case class OutgoingPaymentMasterData(payments: Map[FullPaymentTag, OutgoingPaymentSender],
-                                     chanFailedAtAmount: Map[ChannelDesc, MilliSatoshi] = Map.empty withDefaultValue Long.MaxValue.msat,
-                                     nodeFailedWithUnknownUpdateTimes: Map[PublicKey, Int] = Map.empty withDefaultValue 0,
-                                     chanFailedTimes: Map[ChannelDesc, Int] = Map.empty withDefaultValue 0) {
+                                     chanFailedAtAmount: Map[ChannelDesc, MilliSatoshi] = Map.empty,
+                                     nodeFailedWithUnknownUpdateTimes: Map[PublicKey, Int] = Map.empty,
+                                     chanFailedTimes: Map[ChannelDesc, Int] = Map.empty) {
 
   def withFailuresReduced: OutgoingPaymentMasterData =
     copy(nodeFailedWithUnknownUpdateTimes = nodeFailedWithUnknownUpdateTimes.mapValues(_ / 2),
@@ -98,9 +98,8 @@ class OutgoingPaymentMaster(val cm: ChannelMaster) extends StateMachine[Outgoing
 
   def doProcess(change: Any): Unit = (change, state) match {
     case (send: SendMultiPart, EXPECTING_PAYMENTS | WAITING_FOR_ROUTE) =>
-      // Before going any further maybe reduce failure times to give previously failing channels a chance
-      val noPendingPayments = data.payments.values.forall(fsm => SUCCEEDED == fsm.state || ABORTED == fsm.state)
-      if (noPendingPayments) become(data.withFailuresReduced, state)
+      // Reduce failure times to give previously failing channels a chance
+      become(data.withFailuresReduced, state)
 
       // Related sender FSM must be present
       send.assistedEdges.foreach(cm.pf.process)
@@ -143,14 +142,14 @@ class OutgoingPaymentMaster(val cm: ChannelMaster) extends StateMachine[Outgoing
       me process CMDAskForRoute
 
     case (ChannelFailed(descAndCapacity, increment), EXPECTING_PAYMENTS | WAITING_FOR_ROUTE) =>
-      // At this point an affected InFlight status IS STILL PRESENT so failedAtAmount = sum(inFlight)
-      val newChanFailedAtAmount = data.chanFailedAtAmount(descAndCapacity.desc) min usedCapacities(descAndCapacity)
-      val atTimes1 = data.chanFailedTimes.updated(descAndCapacity.desc, data.chanFailedTimes(descAndCapacity.desc) + increment)
+      // At this point an affected InFlight status IS STILL PRESENT so failedAtAmount = usedCapacities = sum(inFlight)
+      val newChanFailedAtAmount = data.chanFailedAtAmount.getOrElse(descAndCapacity.desc, Long.MaxValue.msat) min usedCapacities(descAndCapacity)
+      val atTimes1 = data.chanFailedTimes.updated(descAndCapacity.desc, data.chanFailedTimes.getOrElse(descAndCapacity.desc, 0) + increment)
       val atAmount1 = data.chanFailedAtAmount.updated(descAndCapacity.desc, newChanFailedAtAmount)
       become(data.copy(chanFailedAtAmount = atAmount1, chanFailedTimes = atTimes1), state)
 
     case (NodeFailed(nodeId, increment), EXPECTING_PAYMENTS | WAITING_FOR_ROUTE) =>
-      val newNodeFailedTimes = data.nodeFailedWithUnknownUpdateTimes(nodeId) + increment
+      val newNodeFailedTimes = data.nodeFailedWithUnknownUpdateTimes.getOrElse(nodeId, 0) + increment
       val atTimes1 = data.nodeFailedWithUnknownUpdateTimes.updated(nodeId, newNodeFailedTimes)
       become(data.copy(nodeFailedWithUnknownUpdateTimes = atTimes1), state)
 
@@ -384,26 +383,29 @@ class OutgoingPaymentSender(val fullTag: FullPaymentTag, val listener: OutgoingP
 
               if (isSignatureFine) {
                 opm.cm.pf process failure.update
+                val isEnabled = Announcements.isEnabled(failure.update.channelFlags)
+                // If channel is disabled we exclude it for current MPP session, but may reuse in next one
+                val channelFailIncrement = if (isEnabled) 1 else data.cmd.routerConf.maxChannelFailures
+
                 route.getEdgeForNode(originNodeId) match {
                   case Some(edge) if edge.updExt.update.shortChannelId != failure.update.shortChannelId =>
                     // This is fine: remote node has used a different channel than the one we have initially requested
                     // But remote node may send such errors infinitely so increment this specific type of failure
                     // Still fail an originally selected channel since it has most likely been tried too
-                    opm doProcess ChannelFailed(edge.toDescAndCapacity, increment = 1)
+                    opm doProcess ChannelFailed(edge.toDescAndCapacity, channelFailIncrement)
                     opm doProcess NodeFailed(originNodeId, increment = 1)
 
                   case Some(edge) if edge.updExt.update.core == failure.update.core =>
-                    // Remote node returned the same update we used, channel is most likely imbalanced
-                    // Note: we may have it disabled and new update comes enabled: still same update
-                    opm doProcess ChannelFailed(edge.toDescAndCapacity, increment = 1)
+                    // Remote node returned EXACTLY same update, this channel is likely imbalanced
+                    opm doProcess ChannelFailed(edge.toDescAndCapacity, channelFailIncrement)
 
                   case _ =>
                     // Something like higher feerates or CLTV, channel is updated in graph and may be chosen once again
                     // But remote node may send oscillating updates infinitely so increment this specific type of failure
-                    opm doProcess NodeFailed(originNodeId, increment = 1)
+                    opm doProcess NodeFailed(originNodeId, channelFailIncrement)
                 }
               } else {
-                // Invalid sig is a severe violation, ban sender node for 6 subsequent payments
+                // Invalid sig is a severe violation, ban sender node for 6 subsequent MPP sessions
                 opm doProcess NodeFailed(originNodeId, data.cmd.routerConf.maxStrangeNodeFailures * 32)
               }
 
@@ -416,9 +418,9 @@ class OutgoingPaymentSender(val fullTag: FullPaymentTag, val listener: OutgoingP
               resolveRemoteFail(data.withRemoteFailure(route, pkt), wait)
 
             case pkt @ Sphinx.DecryptedFailurePacket(nodeId, _) =>
-              // TODO: absent if error happened beyond trampoline in TMPP
+              // This is not an update failure, better to avoid entirely
               route.getEdgeForNode(nodeId).map(_.toDescAndCapacity) match {
-                case Some(dnc) => opm doProcess ChannelFailed(dnc, data.cmd.routerConf.maxChannelFailures * 2)
+                case Some(dnc) => opm doProcess ChannelFailed(dnc, data.cmd.routerConf.maxChannelFailures)
                 case None => opm doProcess NodeFailed(nodeId, data.cmd.routerConf.maxStrangeNodeFailures)
               }
 

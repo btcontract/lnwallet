@@ -4,9 +4,9 @@ import fr.acinq.bitcoin._
 import immortan.utils.FeeRates._
 import fr.acinq.eclair.blockchain.fee._
 import immortan.utils.ImplicitJsonFormats._
-import rx.lang.scala.{Observable, Subscription}
 import com.github.kevinsawicki.http.HttpRequest.get
 import immortan.crypto.CanBeShutDown
+import rx.lang.scala.Subscription
 import immortan.crypto.Tools.none
 import immortan.DataBag
 
@@ -51,29 +51,29 @@ class FeeRates(bag: DataBag) extends CanBeShutDown {
     case _ => BitgoFeeProvider.provide
   }
 
+  def updateInfo(newPerKB: FeeratesPerKB): Unit = {
+    val history1 = newPerKB :: info.history diff List(defaultFeerates) take 3
+    // Prepend new item to history, then make sure default is not there, then keep 3 recent items
+    info = FeeRatesInfo(smoothedFeeratesPerKw(history1), history1, System.currentTimeMillis)
+    for (lst <- listeners) lst.onFeeRates(info)
+  }
+
   override def becomeShutDown: Unit = {
     subscription.unsubscribe
     listeners = Set.empty
   }
 
+  private[this] val periodHours = 12
   var listeners: Set[FeeRatesListener] = Set.empty
   var info: FeeRatesInfo = bag.tryGetFeeRatesInfo getOrElse {
     FeeRatesInfo(FeeratesPerKw(defaultFeerates), history = Nil, stamp = 0L)
   }
 
-  private[this] val periodHours = 12
-  private[this] val retryRepeatDelayedCall: Observable[FeeratesPerKB] = {
+  val subscription: Subscription = {
     val retry = Rx.retry(Rx.ioQueue.map(_ => reloadData), Rx.incSec, 3 to 18 by 3)
     val repeat = Rx.repeat(retry, Rx.incHour, periodHours to Int.MaxValue by periodHours)
-    Rx.initDelay(repeat, info.stamp, periodHours * 60 * 60 * 1000L)
+    Rx.initDelay(repeat, info.stamp, periodHours * 60 * 60 * 1000L).subscribe(updateInfo, none)
   }
-
-  val subscription: Subscription = retryRepeatDelayedCall.subscribe(newPerKB => {
-    // Prepend new item to history, then make sure default is not there, then keep 3 recent items
-    val history1: List[FeeratesPerKB] = newPerKB :: info.history diff List(defaultFeerates) take 3
-    info = FeeRatesInfo(smoothedFeeratesPerKw(history1), history1, System.currentTimeMillis)
-    for (lst <- listeners) lst.onFeeRates(info)
-  }, none)
 }
 
 case class FeeRatesInfo(smoothed: FeeratesPerKw, history: List[FeeratesPerKB], stamp: Long) {
