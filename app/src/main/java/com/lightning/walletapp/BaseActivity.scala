@@ -12,13 +12,11 @@ import android.view.{View, ViewGroup}
 import java.io.{File, FileOutputStream}
 import android.graphics.{Bitmap, Color}
 import android.graphics.Color.{BLACK, WHITE}
+import fr.acinq.bitcoin.{ByteVector32, Satoshi}
 import android.content.{DialogInterface, Intent}
 import android.text.{Editable, Spanned, TextWatcher}
 import com.google.zxing.{BarcodeFormat, EncodeHintType}
-import fr.acinq.bitcoin.{ByteVector32, Crypto, Satoshi}
 import androidx.core.content.{ContextCompat, FileProvider}
-import fr.acinq.eclair.wire.{FullPaymentTag, PaymentTagTlv}
-import immortan.fsm.{CreateSenderFSM, SendMultiPart, SplitInfo}
 import immortan.crypto.Tools.{Any2Some, Fiat2Btc, none, runAnd}
 import immortan.utils.{Denomination, InputParser, PaymentRequestExt}
 import fr.acinq.eclair.blockchain.fee.{FeeratePerKw, FeeratePerVByte}
@@ -35,11 +33,9 @@ import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.slider.Slider
 import android.graphics.Bitmap.Config.ARGB_8888
 import androidx.appcompat.app.AppCompatActivity
-import fr.acinq.eclair.router.RouteCalculation
 import android.text.method.LinkMovementMethod
 import fr.acinq.eclair.payment.PaymentRequest
 import com.google.zxing.qrcode.QRCodeWriter
-import fr.acinq.eclair.channel.Commitments
 import androidx.appcompat.app.AlertDialog
 import org.apmem.tools.layouts.FlowLayout
 import scala.language.implicitConversions
@@ -398,9 +394,11 @@ trait BaseActivity extends AppCompatActivity { me =>
     case _ if !LNParams.cm.all.values.exists(Channel.isOperational) => snack(container, getString(error_ln_waiting).html, dialog_ok, _.dismiss)
     case _ if LNParams.isChainDisconnectTooLong => snack(container, getString(error_ln_send_chain_disconnect).html, dialog_ok, _.dismiss)
 
-    case _ if LNParams.cm.allSortedSendable.last.commits.availableForSend < LNParams.minPayment =>
-      val reserveHuman = LNParams.denomination.parsedWithSign(-LNParams.cm.allSortedSendable.head.commits.availableForSend, cardIn, cardZero)
-      snack(container, getString(error_ln_send_reserve).format(reserveHuman).html, dialog_ok, _.dismiss)
+    case _ if LNParams.cm.sortedSendable(LNParams.cm.all.values).last.commits.availableForSend < LNParams.minPayment =>
+      val reserve = -LNParams.cm.sortedSendable(LNParams.cm.all.values).head.commits.availableForSend
+      val reserveHuman = LNParams.denomination.parsedWithSign(reserve, cardIn, cardZero)
+      val msg = getString(error_ln_send_reserve).format(reserveHuman).html
+      snack(container, msg, dialog_ok, _.dismiss)
 
     case _ if prExt.pr.amount.exists(_ < LNParams.minPayment) =>
       val requestedHuman = LNParams.denomination.parsedWithSign(prExt.pr.amount.get, cardIn, cardZero)
@@ -416,7 +414,7 @@ trait BaseActivity extends AppCompatActivity { me =>
     case _ => onOK(prExt.pr.amount)
   }
 
-  def lnReceiveGuard(container: View)(onOk: => Unit): Unit = LNParams.cm.allSortedReceivable.lastOption match {
+  def lnReceiveGuard(container: View)(onOk: => Unit): Unit = LNParams.cm.sortedReceivable(LNParams.cm.all.values).lastOption match {
     case _ if !LNParams.cm.all.values.exists(Channel.isOperationalOrWaiting) => snack(container, getString(error_ln_no_chans).html, dialog_ok, _.dismiss)
     case _ if !LNParams.cm.all.values.exists(Channel.isOperational) => snack(container, getString(error_ln_waiting).html, dialog_ok, _.dismiss)
     case None => snack(container, getString(error_ln_receive_no_update).html, dialog_ok, _.dismiss)
@@ -451,59 +449,38 @@ trait BaseActivity extends AppCompatActivity { me =>
     def isNeutralEnabled: Boolean
     def isPayEnabled: Boolean
 
-    def makeSendCmd(prExt: PaymentRequestExt, toSend: MilliSatoshi): SendMultiPart = {
-      val extraEdges = RouteCalculation.makeExtraEdges(prExt.pr.routingInfo, target = prExt.pr.nodeId)
-      val fullTag = FullPaymentTag(prExt.pr.paymentHash, prExt.pr.paymentSecret.get, PaymentTagTlv.LOCALLY_SENT)
-
-      val feeReserve = toSend * LNParams.maxOffChainFeeRatio match {
-        case percent if percent < LNParams.maxOffChainFeeAboveRatio => LNParams.maxOffChainFeeAboveRatio
-        case percent if percent > typicalChainTxFee && WalletApp.capLNFeeToChain => typicalChainTxFee
-        case percent => percent
-      }
-
-      // Supply relative cltv expiry in case if we initiate a payment when chain tip is not yet known
-      // An assumption is that toSend is at most ChannelMaster.maxSendable so max theoretically possible off-chain fee is already counted in so we can send amount + fee
-      SendMultiPart(fullTag, chainExpiry = Right(prExt.pr.minFinalCltvExpiryDelta getOrElse LNParams.minInvoiceExpiryDelta), SplitInfo(totalSum = 0L.msat, toSend),
-        LNParams.routerConf, targetNodeId = prExt.pr.nodeId, feeReserve, LNParams.cm.all.values.toSeq, fullTag.paymentSecret, extraEdges)
-    }
-
     def baseSendNow(prExt: PaymentRequestExt, alert: AlertDialog): Unit = {
-      val cmd = makeSendCmd(prExt, toSend = manager.resultMsat).modify(_.split.totalSum).setTo(manager.resultMsat)
-      val description = PlainDescription(split = None, label = manager.resultExtraInput, invoiceText = prExt.descriptionOrEmpty)
-      replaceOutgoingPayment(prExt, description, action = None, sentAmount = cmd.split.myPart)
-      LNParams.cm.opm process CreateSenderFSM(cmd.fullTag, LNParams.cm.localPaymentListener)
-      LNParams.cm.opm process cmd
+      val cmd = LNParams.cm.makeSendCmd(prExt, manager.resultMsat, LNParams.cm.all.values.toList, typicalChainTxFee, WalletApp.capLNFeeToChain).modify(_.split.totalSum).setTo(manager.resultMsat)
+      replaceOutgoingPayment(prExt, PlainDescription(split = None, label = manager.resultExtraInput, invoiceText = prExt.descriptionOrEmpty), action = None, sentAmount = cmd.split.myPart)
+      LNParams.cm.localSend(cmd)
       alert.dismiss
     }
 
     def proceedSplit(prExt: PaymentRequestExt, origAmount: MilliSatoshi, alert: AlertDialog): Unit = {
-      val cmd = makeSendCmd(prExt, toSend = manager.resultMsat).modify(_.split.totalSum).setTo(origAmount)
-      val description = PlainDescription(cmd.split.asSome, label = manager.resultExtraInput, invoiceText = prExt.descriptionOrEmpty)
-      InputParser.value = SplitParams(prExt, action = None, description, cmd, typicalChainTxFee)
+      val cmd = LNParams.cm.makeSendCmd(prExt, manager.resultMsat, LNParams.cm.all.values.toList, typicalChainTxFee, WalletApp.capLNFeeToChain).modify(_.split.totalSum).setTo(origAmount)
+      InputParser.value = SplitParams(prExt, action = None, PlainDescription(cmd.split.asSome, label = manager.resultExtraInput, invoiceText = prExt.descriptionOrEmpty), cmd, typicalChainTxFee)
       me goTo ClassNames.qrSplitActivityClass
       alert.dismiss
     }
   }
 
   abstract class OffChainReceiver(initMaxReceivable: MilliSatoshi, initMinReceivable: MilliSatoshi, lnBalance: MilliSatoshi) extends HasTypicalChainFee {
+    val chans: Seq[ChanAndCommits] = (LNParams.cm.sortedReceivable _ andThen LNParams.cm.maxReceivable)(LNParams.cm.all.values)
+    require(chans.nonEmpty, "OffChainReceiver must be instantiated with at least one channel being able to receive")
     val body: ViewGroup = getLayoutInflater.inflate(R.layout.frag_input_off_chain, null).asInstanceOf[ViewGroup]
-    // Currently a single relatively smallest channel is used to improve privacy and maximize delivery chances
-    val commits: Commitments = LNParams.cm.maxReceivable(LNParams.cm.allSortedReceivable).head.commits
     val manager: RateManager = getManager
 
     val finalMinReceivable: MilliSatoshi = initMinReceivable.max(LNParams.minPayment)
-    val finalMaxReceivable: MilliSatoshi = initMaxReceivable.min(commits.availableForReceive)
+    val finalMaxReceivable: MilliSatoshi = initMaxReceivable.min(chans.head.commits.availableForReceive)
     val canReceiveHuman: String = LNParams.denomination.parsedWithSign(finalMaxReceivable, cardIn, cardZero)
     val canReceiveFiatHuman: String = WalletApp.currentMsatInFiatHuman(finalMaxReceivable)
 
     def receive(alert: AlertDialog): Unit = {
       val preimage: ByteVector32 = randomBytes32
-      val hash: ByteVector32 = Crypto.sha256(preimage)
       val description: PaymentDescription = getDescription
-      val invoiceKey = LNParams.secret.keys.fakeInvoiceKey(hash)
-      val hop = List(commits.updateOpt.map(_ extraHop commits.remoteInfo.nodeId).toList)
-      val prExt = PaymentRequestExt from PaymentRequest(LNParams.chainHash, Some(manager.resultMsat), hash, invoiceKey, description.invoiceText, LNParams.incomingFinalCltvExpiry, hop)
-      LNParams.cm.payBag.replaceIncomingPayment(prExt, preimage, description, balanceSnap = lnBalance, fiatRateSnap = LNParams.fiatRates.info.rates, typicalChainTxFee)
+      // For now we use a single largest channel to improve privacy and delivery chances
+      val prExt = LNParams.cm.makePrExt(manager.resultMsat, chans.take(1), description, preimage)
+      LNParams.cm.payBag.replaceIncomingPayment(prExt, preimage, description, lnBalance, LNParams.fiatRates.info.rates, typicalChainTxFee)
       processInvoice(prExt)
       alert.dismiss
     }

@@ -462,7 +462,7 @@ class OutgoingPaymentSender(val fullTag: FullPaymentTag, val listener: OutgoingP
     // This method always sets a new partId to assigned parts so old payment statuses in data must be cleared before calling it
 
     directChansFirst.foldLeft(Map.empty[ByteVector, PartStatus] -> amount) {
-      case (accumulator ~~ leftover, cnc ~~ chanSendable) if leftover > 0L.msat =>
+      case (accumulator ~ leftover, cnc ~ chanSendable) if leftover > 0L.msat =>
         // If leftover becomes less than sendable minimum then we must bump it upwards
         // Example: channel leftover=500, chanSendable=200 -> sending 200
         // Example: channel leftover=300, chanSendable=400 -> sending 300

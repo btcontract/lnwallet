@@ -279,7 +279,7 @@ abstract class ChannelNormal(bag: ChannelBag) extends Channel { me =>
           case Left(reason) =>
             events addRejectedLocally reason
 
-          case Right(commits1 ~~ updateAddHtlcMsg) =>
+          case Right(commits1 ~ updateAddHtlcMsg) =>
             BECOME(norm.copy(commitments = commits1), OPEN)
             SEND(msg = updateAddHtlcMsg)
             process(CMD_SIGN)

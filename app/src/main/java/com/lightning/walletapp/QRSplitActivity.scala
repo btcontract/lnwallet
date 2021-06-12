@@ -7,7 +7,6 @@ import android.os.Bundle
 import android.widget.TextView
 import immortan.crypto.Tools.none
 import immortan.utils.InputParser
-import immortan.fsm.CreateSenderFSM
 import com.ornach.nobobutton.NoboButton
 import com.lightning.walletapp.BaseActivity.StringOps
 
@@ -37,8 +36,7 @@ class QRSplitActivity extends QRActivity with ExternalDataChecker with HasTypica
     splitQrPay setOnClickListener onButtonTap {
       // It is assumed that many users start sending their splits at about the same time
       replaceOutgoingPayment(sp.prExt, sp.description, sp.action, sentAmount = sp.cmd.split.myPart)
-      LNParams.cm.opm process CreateSenderFSM(sp.cmd.fullTag, LNParams.cm.localPaymentListener)
-      LNParams.cm.opm process sp.cmd
+      LNParams.cm.localSend(sp.cmd)
       finish
     }
 

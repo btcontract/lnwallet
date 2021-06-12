@@ -38,7 +38,6 @@ import com.indicator.ChannelIndicatorLine
 import androidx.appcompat.app.AlertDialog
 import immortan.crypto.CanBeRepliedTo
 import java.util.concurrent.TimeUnit
-import immortan.fsm.CreateSenderFSM
 import android.content.Intent
 import immortan.sqlite.Table
 import org.ndeftools.Message
@@ -86,7 +85,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
   def updAllInfos: Unit = {
     val lnRefunds = LNParams.cm.pendingRefundsAmount.toMilliSatoshi
     val delayedRefunds = if (lnRefunds > 0L.sat) DelayedRefunds(lnRefunds).asSome else None
-    hashToReveals = LNParams.cm.allHosted.flatMap(_.commits.revealedFulfills).groupBy(_.theirAdd.paymentHash)
+    hashToReveals = LNParams.cm.allHosted.flatMap(Channel.chanAndCommitsOpt).flatMap(_.commits.revealedFulfills).groupBy(_.theirAdd.paymentHash)
     allInfos = (paymentInfos ++ relayedPreimageInfos ++ txInfos ++ delayedRefunds).toList.sortBy(_.seenAt)(Ordering[Long].reverse)
   }
 
@@ -459,7 +458,8 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
   }
 
   override def onBackPressed: Unit = {
-    if (walletCards.searchWrap.getVisibility == View.VISIBLE) cancelSearch(null)
+    if (itemsList.getFirstVisiblePosition > 0) itemsList.smoothScrollToPositionFromTop(0, 1)
+    else if (walletCards.searchWrap.getVisibility == View.VISIBLE) cancelSearch(null)
     else if (currentSnackbar.isDefined) removeCurrentSnack.run
     else super.onBackPressed
   }
@@ -474,17 +474,15 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
     case prExt: PaymentRequestExt =>
       lnSendGuard(prExt, contentWindow) {
         case Some(origAmount) if prExt.splits.nonEmpty =>
-          new OffChainSender(maxSendable = LNParams.cm.maxSendable.min(prExt.splitLeftover * 2), minSendable = LNParams.minPayment) {
+          new OffChainSender(maxSendable = LNParams.cm.maxSendable(LNParams.cm.all.values).min(prExt.splitLeftover * 2), minSendable = LNParams.minPayment) {
             override def isNeutralEnabled: Boolean = manager.resultMsat >= minSendable && manager.resultMsat < prExt.splitLeftover - minSendable
             override def isPayEnabled: Boolean = manager.resultMsat >= prExt.splitLeftover && manager.resultMsat <= maxSendable
             override def neutral(alert: AlertDialog): Unit = proceedSplit(prExt, origAmount, alert)
 
             override def send(alert: AlertDialog): Unit = {
-              val cmd = makeSendCmd(prExt, toSend = manager.resultMsat).modify(_.split.totalSum).setTo(origAmount)
-              val description = PlainDescription(cmd.split.asSome, label = manager.resultExtraInput, invoiceText = prExt.descriptionOrEmpty)
-              replaceOutgoingPayment(prExt, description, action = None, sentAmount = cmd.split.myPart)
-              LNParams.cm.opm process CreateSenderFSM(cmd.fullTag, LNParams.cm.localPaymentListener)
-              LNParams.cm.opm process cmd
+              val cmd = LNParams.cm.makeSendCmd(prExt, manager.resultMsat, LNParams.cm.all.values.toList, typicalChainTxFee, WalletApp.capLNFeeToChain).modify(_.split.totalSum).setTo(origAmount)
+              replaceOutgoingPayment(prExt, PlainDescription(cmd.split.asSome, label = manager.resultExtraInput, invoiceText = prExt.descriptionOrEmpty), action = None, sentAmount = cmd.split.myPart)
+              LNParams.cm.localSend(cmd)
               alert.dismiss
             }
 
@@ -504,7 +502,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
           }
 
         case Some(origAmount) =>
-          new OffChainSender(maxSendable = LNParams.cm.maxSendable.min(origAmount * 2), minSendable = LNParams.minPayment) {
+          new OffChainSender(maxSendable = LNParams.cm.maxSendable(LNParams.cm.all.values).min(origAmount * 2), minSendable = LNParams.minPayment) {
             override def isNeutralEnabled: Boolean = manager.resultMsat >= minSendable && manager.resultMsat < origAmount - minSendable
             override def isPayEnabled: Boolean = manager.resultMsat >= origAmount && manager.resultMsat <= maxSendable
             override def neutral(alert: AlertDialog): Unit = proceedSplit(prExt, origAmount, alert)
@@ -524,7 +522,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
           }
 
         case None =>
-          new OffChainSender(maxSendable = LNParams.cm.maxSendable, minSendable = LNParams.minPayment) {
+          new OffChainSender(maxSendable = LNParams.cm.maxSendable(LNParams.cm.all.values), minSendable = LNParams.minPayment) {
             override def isPayEnabled: Boolean = manager.resultMsat >= minSendable && manager.resultMsat <= maxSendable
             override def neutral(alert: AlertDialog): Unit = manager.updateText(maxSendable)
             override def send(alert: AlertDialog): Unit = baseSendNow(prExt, alert)
@@ -806,7 +804,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
   }
 
   def bringPayPopup(data: PayRequest): Unit =
-    new OffChainSender(maxSendable = LNParams.cm.maxSendable min data.maxSendable.msat, minSendable = LNParams.minPayment max data.minSendable.msat) {
+    new OffChainSender(maxSendable = LNParams.cm.maxSendable(LNParams.cm.all.values) min data.maxSendable.msat, minSendable = LNParams.minPayment max data.minSendable.msat) {
       override def isNeutralEnabled: Boolean = manager.resultMsat >= LNParams.minPayment && manager.resultMsat <= minSendable - LNParams.minPayment
       override def isPayEnabled: Boolean = manager.resultMsat >= minSendable && manager.resultMsat <= maxSendable
 
@@ -818,9 +816,8 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
       override def neutral(alert: AlertDialog): Unit = {
         def proceed(pf: PayRequestFinal): TimerTask = UITask {
           lnSendGuard(pf.prExt, container = contentWindow) { _ =>
-            val cmd = makeSendCmd(pf.prExt, toSend = manager.resultMsat).modify(_.split.totalSum).setTo(minSendable)
-            val description = PlainMetaDescription(cmd.split.asSome, label = None, invoiceText = new String, meta = data.metaDataTextPlain)
-            InputParser.value = SplitParams(pf.prExt, pf.successAction, description, cmd, typicalChainTxFee)
+            val cmd = LNParams.cm.makeSendCmd(pf.prExt, manager.resultMsat, LNParams.cm.all.values.toList, typicalChainTxFee, WalletApp.capLNFeeToChain).modify(_.split.totalSum).setTo(minSendable)
+            InputParser.value = SplitParams(pf.prExt, pf.successAction, PlainMetaDescription(cmd.split.asSome, label = None, invoiceText = new String, meta = data.metaDataTextPlain), cmd, typicalChainTxFee)
             me goTo ClassNames.qrSplitActivityClass
             alert.dismiss
           }
@@ -834,11 +831,9 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
       override def send(alert: AlertDialog): Unit = {
         def proceed(pf: PayRequestFinal): TimerTask = UITask {
           lnSendGuard(pf.prExt, container = contentWindow) { _ =>
-            val cmd = makeSendCmd(pf.prExt, toSend = manager.resultMsat).modify(_.split.totalSum).setTo(manager.resultMsat)
-            val description = PlainMetaDescription(split = None, label = None, invoiceText = new String, meta = data.metaDataTextPlain)
-            replaceOutgoingPayment(pf.prExt, description, pf.successAction, sentAmount = cmd.split.myPart)
-            LNParams.cm.opm process CreateSenderFSM(cmd.fullTag, LNParams.cm.localPaymentListener)
-            LNParams.cm.opm process cmd
+            val cmd = LNParams.cm.makeSendCmd(pf.prExt, manager.resultMsat, LNParams.cm.all.values.toList, typicalChainTxFee, WalletApp.capLNFeeToChain).modify(_.split.totalSum).setTo(manager.resultMsat)
+            replaceOutgoingPayment(pf.prExt, PlainMetaDescription(split = None, label = None, invoiceText = new String, meta = data.metaDataTextPlain), pf.successAction, sentAmount = cmd.split.myPart)
+            LNParams.cm.localSend(cmd)
             alert.dismiss
           }
         }
@@ -887,7 +882,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
     case data: UrlAction => mkCheckFormNeutral(_ => browse(data.url), none, _ => share(data.url), actionPopup(data.finalMessage.html, data), dialog_open, dialog_cancel, dialog_share)
     case data: AESAction =>
       decodeAesAction(preimage, data) match {
-        case Success(secret ~~ msg) => mkCheckFormNeutral(_.dismiss, none, _ => share(secret), actionPopup(msg, data), dialog_ok, dialog_cancel, dialog_share)
+        case Success(secret ~ msg) => mkCheckFormNeutral(_.dismiss, none, _ => share(secret), actionPopup(msg, data), dialog_ok, dialog_cancel, dialog_share)
         case _ => mkCheckForm(_.dismiss, none, actionPopup(getString(dialog_lnurl_decrypt_fail), data), dialog_ok, -1)
       }
   }

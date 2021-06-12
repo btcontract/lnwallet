@@ -43,7 +43,7 @@ object LNParams {
   val maxAcceptedHtlcs: Int = 483
 
   val maxOffChainFeeRatio: Double = 0.01 // We are OK with paying up to this % of LN fee relative to payment amount
-  val maxOffChainFeeAboveRatio: MilliSatoshi = MilliSatoshi(200000L) // For small amounts we always accept fee up to this
+  val maxOffChainFeeAboveRatio: MilliSatoshi = MilliSatoshi(100000L) // For small amounts we always accept fee up to this
 
   val shouldSendUpdateFeerateDiff = 50.0
   val shouldRejectPaymentFeerateDiff = 150.0

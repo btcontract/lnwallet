@@ -152,7 +152,7 @@ object WalletApp {
       override def updateLastTotalResyncStamp(stamp: Long): Unit = app.prefs.edit.putLong(LAST_TOTAL_GOSSIP_SYNC, stamp).commit
       override def updateLastNormalResyncStamp(stamp: Long): Unit = app.prefs.edit.putLong(LAST_NORMAL_GOSSIP_SYNC, stamp).commit
       override def getExtraNodes: Set[RemoteNodeInfo] = LNParams.cm.all.values.flatMap(Channel.chanAndCommitsOpt).map(_.commits.remoteInfo).toSet
-      override def getPHCExtraNodes: Set[RemoteNodeInfo] = LNParams.cm.allHosted.map(_.commits.remoteInfo).toSet
+      override def getPHCExtraNodes: Set[RemoteNodeInfo] = LNParams.cm.allHosted.flatMap(Channel.chanAndCommitsOpt).map(_.commits.remoteInfo).toSet
     }
 
     ElectrumClientPool.loadFromChainHash = {

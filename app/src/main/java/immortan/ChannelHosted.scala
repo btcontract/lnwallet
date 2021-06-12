@@ -155,7 +155,7 @@ abstract class ChannelHosted extends Channel { me =>
         case _ if SLEEPING == state => events addRejectedLocally ChannelOffline(cmd.incompleteAdd)
         case Left(reason) => events addRejectedLocally reason
 
-        case Right(hc1 ~~ updateAddHtlcMsg) =>
+        case Right(hc1 ~ updateAddHtlcMsg) =>
           StoreBecomeSend(hc1, OPEN, updateAddHtlcMsg)
           process(CMD_SIGN)
       }
@@ -268,9 +268,9 @@ abstract class ChannelHosted extends Channel { me =>
       localLCSS, nextLocalUpdates = Nil, nextRemoteUpdates = Nil, updateOpt = None, postErrorOutgoingResolvedIds = Set.empty, localError = None, remoteError = None)
   }
 
-  def localSuspend(hc: HostedCommits, errCode: String): Unit = if (hc.localError.isEmpty) {
+  def localSuspend(hc: HostedCommits, errCode: String): Unit = {
     val localError = Error(data = ByteVector.fromValidHex(errCode), channelId = hc.channelId)
-    StoreBecomeSend(hc.copy(localError = localError.asSome), state, localError)
+    if (hc.localError.isEmpty) StoreBecomeSend(hc.copy(localError = localError.asSome), state, localError)
   }
 
   def attemptInitResync(hc: HostedCommits, remoteLCSS: LastCrossSignedState): Unit = {
