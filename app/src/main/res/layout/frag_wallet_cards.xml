@@ -33,7 +33,7 @@
 
             <TextView
                 android:id="@+id/rateTeaser"
-                android:text="@string/rate_us"
+                android:text="@string/rate_me"
                 android:onClick="bringRateDialog"
                 android:background="@drawable/border_green"
                 android:layout_toStartOf="@id/settingsButton"

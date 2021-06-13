@@ -360,6 +360,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
   private var statusSubscription = Option.empty[Subscription]
   private var paymentSubscription = Option.empty[Subscription]
   private var preimageSubscription = Option.empty[Subscription]
+  private var unknownReestablishSubscription = Option.empty[Subscription]
 
   private val netListener = new Monitor.ConnectivityListener {
     override def onConnectivityChanged(ct: Int, isConnected: Boolean, isFast: Boolean): Unit = UITask {
@@ -412,22 +413,31 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
   private val MAX_ERROR_COUNT_WITHIN_WINDOW = 4
   private val channelErrors = CacheBuilder.newBuilder.expireAfterAccess(30, TimeUnit.SECONDS).maximumSize(500).build[ByteVector32, JInt]
 
-  private def chanError(chanId: ByteVector32, msg: String, info: RemoteNodeInfo) = UITask {
-    val currentErrorCount = Option(channelErrors getIfPresent chanId).getOrElse(default = 0: JInt)
-    val builder = new AlertDialog.Builder(me).setCustomTitle(getString(error_channel).format(info.nodeId.toString.take(16).humanFour).asDefView)
-    if (currentErrorCount < MAX_ERROR_COUNT_WITHIN_WINDOW) mkCheckForm(_.dismiss, share(msg), builder.setMessage(msg.html), dialog_ok, dialog_share)
-    channelErrors.put(chanId, currentErrorCount + 1)
-  }
+  def chanUnknown(unknown: UnknownReestablish): Unit = UITask {
+    def closeAndBreak(alert: AlertDialog): Unit = runAnd(alert.dismiss)(unknown.requestClose)
+    val errorCount = Option(channelErrors getIfPresent unknown.reestablish.channelId).getOrElse(default = 0: JInt)
+    val msg = getString(error_channel_unknown).format(unknown.reestablish.channelId.toHex, unknown.worker.info.nodeId.toString)
+    val builder = new AlertDialog.Builder(me).setCustomTitle(getString(error_channel).asDefView).setCancelable(true).setMessage(msg.html)
+    if (errorCount < MAX_ERROR_COUNT_WITHIN_WINDOW) mkCheckFormNeutral(_.dismiss, share(msg), closeAndBreak, builder, dialog_ok, dialog_share, dialog_break)
+    channelErrors.put(unknown.reestablish.channelId, errorCount + 1)
+  }.run
+
+  def chanError(chanId: ByteVector32, msg: String, info: RemoteNodeInfo): Unit = UITask {
+    val errorCount = Option(channelErrors getIfPresent chanId).getOrElse(default = 0: JInt)
+    val builder = new AlertDialog.Builder(me).setCustomTitle(getString(error_channel).asDefView).setMessage(msg.html)
+    if (errorCount < MAX_ERROR_COUNT_WITHIN_WINDOW) mkCheckForm(_.dismiss, share(msg), builder, dialog_ok, dialog_share)
+    channelErrors.put(chanId, errorCount + 1)
+  }.run
 
   override def onException: PartialFunction[Malfunction, Unit] = {
-    case (error: ChannelTransitionFail, _, data: HasNormalCommitments) => chanError(data.channelId, getString(error_channel_closed).format(error.stackTraceAsString), data.commitments.remoteInfo).run
-    case (error: ChannelTransitionFail, _, hc: HostedCommits) if hc.error.isEmpty => chanError(hc.channelId, getString(error_channel_suspended).format(error.stackTraceAsString), hc.remoteInfo).run
-    case (RemoteErrorException(details), _, data: HasNormalCommitments) => chanError(data.channelId, getString(error_channel_remote).format(details), data.commitments.remoteInfo).run
-    case (RemoteErrorException(details), _, hc: HostedCommits) if hc.error.isEmpty => chanError(hc.channelId, getString(error_channel_remote).format(details), hc.remoteInfo).run
-    case (CMDException(reason, _: CMD_CLOSE), _, data: HasNormalCommitments) => chanError(data.channelId, reason, data.commitments.remoteInfo).run
-    case (CMDException(reason, _: CMD_HOSTED_STATE_OVERRIDE), _, hc: HostedCommits) => chanError(hc.channelId, reason, hc.remoteInfo).run
-    case (error, _, data: HasNormalCommitments) => chanError(data.channelId, error.stackTraceAsString, data.commitments.remoteInfo).run
-    case (error, _, hc: HostedCommits) => chanError(hc.channelId, error.stackTraceAsString, hc.remoteInfo).run
+    case (error: ChannelTransitionFail, _, data: HasNormalCommitments) => chanError(data.channelId, getString(error_channel_closed).format(error.stackTraceAsString), data.commitments.remoteInfo)
+    case (error: ChannelTransitionFail, _, hc: HostedCommits) if hc.error.isEmpty => chanError(hc.channelId, getString(error_channel_suspended).format(error.stackTraceAsString), hc.remoteInfo)
+    case (RemoteErrorException(details), _, data: HasNormalCommitments) => chanError(data.channelId, getString(error_channel_remote).format(details), data.commitments.remoteInfo)
+    case (RemoteErrorException(details), _, hc: HostedCommits) if hc.error.isEmpty => chanError(hc.channelId, getString(error_channel_remote).format(details), hc.remoteInfo)
+    case (CMDException(reason, _: CMD_CLOSE), _, data: HasNormalCommitments) => chanError(data.channelId, reason, data.commitments.remoteInfo)
+    case (CMDException(reason, _: CMD_HOSTED_STATE_OVERRIDE), _, hc: HostedCommits) => chanError(hc.channelId, reason, hc.remoteInfo)
+    case (error, _, data: HasNormalCommitments) => chanError(data.channelId, error.stackTraceAsString, data.commitments.remoteInfo)
+    case (error, _, hc: HostedCommits) => chanError(hc.channelId, error.stackTraceAsString, hc.remoteInfo)
   }
 
   override def process(reply: Any): Unit = reply match {
@@ -448,6 +458,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
     statusSubscription.foreach(_.unsubscribe)
     paymentSubscription.foreach(_.unsubscribe)
     preimageSubscription.foreach(_.unsubscribe)
+    unknownReestablishSubscription.foreach(_.unsubscribe)
 
     LNParams.chainWallet.eventsCatcher ! WalletEventsCatcher.Remove(chainListener)
     for (channel <- LNParams.cm.all.values) channel.listeners -= me
@@ -634,11 +645,11 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
       val paymentEvents = Rx.uniqueFirstAndLastWithinWindow(ChannelMaster.paymentDbStream, window).doOnNext(_ => reloadPaymentInfos)
       val relayEvents = Rx.uniqueFirstAndLastWithinWindow(ChannelMaster.relayDbStream, window).doOnNext(_ => reloadRelayedPreimageInfos)
 
+      preimageSubscription = ChannelMaster.remoteFulfillStream.subscribe(resolveAction, none).asSome
       stateSubscription = txEvents.merge(paymentEvents).merge(relayEvents).doOnNext(_ => updAllInfos).merge(stateEvents).subscribe(_ => UITask(updatePaymentList).run).asSome
       statusSubscription = Rx.uniqueFirstAndLastWithinWindow(ChannelMaster.statusUpdateStream, window).merge(stateEvents).subscribe(_ => UITask(walletCards.updateView).run).asSome
       paymentSubscription = ChannelMaster.hashRevealStream.merge(ChannelMaster.remoteFulfillStream).throttleFirst(window).subscribe(_ => Vibrator.vibrate).asSome
-      preimageSubscription = ChannelMaster.remoteFulfillStream.subscribe(resolveAction, none).asSome
-
+      unknownReestablishSubscription = ChannelMaster.unknownReestablishStream.subscribe(chanUnknown, none).asSome
       timer.scheduleAtFixedRate(UITask { for (holder <- lastSeenViewHolders) holder.updMeta }, 30000, 30000)
       // Run this check after establishing subscriptions since it will trigger an event stream
       markAsFailedOnce

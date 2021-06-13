@@ -187,6 +187,10 @@ case class WalletExt(wallet: ElectrumEclairWallet, eventsCatcher: ActorRef, clie
   override def becomeShutDown: Unit = List(eventsCatcher, clientPool, watcher).foreach(_ ! PoisonPill)
 }
 
+case class UnknownReestablish(worker: CommsTower.Worker, reestablish: ChannelReestablish) {
+  def requestClose: Unit = worker.handler process Error(reestablish.channelId, "please publish your local commitment")
+}
+
 case class UpdateAddHtlcExt(theirAdd: UpdateAddHtlc, remoteInfo: RemoteNodeInfo)
 
 case class SwapInStateExt(state: SwapInState, nodeId: PublicKey)

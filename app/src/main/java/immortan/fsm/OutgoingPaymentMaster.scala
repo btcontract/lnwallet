@@ -54,6 +54,7 @@ case class RemoteFailure(packet: Sphinx.DecryptedFailurePacket, route: Route) ex
 
 // Master commands and data
 
+case object ClearFailures
 case class CutIntoHalves(amount: MilliSatoshi)
 case class NodeFailed(failedNodeId: PublicKey, increment: Int)
 case class ChannelFailed(failedDescAndCap: DescAndCapacity, increment: Int)
@@ -73,12 +74,7 @@ case class SendMultiPart(fullTag: FullPaymentTag, chainExpiry: Either[CltvExpiry
 case class OutgoingPaymentMasterData(payments: Map[FullPaymentTag, OutgoingPaymentSender],
                                      chanFailedAtAmount: Map[ChannelDesc, MilliSatoshi] = Map.empty,
                                      nodeFailedWithUnknownUpdateTimes: Map[PublicKey, Int] = Map.empty,
-                                     chanFailedTimes: Map[ChannelDesc, Int] = Map.empty) {
-
-  def withFailuresReduced: OutgoingPaymentMasterData =
-    copy(nodeFailedWithUnknownUpdateTimes = nodeFailedWithUnknownUpdateTimes.mapValues(_ / 2),
-      chanFailedTimes = chanFailedTimes.mapValues(_ / 2), chanFailedAtAmount = Map.empty)
-}
+                                     chanFailedTimes: Map[ChannelDesc, Int] = Map.empty)
 
 // All current outgoing in-flight payments
 
@@ -97,12 +93,13 @@ class OutgoingPaymentMaster(val cm: ChannelMaster) extends StateMachine[Outgoing
   become(OutgoingPaymentMasterData(Map.empty), EXPECTING_PAYMENTS)
 
   def doProcess(change: Any): Unit = (change, state) match {
-    case (send: SendMultiPart, EXPECTING_PAYMENTS | WAITING_FOR_ROUTE) =>
+    case (ClearFailures, EXPECTING_PAYMENTS | WAITING_FOR_ROUTE) =>
       // Reduce failure times to give previously failing channels a chance
-      become(data.withFailuresReduced, state)
+      become(data.copy(nodeFailedWithUnknownUpdateTimes = data.nodeFailedWithUnknownUpdateTimes.mapValues(_ / 2),
+        chanFailedTimes = data.chanFailedTimes.mapValues(_ / 2), chanFailedAtAmount = Map.empty), state)
 
-      // Related sender FSM must be present
-      send.assistedEdges.foreach(cm.pf.process)
+    case (send: SendMultiPart, EXPECTING_PAYMENTS | WAITING_FOR_ROUTE) =>
+      for (edge <- send.assistedEdges) cm.pf process edge
       data.payments(send.fullTag) doProcess send
       me process CMDAskForRoute
 
@@ -431,7 +428,11 @@ class OutgoingPaymentSender(val fullTag: FullPaymentTag, val listener: OutgoingP
             // Select nodes between peer and payee
             val nodesInBetween = route.hops.map(_.nextNodeId).drop(1).dropRight(1)
             val data1 = data.copy(failures = UnreadableRemoteFailure(route) +: data.failures)
-            if (nodesInBetween.isEmpty) me abortMaybeNotify data1.withoutPartId(wait.partId) else {
+
+            if (nodesInBetween.isEmpty) {
+              // Garbage is sent from either peer or payee
+              me abortMaybeNotify data1.withoutPartId(wait.partId)
+            } else {
               // We don't know which exact remote node is sending garbage, exclude a random one for current attempts
               opm doProcess NodeFailed(shuffle(nodesInBetween).head, data.cmd.routerConf.maxStrangeNodeFailures)
               resolveRemoteFail(data1, wait)

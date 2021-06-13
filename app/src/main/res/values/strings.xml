@@ -1,7 +1,7 @@
 <resources>
     <string name="lang">eng</string>
     <string name="app_name">BLW</string>
-    <string name="rate_us">&#9825; Rate us!</string>
+    <string name="rate_me">&#9825; Rate me</string>
 
     <string name="sync">SYNC</string>
     <string name="offline">OFFLINE</string>
@@ -56,6 +56,7 @@
     <string name="dialog_receive">Receive</string>
     <string name="dialog_split">Split</string>
     <string name="dialog_share">Share</string>
+    <string name="dialog_break">Break</string>
     <string name="dialog_open">Open</string>
     <string name="dialog_send">Send</string>
     <string name="dialog_copy">Copy</string>
@@ -89,10 +90,17 @@
 
     <!-- errors -->
 
-    <string name="error_channel"><![CDATA[<b>Channel error happened</b><br><br>%1$s]]></string>
+    <string name="error_channel">Channel error happened</string>
     <string name="error_channel_remote"><![CDATA[<b>Error from remote peer</b>:<br><br>%1$s]]></string>
     <string name="error_channel_closed"><![CDATA[<b>Channel has been force-closed by wallet, fatal error details</b>:<br><br>%1$s]]></string>
     <string name="error_channel_suspended"><![CDATA[<b>Hosted channel has been suspended by wallet, fatal error details</b>:<br><br>%1$s]]></string>
+
+    <string name="error_channel_unknown">
+        Remote peer indicates that there exists a Lightning channel which is somehow not present on this device.\n\n
+        Peer can be requested to break that channel which would get the rest of its balance back to your chain wallet.\n\n
+        Channel ID: %1$s\n\n
+        Peer node ID: %2$s
+    </string>
 
     <string name="error_rejected_incoming_public">Rejected public channel offer, only private channels are allowed.</string>
     <string name="error_btc_broadcast_fail">Could not broadcast a transaction, please make sure that wallet has network connection and then try again.</string>

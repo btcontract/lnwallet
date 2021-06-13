@@ -50,6 +50,7 @@ object ChannelMaster {
 
   final val hashRevealStream: Subject[ByteVector32] = Subject[ByteVector32]
   final val remoteFulfillStream: Subject[RemoteFulfill] = Subject[RemoteFulfill]
+  final val unknownReestablishStream: Subject[UnknownReestablish] = Subject[UnknownReestablish]
 
   final val NO_PREIMAGE = ByteVector32.One
   final val NO_SECRET = ByteVector32.Zeroes
@@ -137,6 +138,7 @@ class ChannelMaster(val payBag: PaymentBag, val chanBag: ChannelBag, val dataBag
 
   override def onMessage(worker: CommsTower.Worker, message: LightningMessage): Unit = message match {
     case msg: Error if msg.channelId == ByteVector32.Zeroes => fromNode(worker.info.nodeId).foreach(_.chan process msg)
+    case msg: ChannelReestablish if !all.contains(msg.channelId) => unknownReestablishStream onNext UnknownReestablish(worker, msg)
     case msg: ChannelUpdate => fromNode(worker.info.nodeId).foreach(_.chan process msg)
     case msg: HasChannelId => sendTo(msg, msg.channelId)
     case _ => // Do nothing
@@ -242,14 +244,14 @@ class ChannelMaster(val payBag: PaymentBag, val chanBag: ChannelBag, val dataBag
 
     val hash = Crypto.sha256(preimage)
     val invoiceKey = LNParams.secret.keys.fakeInvoiceKey(hash)
-    val hops = allowedChans.map(_.commits.updateOpt).zip(allowedChans).toList.collect { case Some(upd) ~ cnc => upd.extraHop(cnc.commits.remoteInfo.nodeId) :: Nil }
-    val pr = PaymentRequest(LNParams.chainHash, Some(toReceive), hash, invoiceKey, description.invoiceText, LNParams.incomingFinalCltvExpiry, hops)
+    val hops = allowedChans.map(_.commits.updateOpt).zip(allowedChans).collect { case Some(upd) ~ cnc => upd.extraHop(cnc.commits.remoteInfo.nodeId) :: Nil }
+    val pr = PaymentRequest(LNParams.chainHash, Some(toReceive), hash, invoiceKey, description.invoiceText, LNParams.incomingFinalCltvExpiry, hops.toList)
     PaymentRequestExt.from(pr)
   }
 
   def localSend(cmd: SendMultiPart): Unit = {
-    // Create FSM if it's absend and start an MPP session
     opm process CreateSenderFSM(cmd.fullTag, localPaymentListener)
+    opm process ClearFailures
     opm process cmd
   }
 
