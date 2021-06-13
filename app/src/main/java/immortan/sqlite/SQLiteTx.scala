@@ -20,8 +20,8 @@ class SQLiteTx(val db: DBInterface) {
 
   def searchTransactions(rawSearchQuery: String): RichCursor = db.search(TxTable.searchSql, rawSearchQuery)
 
-  def updStatus(txid: ByteVector32, depth: Long, isDoubleSpent: Boolean): Unit = {
-    db.change(TxTable.updStatusSql, depth: JLong, if (isDoubleSpent) 1L: JLong else 0L: JLong, txid.toHex)
+  def updStatus(txid: ByteVector32, depth: Long, doubleSpent: Boolean): Unit = {
+    db.change(TxTable.updStatusSql, depth: JLong, if (doubleSpent) 1L: JLong else 0L: JLong, txid.toHex)
     ChannelMaster.next(ChannelMaster.txDbStream)
   }
 
@@ -34,12 +34,13 @@ class SQLiteTx(val db: DBInterface) {
   def replaceTx(tx: Transaction, depth: Long, received: Satoshi, sent: Satoshi, feeOpt: Option[Satoshi],
                 description: TxDescription, isIncoming: Long, balanceSnap: MilliSatoshi, fiatRateSnap: Fiat2Btc): Unit =
     db txWrap {
-      db.change(TxTable.deleteSql, tx.txid.toHex)
-      db.change(TxTable.newSql, tx.toString, tx.txid.toHex, depth: JLong, received.toLong: JLong, sent.toLong: JLong,
+      val txidString = tx.txid.toHex
+      db.change(TxTable.deleteSql, txidString)
+      db.change(TxTable.newSql, tx.toString, txidString, depth: JLong, received.toLong: JLong, sent.toLong: JLong,
         feeOpt.map(_.toLong: JLong).getOrElse(0L: JLong), System.currentTimeMillis: JLong, description.toJson.compactPrint,
         balanceSnap.toLong: JLong, fiatRateSnap.toJson.compactPrint, isIncoming: JLong, 0L: JLong /* NOT DOUBLE SPENT YET */)
 
-      // Implementation will use this to update interface
+      ChannelMaster.chainTxAddedStream.onNext(tx.txid)
       ChannelMaster.next(ChannelMaster.txDbStream)
     }
 

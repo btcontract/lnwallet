@@ -53,6 +53,11 @@ object HubActivity {
   var hashToReveals: Map[ByteVector32, RevealedLocalFulfills] = Map.empty
   var allInfos: Seq[TransactionDetails] = Nil
 
+  var lnPaymentsAdded: Set[ByteVector32] = Set.empty
+  var chainTxsAdded: Set[ByteVector32] = Set.empty
+  var relaysAdded: Set[ByteVector32] = Set.empty
+  var payLinksAdded: Set[String] = Set.empty
+
   // Run clear up method once on app start, do not re-run it every time this activity gets restarted
   lazy val markAsFailedOnce: Unit = LNParams.cm.markAsFailed(paymentInfos, LNParams.cm.allInChannelOutgoing)
 }
@@ -361,6 +366,10 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
   private var paymentSubscription = Option.empty[Subscription]
   private var preimageSubscription = Option.empty[Subscription]
   private var unknownReestablishSubscription = Option.empty[Subscription]
+  private var lnPaymentAddedSubscription = Option.empty[Subscription]
+  private var payLinkAddedSubscription = Option.empty[Subscription]
+  private var chainTxAddedSubscription = Option.empty[Subscription]
+  private var relayAddedSubscription = Option.empty[Subscription]
 
   private val netListener = new Monitor.ConnectivityListener {
     override def onConnectivityChanged(ct: Int, isConnected: Boolean, isFast: Boolean): Unit = UITask {
@@ -383,7 +392,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
         (newDepth, newDoubleSpent) <- LNParams.chainWallet.wallet.doubleSpent(transactionInfo.tx)
         if newDepth != transactionInfo.depth || newDoubleSpent != transactionInfo.isDoubleSpent
         _ = WalletApp.txDataBag.updStatus(transactionInfo.txid, newDepth, newDoubleSpent)
-        // Trigger preimage revealed using a txid to throttle multiple vibrations
+        // Simulate preimage revealed using a txid to throttle multiple vibrations
       } ChannelMaster.hashRevealStream.onNext(transactionInfo.txid)
     }.run
   }
@@ -459,6 +468,10 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
     paymentSubscription.foreach(_.unsubscribe)
     preimageSubscription.foreach(_.unsubscribe)
     unknownReestablishSubscription.foreach(_.unsubscribe)
+    lnPaymentAddedSubscription.foreach(_.unsubscribe)
+    payLinkAddedSubscription.foreach(_.unsubscribe)
+    chainTxAddedSubscription.foreach(_.unsubscribe)
+    relayAddedSubscription.foreach(_.unsubscribe)
 
     LNParams.chainWallet.eventsCatcher ! WalletEventsCatcher.Remove(chainListener)
     for (channel <- LNParams.cm.all.values) channel.listeners -= me
@@ -624,7 +637,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
       }
 
       runInFutureProcessOnUI(loadRecent, none) { _ =>
-        // We suggest user to rate us if: no rate attempt has been made before, LN payments were successful, user had been using an app for certain period
+        // We suggest user to rate us if: no rate attempt has been made before, LN payments were successful, user has been using an app for certain period
         setVis(WalletApp.showRateUs && paymentInfos.forall(_.status == PaymentStatus.SUCCEEDED) && allInfos.size > 4 && allInfos.size < 8, walletCards.rateTeaser)
         walletCards.searchField addTextChangedListener onTextChange(searchWorker.addWork)
         updatePaymentList
@@ -650,8 +663,15 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
       statusSubscription = Rx.uniqueFirstAndLastWithinWindow(ChannelMaster.statusUpdateStream, window).merge(stateEvents).subscribe(_ => UITask(walletCards.updateView).run).asSome
       paymentSubscription = ChannelMaster.hashRevealStream.merge(ChannelMaster.remoteFulfillStream).throttleFirst(window).subscribe(_ => Vibrator.vibrate).asSome
       unknownReestablishSubscription = ChannelMaster.unknownReestablishStream.subscribe(chanUnknown, none).asSome
-      timer.scheduleAtFixedRate(UITask { for (holder <- lastSeenViewHolders) holder.updMeta }, 30000, 30000)
+
+      // Start with empty sets and update them once a unique related record is added to db
+      lnPaymentAddedSubscription = ChannelMaster.lnPaymentAddedStream.doOnNext(lnPaymentsAdded += _).subscribe(none, none).asSome
+      payLinkAddedSubscription = ChannelMaster.payLinkAddedStream.doOnNext(payLinksAdded += _).subscribe(none, none).asSome
+      chainTxAddedSubscription = ChannelMaster.chainTxAddedStream.doOnNext(chainTxsAdded += _).subscribe(none, none).asSome
+      relayAddedSubscription = ChannelMaster.relayAddedStream.doOnNext(relaysAdded += _).subscribe(none, none).asSome
+
       // Run this check after establishing subscriptions since it will trigger an event stream
+      timer.scheduleAtFixedRate(UITask { for (holder <- lastSeenViewHolders) holder.updMeta }, 30000, 30000)
       markAsFailedOnce
     } else {
       WalletApp.freePossiblyUsedResouces

@@ -38,39 +38,41 @@ class SQLitePayment(db: DBInterface, preimageDb: DBInterface) extends PaymentBag
 
   def updOkOutgoing(fulfill: RemoteFulfill, fee: MilliSatoshi): Unit = {
     db.change(PaymentTable.updOkOutgoingSql, fulfill.theirPreimage.toHex, fee.toLong: JLong, fulfill.ourAdd.paymentHash.toHex)
-    ChannelMaster.remoteFulfillStream.onNext(value = fulfill)
+    ChannelMaster.remoteFulfillStream.onNext(fulfill)
     ChannelMaster.next(ChannelMaster.paymentDbStream)
   }
 
   def updOkIncoming(receivedAmount: MilliSatoshi, paymentHash: ByteVector32): Unit = {
     db.change(PaymentTable.updOkIncomingSql, receivedAmount.toLong: JLong, System.currentTimeMillis: JLong, paymentHash.toHex)
-    ChannelMaster.hashRevealStream.onNext(value = paymentHash)
+    ChannelMaster.hashRevealStream.onNext(paymentHash)
     ChannelMaster.next(ChannelMaster.paymentDbStream)
   }
 
   def replaceOutgoingPayment(prex: PaymentRequestExt, description: PaymentDescription, action: Option[PaymentAction],
                              finalAmount: MilliSatoshi, balanceSnap: MilliSatoshi, fiatRateSnap: Fiat2Btc, chainFee: MilliSatoshi): Unit =
     db txWrap {
-      db.change(PaymentTable.deleteSql, prex.pr.paymentHash.toHex)
+      val hashString = prex.pr.paymentHash.toHex
+      db.change(PaymentTable.deleteSql, hashString)
       db.change(PaymentTable.newSql, prex.raw, ChannelMaster.NO_PREIMAGE.toHex, PaymentStatus.PENDING: JInt, System.currentTimeMillis: JLong, description.toJson.compactPrint,
-        action.map(_.toJson.compactPrint).getOrElse(PaymentInfo.NO_ACTION), prex.pr.paymentHash.toHex, prex.pr.paymentSecret.get.toHex, 0L: JLong /* RECEIVED = 0 MSAT */,
+        action.map(_.toJson.compactPrint).getOrElse(PaymentInfo.NO_ACTION), hashString, prex.pr.paymentSecret.get.toHex, 0L: JLong /* RECEIVED AMOUNT = 0 FOR OUTGOING */,
         finalAmount.toLong: JLong /* SENT IS KNOWN */, 0L: JLong /* FEE IS UNCERTAIN YET */, balanceSnap.toLong: JLong, fiatRateSnap.toJson.compactPrint,
-        chainFee.toLong: JLong, 0: JInt /* INCOMING = 0 */)
+        chainFee.toLong: JLong, 0: JInt /* INCOMING TYPE = 0 */)
 
-      // Implementation will use this to update interface
+      ChannelMaster.lnPaymentAddedStream.onNext(prex.pr.paymentHash)
       ChannelMaster.next(ChannelMaster.paymentDbStream)
     }
 
   def replaceIncomingPayment(prex: PaymentRequestExt, preimage: ByteVector32, description: PaymentDescription,
                              balanceSnap: MilliSatoshi, fiatRateSnap: Fiat2Btc, chainFee: MilliSatoshi): Unit =
     db txWrap {
-      db.change(PaymentTable.deleteSql, prex.pr.paymentHash.toHex)
-      db.change(PaymentTable.newSql, prex.raw, preimage.toHex, PaymentStatus.PENDING: JInt, System.currentTimeMillis: JLong, description.toJson.compactPrint, PaymentInfo.NO_ACTION,
-        prex.pr.paymentHash.toHex, prex.pr.paymentSecret.get.toHex, prex.pr.amount.getOrElse(0L.msat).toLong: JLong /* MUST COME FROM PR! NO EXACT AMOUNT IF RECEIVED = 0 */,
+      val hashString = prex.pr.paymentHash.toHex
+      db.change(PaymentTable.deleteSql, hashString)
+      db.change(PaymentTable.newSql, prex.raw, preimage.toHex, PaymentStatus.PENDING: JInt, System.currentTimeMillis: JLong, description.toJson.compactPrint,
+        PaymentInfo.NO_ACTION, hashString, prex.pr.paymentSecret.get.toHex, prex.pr.amount.getOrElse(0L.msat).toLong: JLong /* MUST COME FROM PR! 0 WHEN UNDEFINED */,
         0L: JLong /* SENT = 0 MSAT, NOTHING TO SEND */, 0L: JLong /* NO FEE FOR INCOMING PAYMENT */, balanceSnap.toLong: JLong, fiatRateSnap.toJson.compactPrint,
-        chainFee.toLong: JLong, 1: JInt /* INCOMING = 1 */)
+        chainFee.toLong: JLong, 1: JInt /* INCOMING TYPE = 1 */)
 
-      // Implementation will use this to update interface
+      ChannelMaster.lnPaymentAddedStream.onNext(prex.pr.paymentHash)
       ChannelMaster.next(ChannelMaster.paymentDbStream)
     }
 

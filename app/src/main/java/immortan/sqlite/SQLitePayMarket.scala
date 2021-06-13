@@ -1,7 +1,8 @@
 package immortan.sqlite
 
-import fr.acinq.eclair.MilliSatoshi
 import immortan.utils.{LNUrl, PayLinkInfo, PayRequest}
+import fr.acinq.eclair.MilliSatoshi
+import immortan.ChannelMaster
 
 
 class SQLitePayMarket(db: DBInterface) {
@@ -15,6 +16,7 @@ class SQLitePayMarket(db: DBInterface) {
     db.change(PayMarketTable.updInfoSql, payReq.metaDataTextPlain, lastPaymentMsat, stamp, hash, thumbnailImageString64, lnUrl.request)
     db.change(PayMarketTable.newSql, lnUrl.request, payReq.metaDataTextPlain, lastPaymentMsat, stamp, hash, thumbnailImageString64)
     db.change(PayMarketTable.newVirtualSql, s"${lnUrl.uri.getHost} ${payReq.metaDataTextPlain}", lnUrl.request)
+    ChannelMaster.payLinkAddedStream.onNext(lnUrl.request)
   }
 
   def byQuery(query: String): RichCursor = db.search(PayMarketTable.searchSql, query)
