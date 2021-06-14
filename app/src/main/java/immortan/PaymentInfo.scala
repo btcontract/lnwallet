@@ -1,16 +1,17 @@
 package immortan
 
 import immortan.utils.ImplicitJsonFormats._
-import fr.acinq.eclair.channel.{DATA_CLOSING, HasNormalCommitments}
-import immortan.crypto.Tools.{Bytes, Fiat2Btc, Any2Some, SEPARATOR, ratio}
+import immortan.crypto.Tools.{Any2Some, Bytes, Fiat2Btc, SEPARATOR, ratio}
 import immortan.fsm.{IncomingPaymentProcessor, SendMultiPart, SplitInfo}
+import fr.acinq.eclair.channel.{DATA_CLOSING, HasNormalCommitments}
 import fr.acinq.bitcoin.{ByteVector32, Satoshi, Transaction}
 import fr.acinq.eclair.wire.{FullPaymentTag, PaymentTagTlv}
+import immortan.utils.{LNUrl, PaymentRequestExt}
 import fr.acinq.bitcoin.Crypto.PublicKey
-import immortan.utils.PaymentRequestExt
 import fr.acinq.eclair.MilliSatoshi
 import scodec.bits.ByteVector
 import java.util.Date
+import scala.util.Try
 
 
 object PaymentInfo {
@@ -29,6 +30,12 @@ object PaymentStatus {
 sealed trait TransactionDetails {
   lazy val date: Date = new Date(seenAt)
   val seenAt: Long
+}
+
+case class PayLinkInfo(image64: String, lnurlString: String, text: String, lastMsat: MilliSatoshi, hash: String, seenAt: Long) extends TransactionDetails {
+  def imageBytesTry: Try[Bytes] = Try(org.bouncycastle.util.encoders.Base64 decode image64)
+  lazy val paymentHash: ByteVector = ByteVector.fromValidHex(hash)
+  lazy val lnurl: LNUrl = LNUrl(lnurlString)
 }
 
 case class DelayedRefunds(totalAmount: MilliSatoshi, seenAt: Long = Long.MaxValue) extends TransactionDetails

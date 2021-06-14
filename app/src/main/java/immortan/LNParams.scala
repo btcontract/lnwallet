@@ -89,9 +89,10 @@ object LNParams {
   implicit val ec: ExecutionContextExecutor = scala.concurrent.ExecutionContext.Implicits.global
 
   def createWallet(walletDb: WalletDb, seed: ByteVector): WalletExt = {
+    val walletParams = ElectrumWallet.WalletParameters(chainHash, walletDb, minDustLimit, swipeRange = 10, allowSpendUnconfirmed = true)
     val clientPool = system.actorOf(SimpleSupervisor.props(Props(new ElectrumClientPool(blockCount, chainHash)), "pool", SupervisorStrategy.Resume))
     val watcher = system.actorOf(SimpleSupervisor.props(Props(new ElectrumWatcher(blockCount, clientPool)), "watcher", SupervisorStrategy.Resume))
-    val wallet = system.actorOf(ElectrumWallet.props(seed, clientPool, ElectrumWallet.WalletParameters(chainHash, walletDb)), "wallet")
+    val wallet = system.actorOf(Props(new ElectrumWallet(seed, clientPool, walletParams)), "wallet")
     val catcher = system.actorOf(Props(new WalletEventsCatcher), "catcher")
     val eclairWallet = new ElectrumEclairWallet(wallet, chainHash)
     WalletExt(eclairWallet, catcher, clientPool, watcher)

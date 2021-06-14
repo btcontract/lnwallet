@@ -320,9 +320,9 @@ object PayMarketTable extends Table {
 
   val newVirtualSql = s"INSERT INTO $fts$table ($search, $lnurl) VALUES (?, ?)"
 
-  val selectRecentSql = s"SELECT * FROM $table ORDER BY $lastDate DESC LIMIT 50"
+  val selectRecentSql = s"SELECT * FROM $table ORDER BY $lastDate DESC LIMIT ?"
 
-  val searchSql = s"SELECT * FROM $table WHERE $lnurl IN (SELECT $lnurl FROM $fts$table WHERE $search MATCH ?) LIMIT 100"
+  val searchSql = s"SELECT * FROM $table WHERE $lnurl IN (SELECT $lnurl FROM $fts$table WHERE $search MATCH ?) LIMIT 50"
 
   val updInfoSql = s"UPDATE $table SET $text = ?, $lastMsat = ?, $lastDate = ?, $hash = ?, $image = ? WHERE $lnurl = ?"
 

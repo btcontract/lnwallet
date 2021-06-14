@@ -144,15 +144,6 @@
                     style="@style/BoundedView"/>
 
                 <TextView
-                    style="@style/ChipTextGrayMargin"
-                    android:textColor="@color/colorAccent"
-                    android:layout_toEndOf="@id/unusedAnchorId2"
-                    android:id="@+id/lnSyncIndicator"
-                    android:text="@string/sync"
-                    android:visibility="gone"
-                    android:textSize="12sp"/>
-
-                <TextView
                     android:id="@+id/totalLightningBalance"
                     android:layout_alignParentEnd="true"
                     style="@style/Emphasized"/>
@@ -214,18 +205,29 @@
             style="@style/FillingView">
 
             <com.google.android.material.button.MaterialButtonToggleGroup
+                card_view:selectionRequired="true"
                 card_view:singleSelection="true"
                 style="@style/BoundedView">
 
                 <com.google.android.material.button.MaterialButton
-                    android:text="@string/recent_activity"
+                    android:id="@+id/paymentHistory"
                     style="@style/ToggleButton"/>
+
+                <com.google.android.material.button.MaterialButton
+                    card_view:icon="@drawable/baseline_swap_horiz_18"
+                    card_view:iconGravity="textStart"
+                    android:id="@+id/routedPayments"
+                    style="@style/ToggleButton"
+                    card_view:iconSize="18dp"
+                    android:visibility="gone"/>
 
                 <com.google.android.material.button.MaterialButton
                     card_view:icon="@drawable/baseline_storefront_24"
                     card_view:iconGravity="textStart"
+                    android:id="@+id/paymentLinks"
                     style="@style/ToggleButton"
-                    card_view:iconSize="18dp"/>
+                    card_view:iconSize="18dp"
+                    android:visibility="gone"/>
 
             </com.google.android.material.button.MaterialButtonToggleGroup>
 

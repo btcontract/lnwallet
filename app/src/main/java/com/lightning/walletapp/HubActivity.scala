@@ -23,6 +23,7 @@ import immortan.ChannelMaster.{OutgoingAdds, RevealedLocalFulfills}
 import fr.acinq.bitcoin.{ByteVector32, Crypto, Satoshi, SatoshiLong}
 import fr.acinq.eclair.blockchain.fee.{FeeratePerKw, FeeratePerVByte}
 import fr.acinq.eclair.blockchain.electrum.ElectrumWallet.WalletReady
+import com.google.android.material.button.MaterialButton
 import com.lightning.walletapp.BaseActivity.StringOps
 import org.ndeftools.util.activity.NfcReaderActivity
 import concurrent.ExecutionContext.Implicits.global
@@ -36,7 +37,6 @@ import immortan.ChannelListener.Malfunction
 import fr.acinq.eclair.blockchain.TxAndFee
 import com.indicator.ChannelIndicatorLine
 import androidx.appcompat.app.AlertDialog
-import immortan.crypto.CanBeRepliedTo
 import java.util.concurrent.TimeUnit
 import android.content.Intent
 import immortan.sqlite.Table
@@ -49,6 +49,7 @@ import android.net.Uri
 object HubActivity {
   var txInfos: Iterable[TxInfo] = Iterable.empty
   var paymentInfos: Iterable[PaymentInfo] = Iterable.empty
+  var payLinkInfos: Iterable[PayLinkInfo] = Iterable.empty
   var relayedPreimageInfos: Iterable[RelayedPreimageInfo] = Iterable.empty
   var hashToReveals: Map[ByteVector32, RevealedLocalFulfills] = Map.empty
   var allInfos: Seq[TransactionDetails] = Nil
@@ -62,7 +63,7 @@ object HubActivity {
   lazy val markAsFailedOnce: Unit = LNParams.cm.markAsFailed(paymentInfos, LNParams.cm.allInChannelOutgoing)
 }
 
-class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataChecker with ChoiceReceiver with ChannelListener with CanBeRepliedTo { me =>
+class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataChecker with ChoiceReceiver with ChannelListener { me =>
   def lnBalance: MilliSatoshi = LNParams.cm.all.values.filter(Channel.isOperationalOrWaiting).map(Channel.estimateBalance).sum
 
   private[this] lazy val bottomBlurringArea = findViewById(R.id.bottomBlurringArea).asInstanceOf[RealtimeBlurView]
@@ -189,7 +190,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
 
         case info: DelayedRefunds =>
           labelIcon setVisibility View.GONE
-          description setText delayed_refunds
+          description setText delayed_refund
           detailsAndStatus setVisibility View.VISIBLE
           amount setText LNParams.denomination.directedWithSign(info.totalAmount, 0L.msat, cardIn, cardIn, cardZero, isPlus = true).html
           cardContainer setBackgroundResource R.drawable.border_lite_gray
@@ -222,7 +223,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
       }
 
     private def txDescription(info: TxInfo): String = info.description match {
-      case _: ChanRefundingTxDescription => getString(tx_description_refunding)
+      case _: ChanRefundingTxDescription => getString(tx_description_refund)
       case _: HtlcClaimTxDescription => getString(tx_description_htlc_claim)
       case _: ChanFundingTxDescription => getString(tx_description_funding)
       case _: OpReturnTxDescription => getString(tx_description_op_return)
@@ -309,7 +310,6 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
     val totalLightningBalance: TextView = view.findViewById(R.id.totalLightningBalance).asInstanceOf[TextView]
     val channelStateIndicators: LinearLayout = view.findViewById(R.id.channelStateIndicators).asInstanceOf[LinearLayout]
     val channelIndicator: ChannelIndicatorLine = view.findViewById(R.id.channelIndicator).asInstanceOf[ChannelIndicatorLine]
-    val lnSyncIndicator: TextView = view.findViewById(R.id.lnSyncIndicator).asInstanceOf[TextView]
 
     val inFlightIncoming: TextView = view.findViewById(R.id.inFlightIncoming).asInstanceOf[TextView]
     val inFlightOutgoing: TextView = view.findViewById(R.id.inFlightOutgoing).asInstanceOf[TextView]
@@ -317,6 +317,9 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
     val addChannelTip: ImageView = view.findViewById(R.id.addChannelTip).asInstanceOf[ImageView]
 
     val listCaption: RelativeLayout = view.findViewById(R.id.listCaption).asInstanceOf[RelativeLayout]
+    val paymentHistory: MaterialButton = view.findViewById(R.id.paymentHistory).asInstanceOf[MaterialButton]
+    val routedPayments: MaterialButton = view.findViewById(R.id.routedPayments).asInstanceOf[MaterialButton]
+    val paymentLinks: MaterialButton = view.findViewById(R.id.paymentLinks).asInstanceOf[MaterialButton]
     val searchWrap: RelativeLayout = view.findViewById(R.id.searchWrap).asInstanceOf[RelativeLayout]
     val searchField: EditText = view.findViewById(R.id.searchField).asInstanceOf[EditText]
 
@@ -449,12 +452,6 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
     case (error, _, hc: HostedCommits) => chanError(hc.channelId, error.stackTraceAsString, hc.remoteInfo)
   }
 
-  override def process(reply: Any): Unit = reply match {
-    case PathFinder.NotifySyncStarted => UITask(walletCards.lnSyncIndicator setVisibility View.VISIBLE).run
-    case PathFinder.NotifySyncFinished => UITask(walletCards.lnSyncIndicator setVisibility View.GONE).run
-    case _ =>
-  }
-
   // Lifecycle methods
 
   override def onResume: Unit = {
@@ -476,7 +473,6 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
     LNParams.chainWallet.eventsCatcher ! WalletEventsCatcher.Remove(chainListener)
     for (channel <- LNParams.cm.all.values) channel.listeners -= me
     LNParams.fiatRates.listeners -= fiatRatesListener
-    LNParams.cm.pf.listeners -= me
     Tovuti.from(me).stop
     super.onDestroy
   }
@@ -629,7 +625,6 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
       LNParams.chainWallet.eventsCatcher ! chainListener
       LNParams.fiatRates.listeners += fiatRatesListener
       Tovuti.from(me).monitor(netListener)
-      LNParams.cm.pf.listeners += me
 
       bottomActionBar post UITask {
         bottomBlurringArea.setHeightTo(bottomActionBar)
@@ -641,6 +636,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
         setVis(WalletApp.showRateUs && paymentInfos.forall(_.status == PaymentStatus.SUCCEEDED) && allInfos.size > 4 && allInfos.size < 8, walletCards.rateTeaser)
         walletCards.searchField addTextChangedListener onTextChange(searchWorker.addWork)
         updatePaymentList
+        updateToggleMenu
       }
 
       itemsList.addHeaderView(walletCards.view)
@@ -665,10 +661,10 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
       unknownReestablishSubscription = ChannelMaster.unknownReestablishStream.subscribe(chanUnknown, none).asSome
 
       // Start with empty sets and update them once a unique related record is added to db
-      lnPaymentAddedSubscription = ChannelMaster.lnPaymentAddedStream.doOnNext(lnPaymentsAdded += _).subscribe(none, none).asSome
-      payLinkAddedSubscription = ChannelMaster.payLinkAddedStream.doOnNext(payLinksAdded += _).subscribe(none, none).asSome
-      chainTxAddedSubscription = ChannelMaster.chainTxAddedStream.doOnNext(chainTxsAdded += _).subscribe(none, none).asSome
-      relayAddedSubscription = ChannelMaster.relayAddedStream.doOnNext(relaysAdded += _).subscribe(none, none).asSome
+      lnPaymentAddedSubscription = ChannelMaster.lnPaymentAddedStream.doOnNext(lnPaymentsAdded += _).subscribe(_ => UITask(updateToggleMenu).run, none).asSome
+      payLinkAddedSubscription = ChannelMaster.payLinkAddedStream.doOnNext(payLinksAdded += _).subscribe(_ => UITask(updateToggleMenu).run, none).asSome
+      chainTxAddedSubscription = ChannelMaster.chainTxAddedStream.doOnNext(chainTxsAdded += _).subscribe(_ => UITask(updateToggleMenu).run, none).asSome
+      relayAddedSubscription = ChannelMaster.relayAddedStream.doOnNext(relaysAdded += _).subscribe(_ => UITask(updateToggleMenu).run, none).asSome
 
       // Run this check after establishing subscriptions since it will trigger an event stream
       timer.scheduleAtFixedRate(UITask { for (holder <- lastSeenViewHolders) holder.updMeta }, 30000, 30000)
@@ -898,6 +894,16 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
   def updatePaymentList: Unit = {
     setVis(allInfos.nonEmpty, walletCards.listCaption)
     paymentsAdapter.notifyDataSetChanged
+  }
+
+  def updateToggleMenu: Unit = {
+    val paymentHistory = getString(payments)
+    val localPayments = lnPaymentsAdded.size + chainTxsAdded.size
+    walletCards.paymentHistory setText { if (localPayments > 0) s"$paymentHistory +$localPayments" else paymentHistory }
+    walletCards.paymentLinks setText { if (payLinksAdded.nonEmpty) s"+${payLinksAdded.size}" else new String }
+    walletCards.routedPayments setText { if (relaysAdded.nonEmpty) s"+${relaysAdded.size}" else new String }
+    setVis(relayedPreimageInfos.nonEmpty, walletCards.routedPayments)
+    setVis(payLinkInfos.nonEmpty, walletCards.paymentLinks)
   }
 
   // Payment actions

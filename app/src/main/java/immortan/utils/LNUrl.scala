@@ -190,10 +190,3 @@ case class PayRequestFinal(successAction: Option[PaymentAction], disposable: Opt
 
   val isThrowAway: Boolean = disposable.getOrElse(true)
 }
-
-case class PayLinkInfo(image64: String, lnurl: LNUrl, text: String, lastMsat: MilliSatoshi, hash: String, lastDate: Long) {
-
-  def imageBytesTry: Try[Bytes] = Try(org.bouncycastle.util.encoders.Base64 decode image64)
-
-  lazy val paymentHash: ByteVector = ByteVector.fromValidHex(hash)
-}

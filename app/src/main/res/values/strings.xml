@@ -9,13 +9,12 @@
     <string name="lightning_wallet">Lightning</string>
     <string name="total_balance">Total balance</string>
     <string name="delayed_pending"><![CDATA[<i>pending</i>]]></string>
-    <string name="delayed_refunds">Delayed channel refunds</string>
     <string name="copied_to_clipboard">Copied to clipboard</string>
+    <string name="delayed_refund">Delayed channel refund</string>
     <string name="add_address">More fresh addresses</string>
 
-    <string name="recent_activity">Recent activity</string>
+    <string name="payments">Payments</string>
     <string name="search_recent">Search recent activity</string>
-
     <string name="emergency_mode">Something went wrong</string>
     <string name="emergency_share">Share error report</string>
 
@@ -109,9 +108,9 @@
     <string name="error_nothing_useful">Nothing useful is found.</string>
 
     <string name="error_ln_no_chans"><![CDATA[Can neither send nor receive Lightning payments because no open channels are present.]]></string>
-    <string name="error_ln_waiting"><![CDATA[Can neither send nor receive Lightning payments because none of your channels is open yet, please wait for more funding confirmations.]]></string>
+    <string name="error_ln_waiting"><![CDATA[Can neither send nor receive Lightning payments because none of your channels is open yet.<br><br>Please wait for more channel funding confirmations.]]></string>
 
-    <string name="error_ln_receive_no_update"><![CDATA[Can\'t request Lightning payments because receiving parameters are not yet available, please wait for more funding confirmations.]]></string>
+    <string name="error_ln_receive_no_update"><![CDATA[Can\'t request Lightning payments because receiving parameters are not yet available, please wait for more channel funding confirmations.]]></string>
     <string name="error_ln_receive_reserve"><![CDATA[Can\'t request Lightning payments yet because first you need to spend at least <b>%1$s</b> to make some space for receiving.]]></string>
 
     <string name="error_ln_send_small"><![CDATA[Can\'t send this Lightning payment because requested amount of <b>%1$s</b> is too small, a minimal amount is <b>%2$s</b>.]]></string>
@@ -149,9 +148,9 @@
 
     <string name="tx_description_op_return">Preimage broadcast</string>
     <string name="tx_description_funding">Lightning channel funding</string>
-    <string name="tx_description_refunding">Channel balance refunding</string>
-    <string name="tx_description_htlc_claim">Lightning payment refunding</string>
+    <string name="tx_description_htlc_claim">Lightning payment refund</string>
     <string name="tx_description_penalty">Channel breach penalty</string>
+    <string name="tx_description_refund">Channel balance refund</string>
 
     <string name="tx_btc">Bitcoin Transaction</string>
     <string name="tx_ln">Lightning Payment</string>

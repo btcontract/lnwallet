@@ -52,7 +52,7 @@ abstract class PathFinder(val normalBag: NetworkBag, val hostedBag: NetworkBag) 
     // Init first resync with persistent delay on startup
     val repeat = Rx.repeat(Rx.ioQueue, Rx.incHour, 49 to Int.MaxValue by 49)
     // Resync every RESYNC_PERIOD days + 1 hour to trigger a full resync, not just PHC resync
-    val delay = Rx.initDelay(repeat, getLastTotalResyncStamp, RESYNC_PERIOD, preStartMsec = 1000)
+    val delay = Rx.initDelay(repeat, getLastTotalResyncStamp, RESYNC_PERIOD, preStartMsec = 100)
     delay.subscribe(_ => me process CMDResync)
   }
 

@@ -310,7 +310,7 @@ object Blockchain {
     *         and indexes is the list of header indexes that have been optimized out and must be persisted
     */
   @tailrec
-  def optimize(blockchain: Blockchain, acc: Vector[BlockIndex] = Vector.empty[BlockIndex]) : (Blockchain, Vector[BlockIndex]) = {
+  def optimize(blockchain: Blockchain, acc: Vector[BlockIndex] = Vector.empty) : (Blockchain, Vector[BlockIndex]) = {
     if (blockchain.bestchain.size >= RETARGETING_PERIOD + MAX_REORG) {
       val saveme = blockchain.bestchain.take(RETARGETING_PERIOD)
       val headersMap1 = blockchain.headersMap -- saveme.map(_.hash)

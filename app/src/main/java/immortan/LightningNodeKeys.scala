@@ -11,19 +11,11 @@ import java.nio.ByteOrder
 
 
 object LightningNodeKeys {
-  val derivationPath = KeyPath("m/84'/0'/0'")
-
   def makeFromSeed(seed: Bytes): LightningNodeKeys = {
     val master: ExtendedPrivateKey = generate(ByteVector view seed)
     val extendedNodeKey: ExtendedPrivateKey = derivePrivateKey(master, hardened(46L) :: hardened(0L) :: Nil)
     val hashingKey: PrivateKey = derivePrivateKey(master, hardened(138L) :: 0L :: Nil).privateKey
     LightningNodeKeys(master, extendedNodeKey, hashingKey)
-  }
-
-  // Compatible with Electrum/Phoenix/BLW
-  def xPub(parent: ExtendedPrivateKey): String = {
-    val privateKey = derivePrivateKey(parent, derivationPath)
-    encode(publicKey(privateKey), zpub)
   }
 }
 

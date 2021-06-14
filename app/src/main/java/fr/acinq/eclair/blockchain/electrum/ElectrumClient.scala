@@ -375,7 +375,7 @@ object ElectrumClient {
   case object PingResponse extends Response
 
   case class GetAddressHistory(address: String) extends Request
-  case class TransactionHistoryItem(height: Int, tx_hash: ByteVector32)
+  case class TransactionHistoryItem(height: Int, txHash: ByteVector32)
   case class GetAddressHistoryResponse(address: String, history: Seq[TransactionHistoryItem]) extends Response
 
   case class GetScriptHashHistory(scriptHash: ByteVector32) extends Request

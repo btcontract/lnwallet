@@ -1,8 +1,8 @@
 package immortan.sqlite
 
-import immortan.utils.{LNUrl, PayLinkInfo, PayRequest}
+import immortan.{ChannelMaster, PayLinkInfo}
+import immortan.utils.{LNUrl, PayRequest}
 import fr.acinq.eclair.MilliSatoshi
-import immortan.ChannelMaster
 
 
 class SQLitePayMarket(db: DBInterface) {
@@ -21,10 +21,10 @@ class SQLitePayMarket(db: DBInterface) {
 
   def byQuery(query: String): RichCursor = db.search(PayMarketTable.searchSql, query)
 
-  def byRecent: RichCursor = db.select(PayMarketTable.selectRecentSql)
+  def byRecent(limit: Int): RichCursor = db.select(PayMarketTable.selectRecentSql, limit.toString)
 
   def toLinkInfo(rc: RichCursor): PayLinkInfo =
-    PayLinkInfo(image64 = rc string PayMarketTable.image, lnurl = LNUrl(rc string PayMarketTable.lnurl),
+    PayLinkInfo(image64 = rc string PayMarketTable.image, lnurlString = rc string PayMarketTable.lnurl,
       text = rc string PayMarketTable.text, lastMsat = MilliSatoshi(rc long PayMarketTable.lastMsat),
-      hash = rc string PayMarketTable.hash, lastDate = rc long PayMarketTable.lastDate)
+      hash = rc string PayMarketTable.hash, seenAt = rc long PayMarketTable.lastDate)
 }
