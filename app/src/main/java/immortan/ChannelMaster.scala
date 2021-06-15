@@ -280,20 +280,28 @@ class ChannelMaster(val payBag: PaymentBag, val chanBag: ChannelBag, val dataBag
   }
 
   override def onBecome: PartialFunction[Transition, Unit] = {
-    case (_, _, _, SLEEPING, CLOSING) => next(statusUpdateStream)
-    case (_, _, _, OPEN, SLEEPING | CLOSING) => next(statusUpdateStream)
+    case (_, _, _, prev, CLOSING) if prev != CLOSING =>
+      // Previously operational NC got broken
+      next(stateUpdateStream)
 
     case (_, prevHc: HostedCommits, nextHc: HostedCommits, _, _)
       if prevHc.error.isEmpty && nextHc.error.nonEmpty =>
-      next(statusUpdateStream)
+      // Previously operational HC got suspended
+      next(stateUpdateStream)
 
     case (_, prevHc: HostedCommits, nextHc: HostedCommits, _, _)
       if prevHc.error.nonEmpty && nextHc.error.isEmpty =>
+      // Previously suspended HC got operational
       opm process CMDChanGotOnline
+      next(stateUpdateStream)
+
+    case (_, _, _, prev, SLEEPING) if prev != SLEEPING =>
+      // Channel which was not SLEEPING became SLEEPING
       next(statusUpdateStream)
 
-    case (chan, _, _, WAIT_FUNDING_DONE | SLEEPING, OPEN) =>
-      // We may get here after getting fresh feerates
+    case (chan, _, _, prev, OPEN) if prev != OPEN =>
+      // Channel which was not OPEN became operational and OPEN
+      // We may get here after getting fresh feerates so check again
       chan process CMD_CHECK_FEERATE
       opm process CMDChanGotOnline
       next(statusUpdateStream)

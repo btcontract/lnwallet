@@ -100,6 +100,7 @@ class SQLitePayment(db: DBInterface, preimageDb: DBInterface) extends PaymentBag
 
   def addRelayedPreimageInfo(fullTag: FullPaymentTag, preimage: ByteVector32, relayed: MilliSatoshi, earned: MilliSatoshi): Unit = {
     db.change(RelayTable.newSql, fullTag.paymentHash.toHex, fullTag.paymentSecret.toHex, preimage.toHex, System.currentTimeMillis: JLong, relayed.toLong: JLong, earned.toLong: JLong)
+    ChannelMaster.relayAddedStream.onNext(fullTag.paymentHash)
     ChannelMaster.next(ChannelMaster.relayDbStream)
   }
 

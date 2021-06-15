@@ -150,10 +150,10 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
     val meta: TextView = itemView.findViewById(R.id.meta).asInstanceOf[TextView]
     itemView.setTag(this)
 
-    private val paymentTypeIconViews: List[View] = paymentTypeIconIds.map(itemView.findViewById)
+    val paymentTypeIconViews: List[View] = paymentTypeIconIds.map(itemView.findViewById)
     val iconMap: Map[Int, View] = paymentTypeIconIds.zip(paymentTypeIconViews).toMap
     var currentDetails: TransactionDetails = _
-    private var lastVisibleIconId: Int = -1
+    var lastVisibleIconId: Int = -1
 
     def setVisibleIcon(id: Int): Unit = if (lastVisibleIconId != id) {
       iconMap.get(lastVisibleIconId).foreach(_ setVisibility View.GONE)
@@ -369,10 +369,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
   private var paymentSubscription = Option.empty[Subscription]
   private var preimageSubscription = Option.empty[Subscription]
   private var unknownReestablishSubscription = Option.empty[Subscription]
-  private var lnPaymentAddedSubscription = Option.empty[Subscription]
-  private var payLinkAddedSubscription = Option.empty[Subscription]
-  private var chainTxAddedSubscription = Option.empty[Subscription]
-  private var relayAddedSubscription = Option.empty[Subscription]
+  private var addedSubscription = Option.empty[Subscription]
 
   private val netListener = new Monitor.ConnectivityListener {
     override def onConnectivityChanged(ct: Int, isConnected: Boolean, isFast: Boolean): Unit = UITask {
@@ -383,12 +380,10 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
   }
 
   private val chainListener = new WalletEventsListener {
-    override def onChainSynchronized(event: WalletReady): Unit = UITask {
-      // First, refresh bitcoin card balance which might have been updated by chain txs while we were offline
-      // Second, update payments to highlight nearly expired revealed incoming now that chain tip it known
-      // Third, check if any of unconfirmed chain transactions became confirmed or double-spent
-      walletCards.updateView
-      updatePaymentList
+    override def onChainSynchronized(event: WalletReady): Unit = {
+      // First, update payments to highlight nearly expired revealed incoming now that chain tip it known
+      // Second, check if any of unconfirmed chain transactions became confirmed or double-spent
+      UITask(walletCards.updateView).run
 
       for {
         transactionInfo <- txInfos if !transactionInfo.isDeeplyBuried && !transactionInfo.isDoubleSpent
@@ -397,7 +392,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
         _ = WalletApp.txDataBag.updStatus(transactionInfo.txid, newDepth, newDoubleSpent)
         // Simulate preimage revealed using a txid to throttle multiple vibrations
       } ChannelMaster.hashRevealStream.onNext(transactionInfo.txid)
-    }.run
+    }
   }
 
   private val fiatRatesListener = new FiatRatesListener {
@@ -465,10 +460,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
     paymentSubscription.foreach(_.unsubscribe)
     preimageSubscription.foreach(_.unsubscribe)
     unknownReestablishSubscription.foreach(_.unsubscribe)
-    lnPaymentAddedSubscription.foreach(_.unsubscribe)
-    payLinkAddedSubscription.foreach(_.unsubscribe)
-    chainTxAddedSubscription.foreach(_.unsubscribe)
-    relayAddedSubscription.foreach(_.unsubscribe)
+    addedSubscription.foreach(_.unsubscribe)
 
     LNParams.chainWallet.eventsCatcher ! WalletEventsCatcher.Remove(chainListener)
     for (channel <- LNParams.cm.all.values) channel.listeners -= me
@@ -660,11 +652,11 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
       paymentSubscription = ChannelMaster.hashRevealStream.merge(ChannelMaster.remoteFulfillStream).throttleFirst(window).subscribe(_ => Vibrator.vibrate).asSome
       unknownReestablishSubscription = ChannelMaster.unknownReestablishStream.subscribe(chanUnknown, none).asSome
 
-      // Start with empty sets and update them once a unique related record is added to db
-      lnPaymentAddedSubscription = ChannelMaster.lnPaymentAddedStream.doOnNext(lnPaymentsAdded += _).subscribe(_ => UITask(updateToggleMenu).run, none).asSome
-      payLinkAddedSubscription = ChannelMaster.payLinkAddedStream.doOnNext(payLinksAdded += _).subscribe(_ => UITask(updateToggleMenu).run, none).asSome
-      chainTxAddedSubscription = ChannelMaster.chainTxAddedStream.doOnNext(chainTxsAdded += _).subscribe(_ => UITask(updateToggleMenu).run, none).asSome
-      relayAddedSubscription = ChannelMaster.relayAddedStream.doOnNext(relaysAdded += _).subscribe(_ => UITask(updateToggleMenu).run, none).asSome
+      val relay = ChannelMaster.relayAddedStream.doOnNext(newRelay => relaysAdded += newRelay)
+      val pay = ChannelMaster.payLinkAddedStream.doOnNext(newPayLink => payLinksAdded += newPayLink)
+      val chain = ChannelMaster.chainTxAddedStream.doOnNext(newChainTx => chainTxsAdded += newChainTx)
+      val ln = ChannelMaster.lnPaymentAddedStream.doOnNext(newLnPayment => lnPaymentsAdded += newLnPayment)
+      addedSubscription = ln.merge(pay).merge(chain).merge(relay).subscribe(_ => UITask(updateToggleMenu).run, none).asSome
 
       // Run this check after establishing subscriptions since it will trigger an event stream
       timer.scheduleAtFixedRate(UITask { for (holder <- lastSeenViewHolders) holder.updMeta }, 30000, 30000)
@@ -728,6 +720,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
   }
 
   def goToReceiveBitcoinPage(view: View): Unit = onChoiceMade(CHOICE_RECEIVE_TAG, 0)
+
   def bringLnReceivePopup(view: View): Unit = onChoiceMade(CHOICE_RECEIVE_TAG, 1)
 
   def bringSendBitcoinPopup(uri: BitcoinUri): Unit = {
@@ -830,7 +823,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
     }
   }
 
-  def bringPayPopup(data: PayRequest): Unit =
+  def bringPayPopup(data: PayRequest): Unit = {
     new OffChainSender(maxSendable = LNParams.cm.maxSendable(LNParams.cm.all.values) min data.maxSendable.msat, minSendable = LNParams.minPayment max data.minSendable.msat) {
       override def isNeutralEnabled: Boolean = manager.resultMsat >= LNParams.minPayment && manager.resultMsat <= minSendable - LNParams.minPayment
       override def isPayEnabled: Boolean = manager.resultMsat >= minSendable && manager.resultMsat <= maxSendable
@@ -890,6 +883,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
       // Prefill with min possible
       manager.updateText(minSendable)
     }
+  }
 
   def updatePaymentList: Unit = {
     setVis(allInfos.nonEmpty, walletCards.listCaption)
@@ -897,11 +891,11 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
   }
 
   def updateToggleMenu: Unit = {
-    val paymentHistory = getString(payments)
+    val payHist = getString(payments)
     val localPayments = lnPaymentsAdded.size + chainTxsAdded.size
-    walletCards.paymentHistory setText { if (localPayments > 0) s"$paymentHistory +$localPayments" else paymentHistory }
-    walletCards.paymentLinks setText { if (payLinksAdded.nonEmpty) s"+${payLinksAdded.size}" else new String }
-    walletCards.routedPayments setText { if (relaysAdded.nonEmpty) s"+${relaysAdded.size}" else new String }
+    if (localPayments > 0) walletCards.paymentHistory.setText(s"$payHist +$localPayments")
+    if (payLinksAdded.nonEmpty) walletCards.paymentLinks.setText(s" +${payLinksAdded.size}  ")
+    if (relaysAdded.nonEmpty) walletCards.routedPayments.setText(s" +${relaysAdded.size}  ")
     setVis(relayedPreimageInfos.nonEmpty, walletCards.routedPayments)
     setVis(payLinkInfos.nonEmpty, walletCards.paymentLinks)
   }

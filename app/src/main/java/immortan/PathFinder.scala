@@ -7,8 +7,8 @@ import scala.collection.JavaConverters._
 import immortan.utils.{Rx, Statistics}
 import java.util.concurrent.{Executors, TimeUnit}
 import immortan.crypto.{CanBeRepliedTo, StateMachine}
-import fr.acinq.eclair.{CltvExpiryDelta, MilliSatoshi}
 import fr.acinq.eclair.router.{ChannelUpdateExt, Router}
+import fr.acinq.eclair.{CltvExpiryDelta, MilliSatoshi, nodeFee}
 import fr.acinq.eclair.wire.{ChannelUpdate, ShortIdAndPosition}
 import scala.concurrent.{ExecutionContext, ExecutionContextExecutor}
 import fr.acinq.eclair.router.Router.{Data, PublicChannel, RouteRequest}
@@ -22,14 +22,14 @@ import scala.collection.mutable
 object PathFinder {
   val NotifyRejected = "path-finder-notify-rejected"
   val NotifyOperational = "path-finder-notify-operational"
-  val NotifySyncStarted = "path-finder-notify-sync-started"
-  val NotifySyncFinished = "path-finder-notify-sync-finished"
   val CMDLoadGraph = "cmd-load-graph"
 
   val WAITING = 0
   val OPERATIONAL = 1
 
-  case class AvgHopParams(cltvExpiryDelta: CltvExpiryDelta, feeProportionalMillionths: MilliSatoshi, feeBaseMsat: MilliSatoshi, sampleSize: Long)
+  case class AvgHopParams(cltvExpiryDelta: CltvExpiryDelta, feeProportionalMillionths: Long, feeBaseMsat: MilliSatoshi, sampleSize: Long) {
+    def avgHopFee(amount: MilliSatoshi): MilliSatoshi = nodeFee(feeBaseMsat, feeProportionalMillionths, amount)
+  }
 
   case class FindRoute(sender: CanBeRepliedTo, request: RouteRequest)
 }
@@ -37,6 +37,7 @@ object PathFinder {
 abstract class PathFinder(val normalBag: NetworkBag, val hostedBag: NetworkBag) extends StateMachine[Data] { me =>
   private val extraEdges = CacheBuilder.newBuilder.expireAfterWrite(1, TimeUnit.DAYS).maximumSize(5000).build[ShortIdAndPosition, GraphEdge]
   val extraEdgesMap: mutable.Map[ShortIdAndPosition, GraphEdge] = extraEdges.asMap.asScala
+  var lastAvgHopParams: Option[AvgHopParams] = None
   var listeners: Set[CanBeRepliedTo] = Set.empty
   var debugMode: Boolean = false
 
@@ -95,12 +96,15 @@ abstract class PathFinder(val normalBag: NetworkBag, val hostedBag: NetworkBag) 
       val hostedShortIdToPubChan = hostedBag.getRoutingData
       val searchGraph1 = DirectedGraph.makeGraph(normalShortIdToPubChan ++ hostedShortIdToPubChan).addEdges(extraEdgesMap.values)
       become(Data(normalShortIdToPubChan, hostedShortIdToPubChan, searchGraph1), OPERATIONAL)
-      if (data.channels.nonEmpty) listeners.foreach(_ process NotifyOperational)
+
+      if (data.channels.nonEmpty) {
+        lastAvgHopParams = getAvgHopParams.asSome
+        listeners.foreach(_ process NotifyOperational)
+      }
 
     case (CMDResync, OPERATIONAL) if System.currentTimeMillis - getLastNormalResyncStamp > RESYNC_PERIOD =>
       // Last normal sync has happened too long ago, start with normal sync, then proceed with PHC sync
       val setupData = SyncMasterShortIdData(LNParams.syncParams.syncNodes, getExtraNodes, Set.empty)
-      listeners.foreach(_ process NotifySyncStarted)
 
       new SyncMaster(normalBag.listExcludedChannels, data) { self =>
         def onChunkSyncComplete(pure: PureRoutingData): Unit = me process pure
@@ -139,15 +143,16 @@ abstract class PathFinder(val normalBag: NetworkBag, val hostedBag: NetworkBag) 
 
       // Perform database cleaning in a different thread since it's slow and we are operational
       Rx.ioQueue.foreach(_ => normalBag.removeGhostChannels(ghostIds, oneSideShortIds), none)
-      listeners.foreach(_ process NotifySyncFinished)
-      listeners.foreach(_ process NotifyOperational)
+
       // Notify ASAP, then start PHC sync
+      lastAvgHopParams = getAvgHopParams.asSome
+      listeners.foreach(_ process NotifyOperational)
       attemptPHCSync
 
     // We always accept and store disabled channels:
     // - to reduce subsequent sync traffic if channel remains disabled
     // - to account for the case when channel suddenly becomes enabled but we don't know
-    // If disabled channel stays disabled for a long time it will be pruned by peers and then by us
+    // - if channel stays disabled for a long time it will be pruned by peers and then by us
 
     case (cu: ChannelUpdate, OPERATIONAL) if data.channels.contains(cu.shortChannelId) =>
       val data1 = resolve(data.channels(cu.shortChannelId), cu, normalBag)
@@ -226,8 +231,8 @@ abstract class PathFinder(val normalBag: NetworkBag, val hostedBag: NetworkBag) 
   def getAvgHopParams: AvgHopParams = {
     val sample = data.channels.values.toVector.flatMap(pc => pc.update1Opt ++ pc.update2Opt)
     val noFeeOutliers = Statistics.removeExtremeOutliers(sample)(_.update.feeProportionalMillionths)
-    val cltvExpiryDelta = CltvExpiryDelta(Statistics.meanBy(noFeeOutliers)(_.update.cltvExpiryDelta).toInt)
-    val proportional = MilliSatoshi(Statistics.meanBy(noFeeOutliers)(_.update.feeProportionalMillionths).toLong)
+    val cltvExpiryDelta = CltvExpiryDelta(Statistics.meanBy(noFeeOutliers)(_.update.cltvExpiryDelta.toInt).toInt)
+    val proportional = Statistics.meanBy(noFeeOutliers)(_.update.feeProportionalMillionths).toLong
     val base = MilliSatoshi(Statistics.meanBy(noFeeOutliers)(_.update.feeBaseMsat).toLong)
     AvgHopParams(cltvExpiryDelta, proportional, base, noFeeOutliers.size)
   }
