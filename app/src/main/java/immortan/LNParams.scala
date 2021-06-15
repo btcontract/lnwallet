@@ -75,10 +75,6 @@ object LNParams {
   // Last known chain tip (zero is unknown)
   val blockCount: AtomicLong = new AtomicLong(0L)
 
-  // Chain wallet has lost connection this long time ago
-  // can only happen if wallet has connected, then disconnected
-  val lastDisconnect: AtomicLong = new AtomicLong(Long.MaxValue)
-
   def isOperational: Boolean =
     null != chainHash && null != secret && null != chainWallet && null != syncParams &&
       null != trampoline && null != fiatRates && null != feeRates && null != denomination &&
@@ -133,8 +129,6 @@ object LNParams {
       minPayment, maxToLocalDelay, maxAcceptedHtlcs = 5, isFunder, defFinalScriptPubkey, walletStaticPaymentBasepoint)
 
   def currentBlockDay: Long = blockCount.get / blocksPerDay
-
-  def isChainDisconnectTooLong: Boolean = lastDisconnect.get < System.currentTimeMillis - 60 * 60 * 1000L * 2
 
   def incorrectDetails(amount: MilliSatoshi): FailureMessage = IncorrectOrUnknownPaymentDetails(amount, blockCount.get)
 

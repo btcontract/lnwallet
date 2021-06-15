@@ -392,7 +392,6 @@ trait BaseActivity extends AppCompatActivity { me =>
     case _ if !prExt.pr.features.allowMultiPart || !prExt.pr.features.allowPaymentSecret => snack(container, getString(error_ln_send_features).html, dialog_ok, _.dismiss)
     case _ if !LNParams.cm.all.values.exists(Channel.isOperationalOrWaiting) => snack(container, getString(error_ln_no_chans).html, dialog_ok, _.dismiss)
     case _ if !LNParams.cm.all.values.exists(Channel.isOperational) => snack(container, getString(error_ln_waiting).html, dialog_ok, _.dismiss)
-    case _ if LNParams.isChainDisconnectTooLong => snack(container, getString(error_ln_send_chain_disconnect).html, dialog_ok, _.dismiss)
 
     case _ if LNParams.cm.sortedSendable(LNParams.cm.all.values).last.commits.availableForSend < LNParams.minPayment =>
       val reserve = -LNParams.cm.sortedSendable(LNParams.cm.all.values).head.commits.availableForSend

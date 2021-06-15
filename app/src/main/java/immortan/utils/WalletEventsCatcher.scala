@@ -16,7 +16,6 @@ class WalletEventsCatcher extends Actor {
   var listeners: List[WalletEventsListener] = Nil
 
   context.system.eventStream.subscribe(channel = classOf[WalletEvent], subscriber = self)
-  context.system.eventStream.subscribe(channel = classOf[ElectrumEvent], subscriber = self)
   context.system.eventStream.subscribe(channel = classOf[CurrentBlockCount], subscriber = self)
 
   override def receive: Receive = {
@@ -24,12 +23,8 @@ class WalletEventsCatcher extends Actor {
     case WalletEventsCatcher.Remove(listener) => listeners = listeners diff List(listener)
 
     case event: WalletReady => for (lst <- listeners) lst.onChainSynchronized(event)
-
     case event: TransactionReceived => for (lst <- listeners) lst.onTransactionReceived(event)
-
     case event: CurrentBlockCount => for (lst <- listeners) lst.onChainTipKnown(event)
-
-    case ElectrumDisconnected => for (lst <- listeners) lst.onChainDisconnected
   }
 }
 
@@ -37,5 +32,4 @@ class WalletEventsListener {
   def onChainSynchronized(event: WalletReady): Unit = none
   def onTransactionReceived(event: TransactionReceived): Unit = none
   def onChainTipKnown(event: CurrentBlockCount): Unit = none
-  def onChainDisconnected: Unit = none
 }

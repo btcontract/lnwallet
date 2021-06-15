@@ -1,10 +1,4 @@
 {
-    "hsmithsxurybd7uh.onion": {
-        "pruning": "-",
-        "s": "53012",
-        "t": "53011",
-        "version": "1.4"
-    },
     "testnet.hsmiths.com": {
         "pruning": "-",
         "s": "53012",

@@ -115,7 +115,6 @@
 
     <string name="error_ln_send_small"><![CDATA[Can\'t send this Lightning payment because requested amount of <b>%1$s</b> is too small, a minimal amount is <b>%2$s</b>.]]></string>
     <string name="error_ln_send_reserve"><![CDATA[Can\'t send Lightning payments yet because first you need to receive at least <b>%1$s</b> to make some space for sending.]]></string>
-    <string name="error_ln_send_chain_disconnect"><![CDATA[Can\'t send Lightning payments because Bitcoin wallet appears to be disconnected for too long.]]></string>
     <string name="error_ln_send_network"><![CDATA[Can\'t send this Lightning payment because it belongs to some unknown network.]]></string>
     <string name="error_ln_send_split"><![CDATA[Can\'t proceed with this split invoice because its split parameters are wrong.]]></string>
     <string name="error_ln_send_features"><![CDATA[Can\'t send this Lightning payment because it has some unknown features.]]></string>

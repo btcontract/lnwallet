@@ -198,17 +198,13 @@ object WalletApp {
     }
 
     LNParams.chainWallet.eventsCatcher ! new WalletEventsListener {
-      override def onChainTipKnown(event: CurrentBlockCount): Unit = {
-        LNParams.blockCount.set(event.blockCount)
+      override def onChainTipKnown(event: CurrentBlockCount): Unit =
         LNParams.cm.initConnect
-      }
 
       override def onChainSynchronized(event: WalletReady): Unit = {
         // The main point of this is to use unix timestamp instead of chain tip stamp to define whether we are deeply in past
         lastChainBalance = LastChainBalance(event.confirmedBalance, event.unconfirmedBalance, System.currentTimeMillis)
         extDataBag.putLastChainBalance(lastChainBalance)
-        LNParams.lastDisconnect.set(Long.MaxValue)
-        LNParams.blockCount.set(event.height)
       }
 
       override def onTransactionReceived(event: TransactionReceived): Unit = {
@@ -224,12 +220,6 @@ object WalletApp {
         if (event.sent == event.received + fee) replaceChainTx(event.received, event.sent - fee, sentTxDescription, isIncoming = 0L)
         else if (event.sent > event.received) replaceChainTx(received = 0L.sat, event.sent - event.received - fee, sentTxDescription, isIncoming = 0L)
         else replaceChainTx(event.received - event.sent, sent = 0L.sat, TxDescription.define(LNParams.cm.all.values, event.walletAddreses, event.tx), isIncoming = 1L)
-      }
-
-      override def onChainDisconnected: Unit = {
-        // Remember to eventually stop accepting payments
-        // note that there may be many these events in a row
-        LNParams.lastDisconnect.set(System.currentTimeMillis)
       }
     }
 

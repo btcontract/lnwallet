@@ -16,48 +16,49 @@
 
 package fr.acinq.eclair.blockchain.electrum
 
-import java.io.InputStream
-import java.net.InetSocketAddress
-import java.util.concurrent.atomic.AtomicLong
-
-import akka.actor.{Actor, ActorRef, FSM, OneForOneStrategy, Props, SupervisorStrategy, Terminated}
-import fr.acinq.bitcoin.{Block, BlockHeader, ByteVector32}
-import fr.acinq.eclair.blockchain.CurrentBlockCount
-import fr.acinq.eclair.blockchain.electrum.ElectrumClient.SSL
-import immortan.LNParams
-import org.json4s.JsonAST.{JObject, JString}
-import org.json4s.native.JsonMethods
-
-import scala.concurrent.ExecutionContext
+import akka.actor._
+import fr.acinq.bitcoin._
+import org.json4s.JsonAST._
+import immortan.crypto.Tools._
 import scala.concurrent.duration._
+import fr.acinq.eclair.blockchain.electrum.ElectrumClientPool._
+import fr.acinq.eclair.blockchain.electrum.ElectrumClient.SSL
+import fr.acinq.eclair.blockchain.CurrentBlockCount
+import java.util.concurrent.atomic.AtomicLong
+import scala.concurrent.ExecutionContext
+import org.json4s.native.JsonMethods
+import java.net.InetSocketAddress
+import java.io.InputStream
 import scala.util.Random
+import immortan.LNParams
+
 
 class ElectrumClientPool(blockCount: AtomicLong, chainHash: ByteVector32)(implicit val ec: ExecutionContext) extends Actor with FSM[ElectrumClientPool.State, ElectrumClientPool.Data] {
-  import ElectrumClientPool._
 
   val serverAddresses: Set[ElectrumServerAddress] = ElectrumClientPool.loadFromChainHash(chainHash)
+
   val addresses = collection.mutable.Map.empty[ActorRef, InetSocketAddress]
+
   val statusListeners = collection.mutable.HashSet.empty[ActorRef]
 
-  // on startup, we attempt to connect to a number of electrum clients
-  // they will send us an `ElectrumReady` message when they're connected, or
-  // terminate if they cannot connect
   (0 until LNParams.maxChainConnectionsCount).foreach(_ => self ! Connect)
 
-  log.debug("starting electrum pool with serverAddresses={}", serverAddresses)
-
-  // custom supervision strategy: always stop Electrum clients when there's a problem, we will automatically reconnect
-  // to another client
-  override def supervisorStrategy: SupervisorStrategy = OneForOneStrategy(loggingEnabled = true) {
-    case _ => SupervisorStrategy.stop
+  context.system.scheduler.schedule(6.hours, 6.hours) {
+    // Once in every 6 hours we rotate chain providers
+    addresses.keys.foreach(_ ! PoisonPill)
   }
+
+  override def supervisorStrategy: SupervisorStrategy =
+    OneForOneStrategy(loggingEnabled = false) {
+      case _ => SupervisorStrategy.stop
+    }
 
   startWith(Disconnected, DisconnectedData)
 
   when(Disconnected) {
-    case Event(ElectrumClient.ElectrumReady(height, tip, _), _) if addresses.contains(sender) =>
+    case Event(msg: ElectrumClient.ElectrumReady, _) if addresses.contains(sender) =>
       sender ! ElectrumClient.HeaderSubscription(self)
-      handleHeader(sender, height, tip, None)
+      handleHeader(sender, msg.height, msg.tip, None)
 
     case Event(ElectrumClient.AddStatusListener(listener), _) =>
       statusListeners += listener
@@ -70,71 +71,55 @@ class ElectrumClientPool(blockCount: AtomicLong, chainHash: ByteVector32)(implic
   }
 
   when(Connected) {
-    case Event(ElectrumClient.ElectrumReady(height, tip, _), d: ConnectedData) if addresses.contains(sender) =>
+    case Event(ElectrumClient.ElectrumReady(height, tip, _), data: ConnectedData) if addresses.contains(sender) =>
       sender ! ElectrumClient.HeaderSubscription(self)
-      handleHeader(sender, height, tip, Some(d))
+      handleHeader(sender, height, tip, data.asSome)
 
-    case Event(ElectrumClient.HeaderSubscriptionResponse(height, tip), d: ConnectedData) if addresses.contains(sender) =>
-      handleHeader(sender, height, tip, Some(d))
+    case Event(ElectrumClient.HeaderSubscriptionResponse(height, tip), data: ConnectedData) if addresses.contains(sender) =>
+      handleHeader(sender, height, tip, data.asSome)
 
-    case Event(request: ElectrumClient.Request, ConnectedData(master, _)) =>
-      master forward request
+    case Event(request: ElectrumClient.Request, data: ConnectedData) =>
+      data.master forward request
       stay
 
-    case Event(ElectrumClient.AddStatusListener(listener), d: ConnectedData) if addresses.contains(d.master) =>
+    case Event(ElectrumClient.AddStatusListener(listener), data: ConnectedData) if addresses.contains(data.master) =>
+      listener ! ElectrumClient.ElectrumReady(data.tips(data.master), addresses(data.master))
       statusListeners += listener
-      listener ! ElectrumClient.ElectrumReady(d.tips(d.master), addresses(d.master))
       stay
 
-    case Event(Terminated(actor), d: ConnectedData) =>
-      val address = addresses(actor)
-      val tips1 = d.tips - actor
-
+    case Event(Terminated(actor), data: ConnectedData) =>
       context.system.scheduler.scheduleOnce(5.seconds, self, Connect)
+      val tips1 = data.tips - actor
       addresses -= actor
 
       if (tips1.isEmpty) {
-        log.info("lost connection to {}, no active connections left", address)
-        goto(Disconnected) using DisconnectedData // no more connections
-      } else if (d.master != actor) {
-        log.debug("lost connection to {}, we still have our master server", address)
-        stay using d.copy(tips = tips1) // we don't care, this wasn't our master
+        goto(Disconnected) using DisconnectedData
+      } else if (data.master != actor) {
+        stay using data.copy(tips = tips1)
       } else {
-        log.info("lost connection to our master server {}", address)
-        // we choose next best candidate as master
-        val tips1 = d.tips - actor
-        val (bestClient, bestTip) = tips1.toSeq.maxBy(_._2._1)
-        handleHeader(bestClient, bestTip._1, bestTip._2, Some(d.copy(tips = tips1)))
+        val (bestClient, height1 ~ header) = tips1.toSeq.maxBy { case (_, height ~ _) => height }
+        handleHeader(bestClient, height1, header, data.copy(tips = tips1).asSome)
       }
   }
 
   whenUnhandled {
     case Event(Connect, _) =>
-      pickAddress(serverAddresses, addresses.values.toSet) match {
-        case Some(ElectrumServerAddress(address, ssl)) =>
-          val resolved = new InetSocketAddress(address.getHostName, address.getPort)
-          val client = context.actorOf(Props(new ElectrumClient(resolved, ssl)))
-          client ! ElectrumClient.AddStatusListener(self)
-          // we watch each electrum client, they will stop on disconnection
-          context watch client
-          addresses += (client -> address)
-        case None => () // no more servers available
-      }
+      connectToRandomProvider
       stay
 
-    case Event(ElectrumClient.ElectrumDisconnected, _) =>
-      stay // ignored, we rely on Terminated messages to detect disconnections
+    case _ =>
+      stay
   }
 
   onTransition {
     case Connected -> Disconnected =>
       statusListeners.foreach(_ ! ElectrumClient.ElectrumDisconnected)
-      context.system.eventStream.publish(ElectrumClient.ElectrumDisconnected)
+      context.system.eventStream publish ElectrumClient.ElectrumDisconnected
   }
 
-  initialize()
+  initialize
 
-  private def handleHeader(connection: ActorRef, height: Int, tip: BlockHeader, data: Option[ConnectedData]) = {
+  private def handleHeader(connection: ActorRef, height: Int, tip: BlockHeader, data: Option[ConnectedData] = None) = {
     val remoteAddress = addresses(connection)
     // we update our block count even if it doesn't come from our current master
     updateBlockCount(height)
@@ -165,63 +150,59 @@ class ElectrumClientPool(blockCount: AtomicLong, chainHash: ByteVector32)(implic
     }
   }
 
-  private def updateBlockCount(blockCount: Long): Unit = {
-    // when synchronizing we don't want to advertise previous blocks
-    if (this.blockCount.get() < blockCount) {
-      log.debug("current blockchain height={}", blockCount)
-      context.system.eventStream.publish(CurrentBlockCount(blockCount))
-      this.blockCount.set(blockCount)
+  private def updateBlockCount(newTip: Long): Unit = if (blockCount.get < newTip) {
+    context.system.eventStream publish CurrentBlockCount(newTip)
+    blockCount.set(newTip)
+  }
+
+  private def connectToRandomProvider: Unit = {
+    pickAddress(serverAddresses, addresses.values.toSet) foreach { info =>
+      val resolvedAddress = new InetSocketAddress(info.address.getHostName, info.address.getPort)
+      val client = context actorOf Props(classOf[ElectrumClient], resolvedAddress, info.ssl, ec)
+      client ! ElectrumClient.AddStatusListener(self)
+      addresses += (client -> info.address)
+      context watch client
     }
   }
 }
 
 object ElectrumClientPool {
-
   case class ElectrumServerAddress(address: InetSocketAddress, ssl: SSL)
 
   var loadFromChainHash: ByteVector32 => Set[ElectrumServerAddress] = {
     case Block.LivenetGenesisBlock.hash => readServerAddresses(classOf[ElectrumServerAddress].getResourceAsStream("/electrum/servers_mainnet.json"), sslEnabled = false)
     case Block.TestnetGenesisBlock.hash => readServerAddresses(classOf[ElectrumServerAddress].getResourceAsStream("/electrum/servers_testnet.json"), sslEnabled = false)
-    case Block.RegtestGenesisBlock.hash => readServerAddresses(classOf[ElectrumServerAddress].getResourceAsStream("/electrum/servers_regtest.json"), sslEnabled = false)
     case _ => throw new RuntimeException
   }
 
   def readServerAddresses(stream: InputStream, sslEnabled: Boolean): Set[ElectrumServerAddress] = try {
     val JObject(values) = JsonMethods.parse(stream)
     val addresses = values
-        .toMap
-        .filterKeys(!_.endsWith(".onion"))
-        .flatMap {
-      case (name, fields)  =>
-        if (sslEnabled) {
-          // We don't authenticate seed servers (SSL.LOOSE), because:
-          // - we don't know them so authentication doesn't really bring anything
-          // - most of them have self-signed SSL certificates so it would always fail
-          fields \ "s" match {
-            case JString(port) => Some(ElectrumServerAddress(InetSocketAddress.createUnresolved(name, port.toInt), SSL.LOOSE))
-            case _ => None
+      .toMap
+      .flatMap {
+        case (name, fields)  =>
+          if (sslEnabled) {
+            // We don't authenticate seed servers (SSL.LOOSE), because:
+            // - we don't know them so authentication doesn't really bring anything
+            // - most of them have self-signed SSL certificates so it would always fail
+            fields \ "s" match {
+              case JString(port) => Some(ElectrumServerAddress(InetSocketAddress.createUnresolved(name, port.toInt), SSL.LOOSE))
+              case _ => None
+            }
+          } else {
+            fields \ "t" match {
+              case JString(port) => Some(ElectrumServerAddress(InetSocketAddress.createUnresolved(name, port.toInt), SSL.OFF))
+              case _ => None
+            }
           }
-        } else {
-          fields \ "t" match {
-            case JString(port) => Some(ElectrumServerAddress(InetSocketAddress.createUnresolved(name, port.toInt), SSL.OFF))
-            case _ => None
-          }
-        }
-    }
+      }
     addresses.toSet
   } finally {
-    stream.close()
+    stream.close
   }
 
-  /**
-    *
-    * @param serverAddresses all addresses to choose from
-    * @param usedAddresses current connections
-    * @return a random address that we're not connected to yet
-    */
-  def pickAddress(serverAddresses: Set[ElectrumServerAddress], usedAddresses: Set[InetSocketAddress]): Option[ElectrumServerAddress] = {
-    Random.shuffle(serverAddresses.filterNot(a => usedAddresses.contains(a.address)).toSeq).headOption
-  }
+  def pickAddress(serverAddresses: Set[ElectrumServerAddress], usedAddresses: Set[InetSocketAddress] = Set.empty): Option[ElectrumServerAddress] =
+    Random.shuffle(serverAddresses.filterNot(usedAddresses contains _.address).toSeq).headOption
 
   sealed trait State
   case object Disconnected extends State
@@ -229,8 +210,10 @@ object ElectrumClientPool {
 
   sealed trait Data
   case object DisconnectedData extends Data
-  case class ConnectedData(master: ActorRef, tips: Map[ActorRef, (Int, BlockHeader)]) extends Data {
-    def blockHeight: Int = tips.get(master).map(_._1).getOrElse(0)
+
+  type HeightAndHeader = (Int, BlockHeader)
+  case class ConnectedData(master: ActorRef, tips: Map[ActorRef, HeightAndHeader] = Map.empty) extends Data {
+    def blockHeight: Int = tips.get(master).map { case (height, _) => height }.getOrElse(0)
   }
 
   case object Connect
