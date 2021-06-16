@@ -185,6 +185,8 @@ class ChannelMaster(val payBag: PaymentBag, val chanBag: ChannelBag, val dataBag
 
   def allInChannelOutgoing: Map[FullPaymentTag, OutgoingAdds] = all.values.flatMap(Channel.chanAndCommitsOpt).flatMap(_.commits.allOutgoing).groupBy(_.fullTag)
 
+  def allIncomingRevealed: Map[ByteVector32, RevealedLocalFulfills] = all.values.flatMap(Channel.chanAndCommitsOpt).flatMap(_.commits.revealedFulfills).groupBy(_.theirAdd.paymentHash)
+
   def pendingRefundsAmount: Satoshi = all.values.map(_.data).collect { case c: DATA_CLOSING => c.forceCloseCommitPublished }.flatten.flatMap(_.delayedRefundsLeft).map(_.txOut.head.amount).sum
 
   def allHosted: Iterable[ChannelHosted] = all.values.collect { case chan: ChannelHosted => chan }

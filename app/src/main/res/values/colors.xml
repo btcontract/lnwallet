@@ -22,6 +22,7 @@
 
     <color name="buttonGreenRipple">#8BD670</color>
     <color name="buttonGreenBorder">#5B8F36</color>
+    <color name="buttonGreenPale">#33517D2B</color>
     <color name="buttonGreen">#517D2B</color>
 
     <color name="buttonRedRipple">#F0473E</color>

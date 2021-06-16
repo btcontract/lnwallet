@@ -2,18 +2,16 @@ package immortan.utils
 
 
 object Statistics {
-  def removeExtremeOutliers[T, N](items: Seq[T] = Nil, lowerPct: Int = 10, upperPct: Int = 10)(extractor: T => N)(implicit n: Numeric[N]): Seq[T] =
-    items.size match { case size =>
-      items.sortBy(extractor).drop(size / lowerPct).dropRight(size / upperPct)
-    }
+  def removeExtremeOutliers[T, N](items: Seq[T] = Nil, lowerPct: Int = 10, upperPct: Int = 10)(extractor: T => N)(implicit n: Numeric[N]): Seq[T] = items.size match { case size =>
+    items.sortBy(extractor).drop(size / lowerPct).dropRight(size / upperPct)
+  }
 
   def meanBy[T, N](items: Seq[T] = Nil)(extractor: T => N)(implicit n: Numeric[N]): Double =
     items.foldLeft(0D) { case (total, item) => n.toDouble(extractor apply item) + total } / items.size
 
-  def varianceBy[T, N](items: Seq[T] = Nil)(extractor: T => N)(implicit n: Numeric[N]): Double = meanBy(items)(extractor)
-    match { case computedMean =>
-      items.foldLeft(0D) { case (total, item) => math.pow(n.toDouble(extractor apply item) - computedMean, 2) + total } / items.size.toDouble
-    }
+  def varianceBy[T, N](items: Seq[T] = Nil)(extractor: T => N)(implicit n: Numeric[N]): Double = meanBy(items)(extractor) match { case computedMean =>
+    items.foldLeft(0D) { case (total, item) => math.pow(n.toDouble(extractor apply item) - computedMean, 2) + total } / items.size.toDouble
+  }
 
   def stdDevBy[T, N](items: Seq[T] = Nil)(extractor: T => N)(implicit n: Numeric[N]): Double = {
     val computedVarianceBy = varianceBy(items)(extractor)

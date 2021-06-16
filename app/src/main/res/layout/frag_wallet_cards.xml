@@ -197,7 +197,7 @@
             </RelativeLayout>
         </androidx.cardview.widget.CardView>
 
-        <!-- Caption and search bar -->
+        <!-- Button and search bar -->
 
         <RelativeLayout
             android:layout_marginTop="15dp"
@@ -207,6 +207,7 @@
             <com.google.android.material.button.MaterialButtonToggleGroup
                 card_view:selectionRequired="true"
                 card_view:singleSelection="true"
+                android:id="@+id/toggleGroup"
                 style="@style/BoundedView">
 
                 <com.google.android.material.button.MaterialButton
