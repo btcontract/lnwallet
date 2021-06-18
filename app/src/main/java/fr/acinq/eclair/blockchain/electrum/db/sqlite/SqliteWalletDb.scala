@@ -20,9 +20,9 @@ import scodec.codecs._
 import fr.acinq.eclair.wire.CommonCodecs._
 import fr.acinq.eclair.wire.ChannelCodecs._
 import fr.acinq.bitcoin.{ByteVector32, Transaction}
+import fr.acinq.eclair.blockchain.electrum.{ElectrumClient, ElectrumWallet}
 import fr.acinq.eclair.blockchain.electrum.ElectrumClient.{GetMerkleResponse, TransactionHistoryItem}
 import fr.acinq.eclair.blockchain.electrum.ElectrumWallet.PersistentData
-import fr.acinq.eclair.blockchain.electrum.ElectrumClient
 import scodec.bits.BitVector
 import scodec.Codec
 
@@ -65,11 +65,11 @@ object SqliteWalletDb {
 
   val seqOfTransactionHistoryItemCodec: Codec[List[TransactionHistoryItem]] = listOfN[TransactionHistoryItem](uint16, transactionHistoryItemCodec)
 
-  val historyListCodec: Codec[List[(ByteVector32, List[ElectrumClient.TransactionHistoryItem])]] =
-    listOfN[(ByteVector32, List[ElectrumClient.TransactionHistoryItem])](uint16, bytes32 ~ seqOfTransactionHistoryItemCodec)
+  val historyListCodec: Codec[List[(ByteVector32, ElectrumWallet.TransactionHistoryItemList)]] =
+    listOfN[(ByteVector32, ElectrumWallet.TransactionHistoryItemList)](uint16, bytes32 ~ seqOfTransactionHistoryItemCodec)
 
-  val historyCodec: Codec[Map[ByteVector32, List[ElectrumClient.TransactionHistoryItem]]] = Codec[Map[ByteVector32, List[ElectrumClient.TransactionHistoryItem]]](
-    (map: Map[ByteVector32, List[ElectrumClient.TransactionHistoryItem]]) => historyListCodec.encode(map.toList),
+  val historyCodec: Codec[Map[ByteVector32, ElectrumWallet.TransactionHistoryItemList]] = Codec[Map[ByteVector32, ElectrumWallet.TransactionHistoryItemList]](
+    (map: Map[ByteVector32, ElectrumWallet.TransactionHistoryItemList]) => historyListCodec.encode(map.toList),
     (wire: BitVector) => historyListCodec.decode(wire).map(_.map(_.toMap))
   )
 
