@@ -125,7 +125,6 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
     def process(query: String, searchLoadResultEffect: Unit): Unit = UITask(paymentsAdapter.notifyDataSetChanged).run
   }
 
-  var lastSeenViewHolders = Set.empty[PaymentLineViewHolder]
   var lastSeenInChannelOutgoing = Map.empty[FullPaymentTag, OutgoingAdds]
 
   val paymentsAdapter: BaseAdapter = new BaseAdapter {
@@ -134,7 +133,6 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
     override def getCount: Int = allInfos.size
 
     override def notifyDataSetChanged: Unit = {
-      lastSeenViewHolders = Set.empty[PaymentLineViewHolder]
       lastSeenInChannelOutgoing = LNParams.cm.allInChannelOutgoing
       super.notifyDataSetChanged
     }
@@ -143,7 +141,6 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
       val view = if (null == savedView) getLayoutInflater.inflate(R.layout.frag_payment_line, null) else savedView
       val holder = if (null == view.getTag) new PaymentLineViewHolder(view) else view.getTag.asInstanceOf[PaymentLineViewHolder]
       holder.currentDetails = getItem(position)
-      lastSeenViewHolders += holder
       holder.updDetails
       holder.updMeta
       view
@@ -482,8 +479,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
   }
 
   override def onBackPressed: Unit = {
-    if (itemsList.getFirstVisiblePosition > 0) itemsList.smoothScrollToPositionFromTop(0, 1)
-    else if (currentSnackbar.isDefined) removeCurrentSnack.run
+    if (currentSnackbar.isDefined) removeCurrentSnack.run
     else if (isSearchOn) cancelSearch(null)
     else super.onBackPressed
   }
@@ -575,10 +571,10 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
 
   def resolveLnurl(lnUrl: LNUrl): Unit = {
     val resolve: PartialFunction[LNUrlData, Unit] = {
-      case pay: PayRequest => UITask(me bringPayPopup pay).run
+      case pay: PayRequest => bringPayPopup(pay, lnUrl).run
       case withdraw: WithdrawRequest => UITask(me bringWithdrawPopup withdraw).run
-      case nc: NormalChannelRequest => runAnd { InputParser.value = nc } { me goTo ClassNames.remotePeerActivityClass }
-      case hc: HostedChannelRequest => runAnd { InputParser.value = hc } { me goTo ClassNames.remotePeerActivityClass }
+      case nc: NormalChannelRequest => runAnd(InputParser.value = nc)(me goTo ClassNames.remotePeerActivityClass)
+      case hc: HostedChannelRequest => runAnd(InputParser.value = hc)(me goTo ClassNames.remotePeerActivityClass)
       case _ => UITask(WalletApp.app quickToast error_nothing_useful).run
     }
 
@@ -671,7 +667,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
       val paymentEvents = Rx.uniqueFirstAndLastWithinWindow(ChannelMaster.paymentDbStream, window).doOnNext(_ => reloadPaymentInfos)
       val relayEvents = Rx.uniqueFirstAndLastWithinWindow(ChannelMaster.relayDbStream, window).doOnNext(_ => reloadRelayedPreimageInfos)
 
-      preimageSubscription = ChannelMaster.remoteFulfillStream.subscribe(resolveAction, none).asSome
+      preimageSubscription = ChannelMaster.remoteFulfillStream.subscribe(fulfill => resolveAction(fulfill).run, none).asSome
       stateSubscription = txEvents.merge(paymentEvents).merge(relayEvents).doOnNext(_ => updAllInfos).merge(stateEvents).subscribe(_ => UITask(paymentsAdapter.notifyDataSetChanged).run).asSome
       statusSubscription = Rx.uniqueFirstAndLastWithinWindow(ChannelMaster.statusUpdateStream, window).merge(stateEvents).subscribe(_ => UITask(walletCards.updateView).run).asSome
       paymentSubscription = ChannelMaster.hashRevealStream.merge(ChannelMaster.remoteFulfillStream).throttleFirst(window).subscribe(_ => Vibrator.vibrate).asSome
@@ -682,8 +678,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
       val ln = ChannelMaster.lnPaymentAddedStream.doOnNext(plusOne => lightningPaymentsAdded += plusOne)
       val pay = ChannelMaster.payLinkAddedStream.doOnNext(_ => reloadPayMarketInfos).doOnNext(plusOne => payMarketLinksAdded += plusOne)
       addedSubscription = relay.merge(chain).merge(ln).merge(pay).subscribe(_ => UITask(updateToggleMenu).run, none).asSome
-      timer.scheduleAtFixedRate(UITask { for (holder <- lastSeenViewHolders) holder.updMeta }, 30000, 30000)
-      // Run this check after establishing subscriptions since it will trigger an event stream
+      timer.scheduleAtFixedRate(UITask(paymentsAdapter.notifyDataSetChanged), 30000, 30000)
       markAsFailedOnce
     } else {
       WalletApp.freePossiblyUsedResouces
@@ -850,7 +845,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
     }
   }
 
-  def bringPayPopup(data: PayRequest): Unit = {
+  def bringPayPopup(data: PayRequest, lnUrl: LNUrl): TimerTask = UITask {
     new OffChainSender(maxSendable = LNParams.cm.maxSendable(LNParams.cm.all.values) min data.maxSendable.msat, minSendable = LNParams.minPayment max data.minSendable.msat) {
       override def isNeutralEnabled: Boolean = manager.resultMsat >= LNParams.minPayment && manager.resultMsat <= minSendable - LNParams.minPayment
       override def isPayEnabled: Boolean = manager.resultMsat >= minSendable && manager.resultMsat <= maxSendable
@@ -878,6 +873,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
       override def send(alert: AlertDialog): Unit = {
         def proceed(pf: PayRequestFinal): TimerTask = UITask {
           lnSendGuard(pf.prExt, container = contentWindow) { _ =>
+            if (!pf.isThrowAway) WalletApp.payMarketBag.saveLink(lnUrl, data, manager.resultMsat, pf.prExt.pr.paymentHash.toHex)
             val cmd = LNParams.cm.makeSendCmd(pf.prExt, manager.resultMsat, LNParams.cm.all.values.toList, typicalChainTxFee, WalletApp.capLNFeeToChain).modify(_.split.totalSum).setTo(manager.resultMsat)
             replaceOutgoingPayment(pf.prExt, PlainMetaDescription(split = None, label = None, invoiceText = new String, meta = data.metaDataTextPlain), pf.successAction, sentAmount = cmd.split.myPart)
             LNParams.cm.localSend(cmd)
@@ -923,17 +919,12 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
 
   // Payment actions
 
-  def resolveAction(fulfill: RemoteFulfill): Unit = {
-    paymentInfos.find(_.paymentHash == fulfill.ourAdd.paymentHash).flatMap(_.action).foreach { action =>
-      def executeAction: Unit = showPaymentAction(action, fulfill.theirPreimage)
-      UITask(executeAction).run
+  def resolveAction(fulfill: RemoteFulfill): TimerTask = UITask {
+    paymentInfos.find(_.paymentHash == fulfill.ourAdd.paymentHash).flatMap(_.action).foreach {
+      case data: MessageAction => mkCheckFormNeutral(_.dismiss, none, _ => share(data.message), actionPopup(data.finalMessage.html, data), dialog_ok, dialog_cancel, dialog_share)
+      case data: UrlAction => mkCheckFormNeutral(_ => browse(data.url), none, _ => share(data.url), actionPopup(data.finalMessage.html, data), dialog_open, dialog_cancel, dialog_share)
+      case data: AESAction => showAesAction(fulfill.theirPreimage, data)
     }
-  }
-
-  def showPaymentAction(action: PaymentAction, preimage: ByteVector32): Unit = action match {
-    case data: MessageAction => mkCheckFormNeutral(_.dismiss, none, _ => share(data.message), actionPopup(data.finalMessage.html, data), dialog_ok, dialog_cancel, dialog_share)
-    case data: UrlAction => mkCheckFormNeutral(_ => browse(data.url), none, _ => share(data.url), actionPopup(data.finalMessage.html, data), dialog_open, dialog_cancel, dialog_share)
-    case data: AESAction => showAesAction(preimage, data)
   }
 
   private def showAesAction(preimage: ByteVector32, aes: AESAction): Unit = Try {
@@ -942,7 +933,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
     (secret, msg.html)
   } match {
     case Success(secret ~ msg) => mkCheckFormNeutral(_.dismiss, none, _ => share(secret), actionPopup(msg, aes), dialog_ok, dialog_cancel, dialog_share)
-    case _ => mkCheckForm(_.dismiss, none, actionPopup(getString(dialog_lnurl_decrypt_fail), aes), dialog_ok, -1)
+    case _ => mkCheckForm(_.dismiss, none, actionPopup(getString(dialog_lnurl_decrypt_fail), aes), dialog_ok, noRes = -1)
   }
 
   private def actionPopup(msg: CharSequence, action: PaymentAction) = {

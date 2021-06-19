@@ -13,18 +13,10 @@ class SQLitePayMarket(db: DBInterface) {
     val stamp = System.currentTimeMillis: java.lang.Long
     val lastMsat = msat.toLong: java.lang.Long
 
+    db.change(PayMarketTable.updInfoSql, payReq.metaDataTextPlain, lastMsat, stamp, hash, thumbnailImageString64, lnUrl.request)
     db.change(PayMarketTable.newSql, lnUrl.request, payReq.metaDataTextPlain, lastMsat, stamp, hash, thumbnailImageString64)
     db.change(PayMarketTable.newVirtualSql, s"${lnUrl.uri.getHost} ${payReq.metaDataTextPlain}", lnUrl.request)
     ChannelMaster.payLinkAddedStream.onNext(lnUrl.request)
-  }
-
-  def updateLink(lnUrl: LNUrl, payReq: PayRequest, msat: MilliSatoshi, hash: String): Unit = {
-    val thumbnailImageString64 = payReq.metaDataImageBase64s.headOption.getOrElse(new String)
-    val stamp = System.currentTimeMillis: java.lang.Long
-    val lastMsat = msat.toLong: java.lang.Long
-
-    db.change(PayMarketTable.updInfoSql, payReq.metaDataTextPlain,
-      lastMsat, stamp, hash, thumbnailImageString64, lnUrl.request)
   }
 
   def searchLinks(rawSearchQuery: String): RichCursor = db.search(PayMarketTable.searchSql, rawSearchQuery)
