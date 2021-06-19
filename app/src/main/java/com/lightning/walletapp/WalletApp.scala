@@ -13,16 +13,15 @@ import android.net.{ConnectivityManager, NetworkCapabilities}
 import fr.acinq.bitcoin.{Block, ByteVector32, Satoshi, SatoshiLong}
 import fr.acinq.eclair.channel.{CMD_CHECK_FEERATE, PersistentChannelData}
 import android.app.{Application, NotificationChannel, NotificationManager}
-import fr.acinq.eclair.blockchain.electrum.{CheckPoint, ElectrumClientPool}
 import android.content.{ClipData, ClipboardManager, Context, Intent, SharedPreferences}
 import fr.acinq.eclair.blockchain.electrum.ElectrumWallet.{TransactionReceived, WalletReady}
+import fr.acinq.eclair.blockchain.electrum.{CheckPoint, ElectrumClientPool, ElectrumWallet84}
 import com.lightning.walletapp.utils.{AwaitService, DelayedNotification, LocalBackup, UsedAddons, WebsocketBus}
 import fr.acinq.eclair.blockchain.CurrentBlockCount
 import fr.acinq.eclair.router.Router.RouterConf
 import androidx.appcompat.app.AppCompatDelegate
 import immortan.utils.Denomination.formatFiat
 import android.icu.text.SimpleDateFormat
-import fr.acinq.eclair.wire.TrampolineOn
 import android.text.format.DateFormat
 import androidx.multidex.MultiDex
 import rx.lang.scala.Observable
@@ -47,9 +46,11 @@ object WalletApp {
   final val dbFileNameGraph = "graph1.db" // TODO: put back
   final val dbFileNameEssential = "essential3.db" // TODO: put back
 
+  final val chainWalletType = new ElectrumWallet84
+
   val backupSaveWorker: ThrottledWork[String, Any] = new ThrottledWork[String, Any] {
     private def attemptStore: Unit = LocalBackup.encryptAndWritePlainBackup(app, dbFileNameEssential, LNParams.chainHash, LNParams.secret.seed)
-    def process(cmd: String, afterDelay: Any): Unit = if (makeChanBackup) try attemptStore catch none
+    def process(cmd: String, unitAfterDelay: Any): Unit = if (makeChanBackup) try attemptStore catch none
     def work(cmd: String): Observable[Any] = Rx.ioQueue.delay(4.seconds)
   }
 
@@ -79,13 +80,11 @@ object WalletApp {
     // Drop whatever network connections we still have
     WebsocketBus.workers.keys.foreach(WebsocketBus.forget)
     CommsTower.workers.values.map(_.pair).foreach(CommsTower.forget)
-
-    // Clear listeners
+    // Clear listeners, destroy actors, finalize state machines
     try LNParams.chainWallet.becomeShutDown catch none
     try LNParams.fiatRates.becomeShutDown catch none
     try LNParams.feeRates.becomeShutDown catch none
     try LNParams.cm.becomeShutDown catch none
-
     // Make non-alive and non-operational
     LNParams.secret = null
     txDataBag = null
@@ -110,8 +109,8 @@ object WalletApp {
       txDataBag = new SQLiteTx(miscInterface)
       payMarketBag = new SQLitePayMarket(miscInterface)
       extDataBag = new SQLiteDataExtended(miscInterface)
-      lastChainBalance = extDataBag.tryGetLastChainBalance getOrElse LastChainBalance(0L.sat, 0L.sat, 0L)
       usedAddons = extDataBag.tryGetAddons getOrElse UsedAddons(addons = List.empty)
+      lastChainBalance = extDataBag.tryGetLastChainBalance(chainWalletType.tag) getOrElse LastChainBalance(0L.sat, 0L.sat)
     }
   }
 
@@ -141,9 +140,7 @@ object WalletApp {
     extDataBag.db txWrap {
       LNParams.feeRates = new FeeRates(extDataBag)
       LNParams.fiatRates = new FiatRates(extDataBag)
-      LNParams.trampoline = extDataBag.tryGetTrampolineOn getOrElse {
-        TrampolineOn.byDefault(LNParams.minPayment, LNParams.minRoutingCltvExpiryDelta)
-      }
+      LNParams.trampoline = extDataBag.tryGetTrampolineOn getOrElse LNParams.defaultTrampolineOn
     }
 
     val pf = new PathFinder(normalBag, hostedBag) {
@@ -178,7 +175,7 @@ object WalletApp {
     }
 
     // Initialize chain wallet after ChannelMaster since it starts automatically
-    LNParams.chainWallet = LNParams.createWallet(extDataBag, secret.seed)
+    LNParams.chainWallet = LNParams.createWallet(extDataBag, secret.seed, chainWalletType)
 
     // Take care of essential listeners of all kinds
     // Listeners added here will be called first
@@ -204,7 +201,7 @@ object WalletApp {
       override def onChainSynchronized(event: WalletReady): Unit = {
         // The main point of this is to use unix timestamp instead of chain tip stamp to define whether we are deeply in past
         lastChainBalance = LastChainBalance(event.confirmedBalance, event.unconfirmedBalance, System.currentTimeMillis)
-        extDataBag.putLastChainBalance(lastChainBalance)
+        extDataBag.putLastChainBalance(lastChainBalance, chainWalletType.tag)
       }
 
       override def onTransactionReceived(event: TransactionReceived): Unit = {

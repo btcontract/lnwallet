@@ -3,17 +3,16 @@ package immortan.sqlite
 import spray.json._
 import immortan.sqlite.SQLiteData._
 import immortan.utils.ImplicitJsonFormats._
-import fr.acinq.eclair.wire.LightningMessageCodecs.{swapInStateCodec, trampolineOnCodec}
-import fr.acinq.eclair.wire.{HostedChannelBranding, SwapInState, TrampolineOn}
-import immortan.{DataBag, LastChainBalance, SwapInStateExt, WalletSecret}
+
+import java.lang.{Integer => JInt}
 import immortan.utils.{FeeRatesInfo, FiatRatesInfo}
 import fr.acinq.bitcoin.{BlockHeader, ByteVector32}
-import java.lang.{Integer => JInt}
-
-import fr.acinq.eclair.blockchain.electrum.db.WalletDb
-import fr.acinq.eclair.blockchain.electrum.ElectrumWallet.PersistentData
+import immortan.{DataBag, LastChainBalance, SwapInStateExt, WalletSecret}
+import fr.acinq.eclair.wire.{HostedChannelBranding, SwapInState, TrampolineOn}
+import fr.acinq.eclair.wire.LightningMessageCodecs.{hostedChannelBrandingCodec, swapInStateCodec, trampolineOnCodec}
 import fr.acinq.eclair.blockchain.electrum.db.sqlite.SqliteWalletDb.persistentDataCodec
-import fr.acinq.eclair.wire.LightningMessageCodecs.hostedChannelBrandingCodec
+import fr.acinq.eclair.blockchain.electrum.PersistentData
+import fr.acinq.eclair.blockchain.electrum.db.WalletDb
 import immortan.wire.ExtCodecs.walletSecretCodec
 import fr.acinq.bitcoin.Crypto.PublicKey
 import immortan.crypto.Tools.Bytes
@@ -23,15 +22,15 @@ import scala.util.Try
 
 object SQLiteData {
   final val LABEL_FORMAT = "label-format"
-  final val LABEL_ELECTRUM_DATA = "label-electrum-data"
-  final val LABLEL_TRAMPOLINE_ON = "label-trampoline-on"
-  final val LABEL_LAST_CHAIN_BALANCE = "label-last-chain-balance"
-  final val LABEL_FIAT_RATES = "label-fiat-rates"
   final val LABEL_FEE_RATES = "label-fee-rates"
+  final val LABEL_FIAT_RATES = "label-fiat-rates"
+  final val LABLEL_TRAMPOLINE_ON = "label-trampoline-on"
 
   final val LABEL_BRANDING_PREFIX = "label-branding-node-"
   final val LABEL_SWAP_IN_STATE_PREFIX = "label-swap-in-node-"
+  final val LABEL_ELECTRUM_DATA_PREFIX = "label-electrum-data-"
   final val LABEL_PAYMENT_REPORT_PREFIX = "label-payment-report-"
+  final val LABEL_LAST_CHAIN_BALANCE_PREFIX = "label-last-chain-balance-"
 
   def byteVecToString(bv: ByteVector): String = new String(bv.toArray, "UTF-8")
 }
@@ -55,15 +54,15 @@ class SQLiteData(val db: DBInterface) extends WalletDb with DataBag {
 
   def tryGetSecret: Try[WalletSecret] = tryGet(LABEL_FORMAT).map(raw => walletSecretCodec.decode(raw.toBitVector).require.value)
 
-  // Trampoline, last balance, fiat rates, fee rates
+  // Last balance, fiat rates, fee rates
+
+  def putLastChainBalance(data: LastChainBalance, tag: String): Unit = put(LABEL_LAST_CHAIN_BALANCE_PREFIX + tag, data.toJson.compactPrint getBytes "UTF-8")
+
+  def tryGetLastChainBalance(tag: String): Try[LastChainBalance] = tryGet(LABEL_LAST_CHAIN_BALANCE_PREFIX + tag).map(SQLiteData.byteVecToString) map to[LastChainBalance]
 
   def putTrampolineOn(ton: TrampolineOn): Unit = put(LABLEL_TRAMPOLINE_ON, trampolineOnCodec.encode(ton).require.toByteArray)
 
   def tryGetTrampolineOn: Try[TrampolineOn] = tryGet(LABLEL_TRAMPOLINE_ON).map(raw => trampolineOnCodec.decode(raw.toBitVector).require.value)
-
-  def putLastChainBalance(data: LastChainBalance): Unit = put(LABEL_LAST_CHAIN_BALANCE, data.toJson.compactPrint getBytes "UTF-8")
-
-  def tryGetLastChainBalance: Try[LastChainBalance] = tryGet(LABEL_LAST_CHAIN_BALANCE).map(SQLiteData.byteVecToString) map to[LastChainBalance]
 
   def putFiatRatesInfo(data: FiatRatesInfo): Unit = put(LABEL_FIAT_RATES, data.toJson.compactPrint getBytes "UTF-8")
 
@@ -105,9 +104,9 @@ class SQLiteData(val db: DBInterface) extends WalletDb with DataBag {
 
   // WalletDb
 
-  override def persist(data: PersistentData): Unit = put(LABEL_ELECTRUM_DATA, persistentDataCodec.encode(data).require.toByteArray)
+  override def persist(data: PersistentData, tag: String): Unit = put(LABEL_ELECTRUM_DATA_PREFIX + tag, persistentDataCodec.encode(data).require.toByteArray)
 
-  override def readPersistentData: Option[PersistentData] = tryGet(LABEL_ELECTRUM_DATA).map(raw => persistentDataCodec.decode(raw.toBitVector).require.value).toOption
+  override def readPersistentData(tag: String): Option[PersistentData] = tryGet(LABEL_ELECTRUM_DATA_PREFIX + tag).map(raw => persistentDataCodec.decode(raw.toBitVector).require.value).toOption
 
   // HeadersDb
 

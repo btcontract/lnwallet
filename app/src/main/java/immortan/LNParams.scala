@@ -44,11 +44,13 @@ object LNParams {
   val maxOffChainFeeRatio: Double = 0.01 // We are OK with paying up to this % of LN fee relative to payment amount
   val maxOffChainFeeAboveRatio: MilliSatoshi = MilliSatoshi(100000L) // For small amounts we always accept fee up to this
 
-  val shouldSendUpdateFeerateDiff = 50.0
-  val shouldRejectPaymentFeerateDiff = 150.0
-  val shouldForceClosePaymentFeerateDiff = 250.0
+  val shouldSendUpdateFeerateDiff = 5.0
+  val shouldRejectPaymentFeerateDiff = 20.0
+  val shouldForceClosePaymentFeerateDiff = 50.0
 
-  val minRoutingCltvExpiryDelta: CltvExpiryDelta = CltvExpiryDelta(144 * 2) // Ask relayer to set CLTV expiry delta to at least this many blocks
+  val ourRoutingOurCltvExpiryDelta: CltvExpiryDelta = CltvExpiryDelta(144 * 2) // We will reserve this many blocks for our incoming routed HTLC
+  val minRoutingCltvExpiryDelta: CltvExpiryDelta = CltvExpiryDelta(144 * 3) // Ask relayer to set CLTV expiry delta to at least this many blocks
+
   val minInvoiceExpiryDelta: CltvExpiryDelta = CltvExpiryDelta(18) // If payee does not provide an explicit relative CLTV this is what we use by default
   val minForceClosableIncomingHtlcAmountToFeeRatio = 4 // When incoming HTLC gets (nearly) expired, how much higher than trim threshold should it be for us to force-close
   val minForceClosableOutgoingHtlcAmountToFeeRatio = 5 // When peer sends a suspiciously low feerate, how much higher than trim threshold should our outgoing HTLC be for us to force-close
@@ -84,11 +86,11 @@ object LNParams {
   implicit val system: ActorSystem = ActorSystem("immortan-actor-system")
   implicit val ec: ExecutionContextExecutor = scala.concurrent.ExecutionContext.Implicits.global
 
-  def createWallet(walletDb: WalletDb, seed: ByteVector): WalletExt = {
+  def createWallet(walletDb: WalletDb, seed: ByteVector, walletType: ElectrumWalletType): WalletExt = {
     val walletParams = ElectrumWallet.WalletParameters(chainHash, walletDb, minDustLimit, swipeRange = 10, allowSpendUnconfirmed = true)
     val clientPool = system.actorOf(SimpleSupervisor.props(Props(new ElectrumClientPool(blockCount, chainHash)), "pool", SupervisorStrategy.Resume))
     val watcher = system.actorOf(SimpleSupervisor.props(Props(new ElectrumWatcher(blockCount, clientPool)), "watcher", SupervisorStrategy.Resume))
-    val wallet = system.actorOf(Props(new ElectrumWallet(seed, clientPool, walletParams)), "wallet")
+    val wallet = system.actorOf(Props(new ElectrumWallet(seed, clientPool, walletParams, walletType)), "wallet")
     val catcher = system.actorOf(Props(new WalletEventsCatcher), "catcher")
     val eclairWallet = new ElectrumEclairWallet(wallet, chainHash)
     WalletExt(eclairWallet, catcher, clientPool, watcher)
@@ -133,6 +135,8 @@ object LNParams {
   def incorrectDetails(amount: MilliSatoshi): FailureMessage = IncorrectOrUnknownPaymentDetails(amount, blockCount.get)
 
   def isPeerSupports(theirInit: Init)(feature: Feature): Boolean = Features.canUseFeature(ourInit.features, theirInit.features, feature)
+
+  def defaultTrampolineOn = TrampolineOn(minPayment, maximumMsat = 1000000000L.msat, feeBaseMsat = 10000L.msat, feeProportionalMillionths = 1000L, exponent = 0.0, logExponent = 0.0, minRoutingCltvExpiryDelta)
 }
 
 class SyncParams {
@@ -190,7 +194,7 @@ case class UpdateAddHtlcExt(theirAdd: UpdateAddHtlc, remoteInfo: RemoteNodeInfo)
 
 case class SwapInStateExt(state: SwapInState, nodeId: PublicKey)
 
-case class LastChainBalance(confirmed: Satoshi, unconfirmed: Satoshi, stamp: Long) {
+case class LastChainBalance(confirmed: Satoshi, unconfirmed: Satoshi, stamp: Long = 0L) {
   def isTooLongAgo: Boolean = System.currentTimeMillis - 3600 * 24 * 7 * 1000L > stamp
   val totalBalance: MilliSatoshi = confirmed.toMilliSatoshi + unconfirmed
 }

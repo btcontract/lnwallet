@@ -16,6 +16,7 @@ import com.lightning.walletapp.HubActivity._
 
 import scala.util.{Success, Try}
 import java.lang.{Integer => JInt}
+import immortan.sqlite.{SQLiteData, Table}
 import android.view.{MenuItem, View, ViewGroup}
 import rx.lang.scala.{Observable, Subscription}
 import com.androidstudy.networkmanager.{Monitor, Tovuti}
@@ -41,7 +42,6 @@ import com.indicator.ChannelIndicatorLine
 import androidx.appcompat.app.AlertDialog
 import java.util.concurrent.TimeUnit
 import android.content.Intent
-import immortan.sqlite.Table
 import org.ndeftools.Message
 import java.util.TimerTask
 import android.os.Bundle
@@ -122,7 +122,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
 
   val searchWorker: ThrottledWork[String, Unit] = new ThrottledWork[String, Unit] {
     def work(query: String): Observable[Unit] = Rx.ioQueue.map(_ => if (query.nonEmpty) loadSearch(query) else loadRecent)
-    def process(originalQuery: String, searchLoadResultEffect: Unit): Unit = UITask(updatePaymentList).run
+    def process(query: String, searchLoadResultEffect: Unit): Unit = UITask(paymentsAdapter.notifyDataSetChanged).run
   }
 
   var lastSeenViewHolders = Set.empty[PaymentLineViewHolder]
@@ -233,8 +233,8 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
       }
 
     private def txDescription(info: TxInfo): String = info.description match {
-      case _: ChanRefundingTxDescription => getString(tx_description_refund)
-      case _: HtlcClaimTxDescription => getString(tx_description_htlc_claim)
+      case _: ChanRefundingTxDescription => getString(tx_description_refunding)
+      case _: HtlcClaimTxDescription => getString(tx_description_htlc_claiming)
       case _: ChanFundingTxDescription => getString(tx_description_funding)
       case _: OpReturnTxDescription => getString(tx_description_op_return)
       case _: PenaltyTxDescription => getString(tx_description_penalty)
@@ -644,7 +644,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
         private val uncheckMap = Map(R.id.payMarketLinks -> payMarketLinksUncheck) withDefaultValue List(R.id.payMarketLinks)
         def onButtonChecked(g: MaterialButtonToggleGroup, checkId: Int, isChecked: Boolean): Unit = {
           if (isChecked) uncheckMap(checkId).foreach(walletCards.toggleGroup.uncheck)
-          runAnd(updAllInfos)(updatePaymentList)
+          runAnd(updAllInfos)(paymentsAdapter.notifyDataSetChanged)
         }
       }
 
@@ -657,10 +657,10 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
       walletCards.updateView
 
       runInFutureProcessOnUI(loadRecent, none) { _ =>
-        // We suggest user to rate us if: no rate attempt has been made before, LN payments were successful, user has been using an app for certain period
+        setVis(allInfos.nonEmpty, walletCards.listCaption)
         setVis(WalletApp.showRateUs && paymentInfos.forall(_.status == PaymentStatus.SUCCEEDED) && allInfos.size > 4 && allInfos.size < 8, walletCards.rateTeaser)
+        // We suggest user to rate us if: no rate attempt has been made before, LN payments were successful, user has been using an app for certain period
         walletCards.searchField addTextChangedListener onTextChange(searchWorker.addWork)
-        updatePaymentList
         updateToggleMenu
       }
 
@@ -672,7 +672,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
       val relayEvents = Rx.uniqueFirstAndLastWithinWindow(ChannelMaster.relayDbStream, window).doOnNext(_ => reloadRelayedPreimageInfos)
 
       preimageSubscription = ChannelMaster.remoteFulfillStream.subscribe(resolveAction, none).asSome
-      stateSubscription = txEvents.merge(paymentEvents).merge(relayEvents).doOnNext(_ => updAllInfos).merge(stateEvents).subscribe(_ => UITask(updatePaymentList).run).asSome
+      stateSubscription = txEvents.merge(paymentEvents).merge(relayEvents).doOnNext(_ => updAllInfos).merge(stateEvents).subscribe(_ => UITask(paymentsAdapter.notifyDataSetChanged).run).asSome
       statusSubscription = Rx.uniqueFirstAndLastWithinWindow(ChannelMaster.statusUpdateStream, window).merge(stateEvents).subscribe(_ => UITask(walletCards.updateView).run).asSome
       paymentSubscription = ChannelMaster.hashRevealStream.merge(ChannelMaster.remoteFulfillStream).throttleFirst(window).subscribe(_ => Vibrator.vibrate).asSome
       unknownReestablishSubscription = ChannelMaster.unknownReestablishStream.subscribe(chanUnknown, none).asSome
@@ -724,7 +724,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
     walletCards.defaultHeader setVisibility View.VISIBLE
     walletCards.searchWrap setVisibility View.GONE
     walletCards.searchField.setText(new String)
-    updatePaymentList
+    paymentsAdapter.notifyDataSetChanged
   }
 
   def bringSendFromClipboard(view: View): Unit = {
@@ -912,11 +912,6 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
     }
   }
 
-  def updatePaymentList: Unit = {
-    setVis(allInfos.nonEmpty, walletCards.listCaption)
-    paymentsAdapter.notifyDataSetChanged
-  }
-
   def updateToggleMenu: Unit = {
     if (lightningPaymentsAdded.nonEmpty) walletCards.lightningPayments.setText(s" +${lightningPaymentsAdded.size}")
     if (bitcoinPaymentsAdded.nonEmpty) walletCards.bitcoinPayments.setText(s" +${bitcoinPaymentsAdded.size}")
@@ -938,22 +933,21 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
   def showPaymentAction(action: PaymentAction, preimage: ByteVector32): Unit = action match {
     case data: MessageAction => mkCheckFormNeutral(_.dismiss, none, _ => share(data.message), actionPopup(data.finalMessage.html, data), dialog_ok, dialog_cancel, dialog_share)
     case data: UrlAction => mkCheckFormNeutral(_ => browse(data.url), none, _ => share(data.url), actionPopup(data.finalMessage.html, data), dialog_open, dialog_cancel, dialog_share)
-    case data: AESAction =>
-      decodeAesAction(preimage, data) match {
-        case Success(secret ~ msg) => mkCheckFormNeutral(_.dismiss, none, _ => share(secret), actionPopup(msg, data), dialog_ok, dialog_cancel, dialog_share)
-        case _ => mkCheckForm(_.dismiss, none, actionPopup(getString(dialog_lnurl_decrypt_fail), data), dialog_ok, -1)
-      }
+    case data: AESAction => showAesAction(preimage, data)
   }
 
-  def actionPopup(msg: CharSequence, action: PaymentAction): AlertDialog.Builder = {
+  private def showAesAction(preimage: ByteVector32, aes: AESAction): Unit = Try {
+    val secret = SQLiteData byteVecToString AES.decode(data = aes.ciphertextBytes, key = preimage.toArray, initVector = aes.ivBytes)
+    val msg = if (secret.length > 36) s"${aes.finalMessage}<br><br><tt>$secret</tt><br>" else s"${aes.finalMessage}<br><br><tt><big>$secret</big></tt><br>"
+    (secret, msg.html)
+  } match {
+    case Success(secret ~ msg) => mkCheckFormNeutral(_.dismiss, none, _ => share(secret), actionPopup(msg, aes), dialog_ok, dialog_cancel, dialog_share)
+    case _ => mkCheckForm(_.dismiss, none, actionPopup(getString(dialog_lnurl_decrypt_fail), aes), dialog_ok, -1)
+  }
+
+  private def actionPopup(msg: CharSequence, action: PaymentAction) = {
     val fromVendor = action.domain.map(site => s"<br><br><b>$site</b>").getOrElse(new String)
     val title = getString(dialog_lnurl_from_vendor).format(fromVendor).asDefView
     new AlertDialog.Builder(me).setCustomTitle(title).setMessage(msg)
-  }
-
-  private def decodeAesAction(preimage: ByteVector32, aes: AESAction) = Try {
-    val secret = new String(AES.decode(data = aes.ciphertextBytes, key = preimage.toArray, initVector = aes.ivBytes).toArray, "UTF-8")
-    val msg = if (secret.length > 36) s"${aes.finalMessage}<br><br><tt>$secret</tt><br>" else s"${aes.finalMessage}<br><br><tt><big>$secret</big></tt><br>"
-    (secret, msg.html)
   }
 }

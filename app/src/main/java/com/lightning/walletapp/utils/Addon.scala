@@ -1,7 +1,5 @@
 package com.lightning.walletapp.utils
 
-import immortan.crypto.CanBeRepliedTo
-
 
 object Addon {
   val MINIMIZED = "state-minimized"
@@ -9,7 +7,7 @@ object Addon {
 }
 
 sealed trait Addon {
-  val view: Option[CanBeRepliedTo]
+  val view: Option[immortan.crypto.CanBeRepliedTo]
   val addon: AddonData
 }
 
