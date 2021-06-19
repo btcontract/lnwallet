@@ -180,7 +180,7 @@
 
                         <TextView
                             style="@style/InFlightView"
-                            android:id="@+id/inFlightRouted"
+                            android:id="@+id/inFlightRelayed"
                             android:drawableStart="@drawable/baseline_swap_horiz_18"/>
 
                     </LinearLayout>
@@ -206,26 +206,38 @@
 
             <com.google.android.material.button.MaterialButtonToggleGroup
                 card_view:selectionRequired="true"
-                card_view:singleSelection="true"
                 android:id="@+id/toggleGroup"
                 style="@style/BoundedView">
 
                 <com.google.android.material.button.MaterialButton
-                    android:id="@+id/paymentHistory"
-                    android:text="@string/payments"
-                    style="@style/ToggleButton"/>
+                    card_view:icon="@drawable/ic_logo_bitcoin_24dp"
+                    android:id="@+id/bitcoinPayments"
+                    card_view:iconGravity="start"
+                    card_view:iconPadding="0dp"
+                    style="@style/ToggleButton"
+                    card_view:iconSize="18dp"/>
+
+                <com.google.android.material.button.MaterialButton
+                    card_view:icon="@drawable/ic_logo_lightning_24dp"
+                    android:id="@+id/lightningPayments"
+                    card_view:iconGravity="start"
+                    card_view:iconPadding="0dp"
+                    style="@style/ToggleButton"
+                    card_view:iconSize="18dp"/>
 
                 <com.google.android.material.button.MaterialButton
                     card_view:icon="@drawable/baseline_swap_horiz_18"
-                    card_view:iconGravity="textStart"
-                    android:id="@+id/routedPayments"
+                    android:id="@+id/relayedPayments"
+                    card_view:iconGravity="start"
+                    card_view:iconPadding="0dp"
                     style="@style/ToggleButton"
                     card_view:iconSize="18dp"/>
 
                 <com.google.android.material.button.MaterialButton
                     card_view:icon="@drawable/baseline_storefront_24"
-                    card_view:iconGravity="textStart"
-                    android:id="@+id/paymentLinks"
+                    android:id="@+id/payMarketLinks"
+                    card_view:iconGravity="start"
+                    card_view:iconPadding="0dp"
                     style="@style/ToggleButton"
                     card_view:iconSize="18dp"/>
 

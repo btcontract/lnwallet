@@ -11,8 +11,8 @@ import fr.acinq.eclair.channel._
 import scala.concurrent.duration._
 import immortan.utils.{PaymentRequestExt, Rx}
 import fr.acinq.bitcoin.Crypto.{PrivateKey, PublicKey}
-import fr.acinq.bitcoin.{ByteVector32, Crypto, Satoshi}
 import immortan.ChannelListener.{Malfunction, Transition}
+import fr.acinq.bitcoin.{ByteVector32, Crypto, Transaction}
 import fr.acinq.eclair.payment.{IncomingPacket, PaymentRequest}
 import fr.acinq.eclair.transactions.{LocalFulfill, RemoteFulfill, RemoteReject}
 import immortan.fsm.OutgoingPaymentMaster.CMDChanGotOnline
@@ -187,7 +187,7 @@ class ChannelMaster(val payBag: PaymentBag, val chanBag: ChannelBag, val dataBag
 
   def allIncomingRevealed: Map[ByteVector32, RevealedLocalFulfills] = all.values.flatMap(Channel.chanAndCommitsOpt).flatMap(_.commits.revealedFulfills).groupBy(_.theirAdd.paymentHash)
 
-  def pendingRefundsAmount: Satoshi = all.values.map(_.data).collect { case c: DATA_CLOSING => c.forceCloseCommitPublished }.flatten.flatMap(_.delayedRefundsLeft).map(_.txOut.head.amount).sum
+  def allDelayedRefundsLeft: Iterable[Transaction] = all.values.map(_.data).collect { case c: DATA_CLOSING => c.forceCloseCommitPublished }.flatten.flatMap(_.delayedRefundsLeft)
 
   def allHosted: Iterable[ChannelHosted] = all.values.collect { case chan: ChannelHosted => chan }
 

@@ -13,7 +13,6 @@
     <string name="delayed_refund">Delayed channel refund</string>
     <string name="add_address">More fresh addresses</string>
 
-    <string name="payments">Payments</string>
     <string name="search_recent">Search recent activity</string>
     <string name="emergency_mode">Something went wrong</string>
     <string name="emergency_share">Share error report</string>

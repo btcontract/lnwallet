@@ -9,6 +9,7 @@ import fr.acinq.eclair.channel._
 import scala.concurrent.duration._
 import com.softwaremill.quicklens._
 import com.lightning.walletapp.Colors._
+import scala.collection.JavaConverters._
 import com.lightning.walletapp.R.string._
 import immortan.utils.ImplicitJsonFormats._
 import com.lightning.walletapp.HubActivity._
@@ -55,10 +56,10 @@ object HubActivity {
   var hashToReveals: Map[ByteVector32, RevealedLocalFulfills] = Map.empty
   var allInfos: Seq[TransactionDetails] = Nil
 
-  var lnPaymentsAdded: Set[ByteVector32] = Set.empty
-  var chainTxsAdded: Set[ByteVector32] = Set.empty
-  var relaysAdded: Set[ByteVector32] = Set.empty
-  var payLinksAdded: Set[String] = Set.empty
+  var lightningPaymentsAdded: Set[ByteVector32] = Set.empty
+  var bitcoinPaymentsAdded: Set[ByteVector32] = Set.empty
+  var relayedPaymentsAdded: Set[ByteVector32] = Set.empty
+  var payMarketLinksAdded: Set[String] = Set.empty
 
   // Run clear up method once on app start, do not re-run it every time this activity gets restarted
   lazy val markAsFailedOnce: Unit = LNParams.cm.markAsFailed(paymentInfos, LNParams.cm.allInChannelOutgoing)
@@ -75,8 +76,8 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
   private val CHOICE_RECEIVE_TAG = "choiceReceiveTag"
 
   private[this] lazy val paymentTypeIconIds =
-    List(R.id.btcIncoming, R.id.btcOutgoing, R.id.lnIncoming, R.id.lnOutgoing, R.id.lnRouted, R.id.btcLn, R.id.lnBtc,
-      R.id.lnOutgoingBasic, R.id.lnOutgoingAction, R.id.btcOutgoingNormal, R.id.btcOutgoingToSelf)
+    List(R.id.btcIncoming, R.id.btcOutgoing, R.id.lnIncoming, R.id.lnOutgoing, R.id.lnRouted, R.id.btcLn,
+      R.id.lnBtc, R.id.lnOutgoingBasic, R.id.lnOutgoingAction, R.id.btcOutgoingNormal, R.id.btcOutgoingToSelf)
 
   private[this] lazy val partsInFlight = getResources.getStringArray(R.array.parts_in_flight)
   private[this] lazy val pctCollected = getResources.getStringArray(R.array.pct_collected)
@@ -91,16 +92,15 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
   def reloadRelayedPreimageInfos: Unit = relayedPreimageInfos = LNParams.cm.payBag.listRecentRelays(Table.DEFAULT_LIMIT.get).map(LNParams.cm.payBag.toRelayedPreimageInfo)
 
   def updAllInfos: Unit = {
-    val lnRefunds = LNParams.cm.pendingRefundsAmount.toMilliSatoshi
-    val delayedRefunds = if (lnRefunds > 0L.sat) DelayedRefunds(lnRefunds).asSome else None
-    hashToReveals = LNParams.cm.allIncomingRevealed
+    val checkedIds = walletCards.toggleGroup.getCheckedButtonIds.asScala.map(_.toInt)
+    val itemsMap = Map(R.id.bitcoinPayments -> txInfos, R.id.lightningPayments -> paymentInfos,
+      R.id.relayedPayments -> relayedPreimageInfos, R.id.payMarketLinks -> payMarketInfos)
 
-    allInfos = walletCards.toggleGroup.getCheckedButtonId match {
+    hashToReveals = LNParams.cm.allIncomingRevealed
+    allInfos = DelayedRefunds(LNParams.cm.allDelayedRefundsLeft.map(_.txOut.head.amount).sum.toMilliSatoshi) match {
       case _ if isSearchOn => (txInfos ++ paymentInfos ++ payMarketInfos).toList.sortBy(_.seenAt)(Ordering[Long].reverse)
-      case R.id.paymentHistory => (txInfos ++ paymentInfos ++ delayedRefunds).toList.sortBy(_.seenAt)(Ordering[Long].reverse)
-      case R.id.routedPayments => relayedPreimageInfos.toList.sortBy(_.seenAt)(Ordering[Long].reverse)
-      case R.id.paymentLinks => payMarketInfos.toList.sortBy(_.seenAt)(Ordering[Long].reverse)
-      case _ => Nil
+      case dr if dr.totalAmount > 0L.msat => (checkedIds.flatMap(itemsMap) :+ dr).sortBy(_.seenAt)(Ordering[Long].reverse)
+      case _ => checkedIds.flatMap(itemsMap).sortBy(_.seenAt)(Ordering[Long].reverse)
     }
   }
 
@@ -323,14 +323,15 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
 
     val inFlightIncoming: TextView = view.findViewById(R.id.inFlightIncoming).asInstanceOf[TextView]
     val inFlightOutgoing: TextView = view.findViewById(R.id.inFlightOutgoing).asInstanceOf[TextView]
-    val inFlightRouted: TextView = view.findViewById(R.id.inFlightRouted).asInstanceOf[TextView]
+    val inFlightRelayed: TextView = view.findViewById(R.id.inFlightRelayed).asInstanceOf[TextView]
     val addChannelTip: ImageView = view.findViewById(R.id.addChannelTip).asInstanceOf[ImageView]
 
     val listCaption: RelativeLayout = view.findViewById(R.id.listCaption).asInstanceOf[RelativeLayout]
     val toggleGroup: MaterialButtonToggleGroup = view.findViewById(R.id.toggleGroup).asInstanceOf[MaterialButtonToggleGroup]
-    val paymentHistory: MaterialButton = view.findViewById(R.id.paymentHistory).asInstanceOf[MaterialButton]
-    val routedPayments: MaterialButton = view.findViewById(R.id.routedPayments).asInstanceOf[MaterialButton]
-    val paymentLinks: MaterialButton = view.findViewById(R.id.paymentLinks).asInstanceOf[MaterialButton]
+    val lightningPayments: MaterialButton = view.findViewById(R.id.lightningPayments).asInstanceOf[MaterialButton]
+    val bitcoinPayments: MaterialButton = view.findViewById(R.id.bitcoinPayments).asInstanceOf[MaterialButton]
+    val relayedPayments: MaterialButton = view.findViewById(R.id.relayedPayments).asInstanceOf[MaterialButton]
+    val payMarketLinks: MaterialButton = view.findViewById(R.id.payMarketLinks).asInstanceOf[MaterialButton]
     val searchWrap: RelativeLayout = view.findViewById(R.id.searchWrap).asInstanceOf[RelativeLayout]
     val searchField: EditText = view.findViewById(R.id.searchField).asInstanceOf[EditText]
 
@@ -365,11 +366,11 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
 
       inFlightIncoming setAlpha { if (hideAll) 0F else if (localInCount > 0) 1F else 0.3F }
       inFlightOutgoing setAlpha { if (hideAll) 0F else if (localOutCount > 0) 1F else 0.3F }
-      inFlightRouted setAlpha { if (hideAll) 0F else if (trampolineCount > 0) 1F else 0.3F }
+      inFlightRelayed setAlpha { if (hideAll) 0F else if (trampolineCount > 0) 1F else 0.3F }
 
       inFlightIncoming setText localInCount.toString
       inFlightOutgoing setText localOutCount.toString
-      inFlightRouted setText trampolineCount.toString
+      inFlightRelayed setText trampolineCount.toString
     }
   }
 
@@ -634,13 +635,19 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
         itemsList.setPadding(0, 0, 0, bottomActionBar.getHeight)
       }
 
+      // Set selections before list items and listener
+      walletCards.toggleGroup.check(R.id.bitcoinPayments)
+      walletCards.toggleGroup.check(R.id.lightningPayments)
+
       walletCards.toggleGroup addOnButtonCheckedListener new OnButtonCheckedListener {
-        def onButtonChecked(g: MaterialButtonToggleGroup, checkId: Int, isChecked: Boolean): Unit =
+        private val payMarketLinksUncheck = List(R.id.bitcoinPayments, R.id.lightningPayments, R.id.relayedPayments)
+        private val uncheckMap = Map(R.id.payMarketLinks -> payMarketLinksUncheck) withDefaultValue List(R.id.payMarketLinks)
+        def onButtonChecked(g: MaterialButtonToggleGroup, checkId: Int, isChecked: Boolean): Unit = {
+          if (isChecked) uncheckMap(checkId).foreach(walletCards.toggleGroup.uncheck)
           runAnd(updAllInfos)(updatePaymentList)
+        }
       }
 
-      // Set definite selection before list items are loaded
-      walletCards.toggleGroup.check(R.id.paymentHistory)
       itemsList.addHeaderView(walletCards.view)
       itemsList.setAdapter(paymentsAdapter)
       itemsList.setDividerHeight(0)
@@ -670,14 +677,13 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
       paymentSubscription = ChannelMaster.hashRevealStream.merge(ChannelMaster.remoteFulfillStream).throttleFirst(window).subscribe(_ => Vibrator.vibrate).asSome
       unknownReestablishSubscription = ChannelMaster.unknownReestablishStream.subscribe(chanUnknown, none).asSome
 
-      val relay = ChannelMaster.relayAddedStream.doOnNext(newRelay => relaysAdded += newRelay)
-      val chain = ChannelMaster.chainTxAddedStream.doOnNext(newChainTx => chainTxsAdded += newChainTx)
-      val ln = ChannelMaster.lnPaymentAddedStream.doOnNext(newLnPayment => lnPaymentsAdded += newLnPayment)
-      val pay = ChannelMaster.payLinkAddedStream.doOnNext(_ => reloadPayMarketInfos).doOnNext(newPayLink => payLinksAdded += newPayLink)
+      val relay = ChannelMaster.relayAddedStream.doOnNext(plusOne => relayedPaymentsAdded += plusOne)
+      val chain = ChannelMaster.chainTxAddedStream.doOnNext(plusOne => bitcoinPaymentsAdded += plusOne)
+      val ln = ChannelMaster.lnPaymentAddedStream.doOnNext(plusOne => lightningPaymentsAdded += plusOne)
+      val pay = ChannelMaster.payLinkAddedStream.doOnNext(_ => reloadPayMarketInfos).doOnNext(plusOne => payMarketLinksAdded += plusOne)
       addedSubscription = relay.merge(chain).merge(ln).merge(pay).subscribe(_ => UITask(updateToggleMenu).run, none).asSome
-
-      // Run this check after establishing subscriptions since it will trigger an event stream
       timer.scheduleAtFixedRate(UITask { for (holder <- lastSeenViewHolders) holder.updMeta }, 30000, 30000)
+      // Run this check after establishing subscriptions since it will trigger an event stream
       markAsFailedOnce
     } else {
       WalletApp.freePossiblyUsedResouces
@@ -799,7 +805,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
 
     lazy val worker = new ThrottledWork[Satoshi, TxAndFee] {
       def work(amount: Satoshi): Observable[TxAndFee] = Rx fromFutureOnIo LNParams.chainWallet.wallet.sendPayment(amount, uri.address, feeView.rate)
-      def process(amount: Satoshi, txAndFee: TxAndFee): Unit = feeView.update(feeOpt = Some(txAndFee.fee.toMilliSatoshi), showIssue = false)
+      def process(amount: Satoshi, txAndFee: TxAndFee): Unit = feeView.update(feeOpt = txAndFee.fee.toMilliSatoshi.asSome, showIssue = false)
       override def error(exc: Throwable): Unit = feeView.update(feeOpt = None, showIssue = manager.resultSat >= LNParams.minDustLimit)
     }
 
@@ -912,13 +918,12 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
   }
 
   def updateToggleMenu: Unit = {
-    val payHist = getString(payments)
-    val localPayments = lnPaymentsAdded.size + chainTxsAdded.size
-    if (localPayments > 0) walletCards.paymentHistory.setText(s"$payHist +$localPayments")
-    if (payLinksAdded.nonEmpty) walletCards.paymentLinks.setText(s" +${payLinksAdded.size}  ")
-    if (relaysAdded.nonEmpty) walletCards.routedPayments.setText(s" +${relaysAdded.size}  ")
-    setVis(relayedPreimageInfos.nonEmpty, walletCards.routedPayments)
-    setVis(payMarketInfos.nonEmpty, walletCards.paymentLinks)
+    if (lightningPaymentsAdded.nonEmpty) walletCards.lightningPayments.setText(s" +${lightningPaymentsAdded.size}")
+    if (bitcoinPaymentsAdded.nonEmpty) walletCards.bitcoinPayments.setText(s" +${bitcoinPaymentsAdded.size}")
+    if (relayedPaymentsAdded.nonEmpty) walletCards.relayedPayments.setText(s" +${relayedPaymentsAdded.size}")
+    if (payMarketLinksAdded.nonEmpty) walletCards.payMarketLinks.setText(s" +${payMarketLinksAdded.size}")
+    setVis(relayedPreimageInfos.nonEmpty, walletCards.relayedPayments)
+    setVis(payMarketInfos.nonEmpty, walletCards.payMarketLinks)
   }
 
   // Payment actions

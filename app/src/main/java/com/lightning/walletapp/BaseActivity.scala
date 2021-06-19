@@ -209,11 +209,11 @@ trait BaseActivity extends AppCompatActivity { me =>
     if (-1 != okRes) bld.setPositiveButton(okRes, null)
     val alert = showForm(bld.create)
 
-    val posAct = me onButtonTap {
+    val posAct = onButtonTap {
       ok(alert)
     }
 
-    val negAct = me onButtonTap {
+    val negAct = onButtonTap {
       alert.dismiss
       no
     }
@@ -229,7 +229,7 @@ trait BaseActivity extends AppCompatActivity { me =>
     if (-1 != neutralRes) bld.setNeutralButton(neutralRes, null)
     val alert = mkCheckForm(ok, no, bld, okRes, noRes)
 
-    val neutralAct = me onButtonTap {
+    val neutralAct = onButtonTap {
       neutral(alert)
     }
 
@@ -478,7 +478,7 @@ trait BaseActivity extends AppCompatActivity { me =>
       val preimage: ByteVector32 = randomBytes32
       val description: PaymentDescription = getDescription
       // For now we use a single largest channel to improve privacy and delivery chances
-      val prExt = LNParams.cm.makePrExt(manager.resultMsat, chans.take(1), description, preimage)
+      val prExt = LNParams.cm.makePrExt(manager.resultMsat, allowedChans = chans.take(1), description, preimage)
       LNParams.cm.payBag.replaceIncomingPayment(prExt, preimage, description, lnBalance, LNParams.fiatRates.info.rates, typicalChainTxFee)
       processInvoice(prExt)
       alert.dismiss

@@ -142,7 +142,7 @@ object WalletApp {
       LNParams.feeRates = new FeeRates(extDataBag)
       LNParams.fiatRates = new FiatRates(extDataBag)
       LNParams.trampoline = extDataBag.tryGetTrampolineOn getOrElse {
-        TrampolineOn.byDefault(LNParams.minPayment, LNParams.routingCltvExpiryDelta)
+        TrampolineOn.byDefault(LNParams.minPayment, LNParams.minRoutingCltvExpiryDelta)
       }
     }
 
