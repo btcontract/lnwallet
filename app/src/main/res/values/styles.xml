@@ -105,10 +105,10 @@
     </style>
 
     <style name="XYMarginFillingView" parent="FillingView">
-        <item name="android:layout_marginTop">25dp</item>
         <item name="android:layout_marginBottom">25dp</item>
         <item name="android:layout_marginRight">15dp</item>
         <item name="android:layout_marginLeft">15dp</item>
+        <item name="android:layout_marginTop">25dp</item>
     </style>
 
     <style name="XSmallMarginFillingView" parent="FillingView">
@@ -154,7 +154,7 @@
         <item name="android:paddingLeft">7sp</item>
         <item name="android:paddingRight">7sp</item>
         <item name="android:paddingBottom">4sp</item>
-        <item name="android:background">@drawable/border_lite_gray</item>
+        <item name="android:background">@drawable/border_gray</item>
         <item name="android:layout_height">wrap_content</item>
         <item name="android:layout_width">wrap_content</item>
         <item name="android:textSize">16sp</item>

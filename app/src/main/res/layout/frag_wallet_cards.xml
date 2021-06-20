@@ -205,7 +205,6 @@
             style="@style/FillingView">
 
             <com.google.android.material.button.MaterialButtonToggleGroup
-                card_view:selectionRequired="true"
                 android:id="@+id/toggleGroup"
                 style="@style/BoundedView">
 

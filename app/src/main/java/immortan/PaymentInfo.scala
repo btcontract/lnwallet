@@ -28,12 +28,15 @@ object PaymentStatus {
 }
 
 sealed trait TransactionDetails {
-  lazy val date: Date = new Date(seenAt)
-  val seenAt: Long
+  val date: Date = new Date(seenAt)
+  def seenAt: Long
 }
 
-case class PayLinkInfo(image64: String, lnurlString: String, text: String, lastMsat: MilliSatoshi, hash: String, seenAt: Long) extends TransactionDetails {
-  def imageBytesTry: Try[Bytes] = Try(org.bouncycastle.util.encoders.Base64 decode image64)
+case class PayLinkInfo(image64: String, lnurlString: String, text: String, lastMsat: MilliSatoshi, hash: String, lastDate: Long) extends TransactionDetails {
+  override val seenAt: Long = System.currentTimeMillis + lastDate / 10000L // To make it always appear on top in timestamp-sorted lists on UI
+  override val date: Date = new Date(lastDate) // To display real date of last usage in lists on UI
+
+  lazy val imageBytesTry: Try[Bytes] = Try(org.bouncycastle.util.encoders.Base64 decode image64)
   lazy val paymentHash: ByteVector = ByteVector.fromValidHex(hash)
   lazy val lnurl: LNUrl = LNUrl(lnurlString)
 }

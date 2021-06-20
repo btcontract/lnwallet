@@ -26,5 +26,5 @@ class SQLitePayMarket(db: DBInterface) {
   def toLinkInfo(rc: RichCursor): PayLinkInfo =
     PayLinkInfo(image64 = rc string PayMarketTable.image, lnurlString = rc string PayMarketTable.lnurl,
       text = rc string PayMarketTable.text, lastMsat = MilliSatoshi(rc long PayMarketTable.lastMsat),
-      hash = rc string PayMarketTable.hash, seenAt = rc long PayMarketTable.lastDate)
+      hash = rc string PayMarketTable.hash, lastDate = rc long PayMarketTable.lastDate)
 }

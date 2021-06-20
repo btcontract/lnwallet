@@ -77,7 +77,7 @@ class RemotePeerActivity extends BaseActivity with ExternalDataChecker { me =>
           view.setText(feature.rfcName)
 
         case (feature, view) =>
-          view.setBackgroundResource(R.drawable.border_lite_gray)
+          view.setBackgroundResource(R.drawable.border_gray)
           view.setText(feature.rfcName)
       }
 
