@@ -189,16 +189,16 @@ object WalletApp {
     pf.listeners += LNParams.cm.opm
 
     LNParams.feeRates.listeners += new FeeRatesListener {
-      def onFeeRates(newRates: FeeRatesInfo): Unit = {
+      def onFeeRates(newRatesInfo: FeeRatesInfo): Unit = {
         // We may get fresh feerates after channels become OPEN
         LNParams.cm.all.values.foreach(_ process CMD_CHECK_FEERATE)
-        extDataBag.putFeeRatesInfo(newRates)
+        extDataBag.putFeeRatesInfo(newRatesInfo)
       }
     }
 
     LNParams.fiatRates.listeners += new FiatRatesListener {
-      def onFiatRates(newRates: FiatRatesInfo): Unit =
-        extDataBag.putFiatRatesInfo(newRates)
+      def onFiatRates(newRatesInfo: FiatRatesInfo): Unit =
+        extDataBag.putFiatRatesInfo(newRatesInfo)
     }
 
     LNParams.chainWallet.eventsCatcher ! new WalletEventsListener {

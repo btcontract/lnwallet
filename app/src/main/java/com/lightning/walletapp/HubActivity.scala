@@ -727,7 +727,10 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
   def bringMenu(view: View): Unit = {
     val popupMenu = new PopupMenu(me, view)
     popupMenu setOnMenuItemClickListener new PopupMenu.OnMenuItemClickListener {
-      override def onMenuItemClick(selectedMenuItem: MenuItem): Boolean = false
+      override def onMenuItemClick(selectedMenuItem: MenuItem): Boolean = {
+        if (selectedMenuItem.getItemId == 1) me goTo ClassNames.statActivityClass
+        false
+      }
     }
 
     popupMenu.getMenu.add(0, 0, 0, menu_settings)
@@ -802,8 +805,8 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
         // Record this description before attempting to send, we won't be able to know a memo otherwise
         knownDescription = PlainTxDescription(uri.address :: Nil, manager.resultExtraInput)
         _ = WalletApp.txDescriptions += Tuple2(txAndFee.tx.txid, knownDescription)
-        isDefinitelyCommitted <- LNParams.chainWallet.wallet.commit(txAndFee.tx)
-        if !isDefinitelyCommitted
+        definitelyCommitted <- LNParams.chainWallet.wallet.commit(txAndFee.tx)
+        if !definitelyCommitted
       } warnSendingFailed.run
     }
 

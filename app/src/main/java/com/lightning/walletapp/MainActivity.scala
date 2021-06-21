@@ -1,12 +1,10 @@
 package com.lightning.walletapp
 
-import com.lightning.walletapp.R.string._
-import info.guardianproject.netcipher.proxy.{OrbotHelper, StatusCallback}
-import android.net.{ConnectivityManager, NetworkCapabilities}
-import immortan.crypto.Tools.{none, runAnd}
-import scala.util.{Failure, Success, Try}
 import android.content.{Context, Intent}
-
+import scala.util.{Failure, Success, Try}
+import immortan.crypto.Tools.{none, runAnd}
+import android.net.{ConnectivityManager, NetworkCapabilities}
+import info.guardianproject.netcipher.proxy.{OrbotHelper, StatusCallback}
 import org.ndeftools.util.activity.NfcReaderActivity
 import com.ornach.nobobutton.NoboButton
 import immortan.utils.InputParser
@@ -18,6 +16,7 @@ import immortan.LNParams
 
 
 object ClassNames {
+  val statActivityClass: Class[StatActivity] = classOf[StatActivity]
   val qrSplitActivityClass: Class[QRSplitActivity] = classOf[QRSplitActivity]
   val qrChainActivityClass: Class[QRChainActivity] = classOf[QRChainActivity]
   val qrInvoiceActivityClass: Class[QRInvoiceActivity] = classOf[QRInvoiceActivity]
@@ -91,8 +90,8 @@ class MainActivity extends NfcReaderActivity with BaseActivity { me =>
 
   class EnsureAuth(next: Step) extends Step {
     def makeAttempt: Unit = new utils.BiometricAuth(findViewById(R.id.mainLayout), me) {
-      def onHardwareUnavailable: Unit = WalletApp.app.quickToast(fp_not_available)
-      def onNoHardware: Unit = WalletApp.app.quickToast(fp_no_support)
+      def onHardwareUnavailable: Unit = WalletApp.app.quickToast(R.string.fp_not_available)
+      def onNoHardware: Unit = WalletApp.app.quickToast(R.string.fp_no_support)
       def onCanAuthenticate: Unit = callAuthDialog
       def onAuthSucceeded: Unit = next.makeAttempt
       def onNoneEnrolled: Unit = next.makeAttempt
@@ -102,8 +101,8 @@ class MainActivity extends NfcReaderActivity with BaseActivity { me =>
   class EnsureTor(next: Step) extends Step {
     private[this] val orbotHelper = OrbotHelper.get(me)
     private[this] val initCallback = new StatusCallback {
-      def onStatusTimeout: Unit = showIssue(orbot_err_unclear, getString(orbot_action_open), closeAppExitOrbot).run
-      def onNotYetInstalled: Unit = showIssue(orbot_err_not_installed, getString(orbot_action_install), closeAppInstallOrbot).run
+      def onStatusTimeout: Unit = showIssue(R.string.orbot_err_unclear, getString(R.string.orbot_action_open), closeAppExitOrbot).run
+      def onNotYetInstalled: Unit = showIssue(R.string.orbot_err_not_installed, getString(R.string.orbot_action_install), closeAppInstallOrbot).run
       def onEnabled(intent: Intent): Unit = if (isVPNOn) runAnd(orbotHelper removeStatusCallback this)(next.makeAttempt) else onStatusTimeout
       def onStopping: Unit = onStatusTimeout
       def onDisabled: Unit = none
