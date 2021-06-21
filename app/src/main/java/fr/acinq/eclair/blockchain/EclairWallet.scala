@@ -2,7 +2,7 @@ package fr.acinq.eclair.blockchain
 
 import fr.acinq.eclair.blockchain.EclairWallet._
 import fr.acinq.bitcoin.{ByteVector32, Satoshi, Transaction, TxIn}
-import fr.acinq.bitcoin.DeterministicWallet.ExtendedPrivateKey
+import fr.acinq.bitcoin.DeterministicWallet.ExtendedPublicKey
 import fr.acinq.eclair.blockchain.fee.FeeratePerKw
 import scala.concurrent.Future
 import scodec.bits.ByteVector
@@ -10,7 +10,7 @@ import scodec.bits.ByteVector
 
 object EclairWallet {
   type DepthAndDoubleSpent = (Long, Boolean)
-  type Address2PrivKey = Map[String, ExtendedPrivateKey]
+  type Address2PubKey = Map[String, ExtendedPublicKey]
   final val OPT_IN_FULL_RBF = TxIn.SEQUENCE_FINAL - 2
   final val MAX_RECEIVE_ADDRESSES = 4
 
@@ -23,7 +23,7 @@ object EclairWallet {
 trait EclairWallet {
   def getBalance: Future[OnChainBalance]
 
-  def getReceiveAddresses: Future[Address2PrivKey]
+  def getReceiveAddresses: Future[Address2PubKey]
 
   def makeFundingTx(pubkeyScript: ByteVector, amount: Satoshi, feeRatePerKw: FeeratePerKw): Future[MakeFundingTxResponse]
 

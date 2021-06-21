@@ -4,6 +4,7 @@ import immortan._
 import immortan.utils._
 import immortan.sqlite._
 import fr.acinq.eclair._
+
 import scala.concurrent.duration._
 import com.lightning.walletapp.sqlite._
 import com.lightning.walletapp.R.string._
@@ -11,13 +12,13 @@ import android.os.{Build, VibrationEffect}
 import immortan.crypto.Tools.{Fiat2Btc, none, runAnd}
 import android.net.{ConnectivityManager, NetworkCapabilities}
 import fr.acinq.bitcoin.{Block, ByteVector32, Satoshi, SatoshiLong}
+import fr.acinq.eclair.blockchain.{CurrentBlockCount, EclairWallet}
 import fr.acinq.eclair.channel.{CMD_CHECK_FEERATE, PersistentChannelData}
 import android.app.{Application, NotificationChannel, NotificationManager}
+import fr.acinq.eclair.blockchain.electrum.{CheckPoint, ElectrumClientPool, ElectrumWalletType}
 import android.content.{ClipData, ClipboardManager, Context, Intent, SharedPreferences}
 import fr.acinq.eclair.blockchain.electrum.ElectrumWallet.{TransactionReceived, WalletReady}
-import fr.acinq.eclair.blockchain.electrum.{CheckPoint, ElectrumClientPool, ElectrumWallet84}
-import com.lightning.walletapp.utils.{AwaitService, DelayedNotification, LocalBackup, UsedAddons, WebsocketBus}
-import fr.acinq.eclair.blockchain.CurrentBlockCount
+import com.lightning.walletapp.utils.{AwaitService, DelayedNotification, LocalBackup, WebsocketBus}
 import fr.acinq.eclair.router.Router.RouterConf
 import androidx.appcompat.app.AppCompatDelegate
 import immortan.utils.Denomination.formatFiat
@@ -27,6 +28,7 @@ import androidx.multidex.MultiDex
 import rx.lang.scala.Observable
 import android.widget.Toast
 import java.util.Date
+
 import scala.util.Try
 
 
@@ -35,7 +37,6 @@ object WalletApp {
   var payMarketBag: SQLitePayMarket = _
   var extDataBag: SQLiteDataExtended = _
   var lastChainBalance: LastChainBalance = _
-  var usedAddons: UsedAddons = _
   var app: WalletApp = _
 
   // When sending a tx locally we know recipent address and user provided memo
@@ -45,8 +46,6 @@ object WalletApp {
   final val dbFileNameMisc = "misc1.db" // TODO: put back
   final val dbFileNameGraph = "graph1.db" // TODO: put back
   final val dbFileNameEssential = "essential3.db" // TODO: put back
-
-  final val chainWalletType = new ElectrumWallet84
 
   val backupSaveWorker: ThrottledWork[String, Any] = new ThrottledWork[String, Any] {
     private def attemptStore: Unit = LocalBackup.encryptAndWritePlainBackup(app, dbFileNameEssential, LNParams.chainHash, LNParams.secret.seed)
@@ -72,9 +71,7 @@ object WalletApp {
   def capLNFeeToChain: Boolean = app.prefs.getBoolean(CAP_LN_FEE_TO_CHAIN, false)
   def showRateUs: Boolean = app.prefs.getBoolean(SHOW_RATE_US, true)
 
-  def isAlive: Boolean =
-    null != txDataBag && null != payMarketBag && null != extDataBag &&
-      null != lastChainBalance && null != usedAddons && null != app
+  def isAlive: Boolean = null != txDataBag && null != payMarketBag && null != extDataBag && null != lastChainBalance && null != app
 
   def freePossiblyUsedResouces: Unit = {
     // Drop whatever network connections we still have
@@ -109,8 +106,9 @@ object WalletApp {
       txDataBag = new SQLiteTx(miscInterface)
       payMarketBag = new SQLitePayMarket(miscInterface)
       extDataBag = new SQLiteDataExtended(miscInterface)
-      usedAddons = extDataBag.tryGetAddons getOrElse UsedAddons(addons = List.empty)
-      lastChainBalance = extDataBag.tryGetLastChainBalance(chainWalletType.tag) getOrElse LastChainBalance(0L.sat, 0L.sat)
+
+      val lastBalanceTry = extDataBag.tryGetLastChainBalance(EclairWallet.BIP84)
+      lastChainBalance = lastBalanceTry getOrElse LastChainBalance(0L.sat, 0L.sat)
     }
   }
 
@@ -174,8 +172,8 @@ object WalletApp {
       }
     }
 
-    // Initialize chain wallet after ChannelMaster since it starts automatically
-    LNParams.chainWallet = LNParams.createWallet(extDataBag, secret.seed, chainWalletType)
+    val chainWalletType = ElectrumWalletType.make(EclairWallet.BIP84, secret.seed, LNParams.chainHash)
+    LNParams.chainWallet = LNParams.createWallet(extDataBag, chainWalletType)
 
     // Take care of essential listeners of all kinds
     // Listeners added here will be called first
@@ -224,13 +222,6 @@ object WalletApp {
     LNParams.cm.all = Channel.load(listeners = Set(LNParams.cm), chanBag)
     // This inital notification will create all in/routed/out FSMs
     LNParams.cm.notifyResolvers
-  }
-
-  def syncAddonUpdate(fun: UsedAddons => UsedAddons): Unit = synchronized {
-    // Prevent races whenever multiple addons try to update data concurrently
-    val usedAddons1: UsedAddons = fun(usedAddons)
-    extDataBag.putAddons(usedAddons1)
-    usedAddons = usedAddons1
   }
 
   // Fiat conversion

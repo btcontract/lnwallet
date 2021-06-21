@@ -153,8 +153,8 @@
     <string name="tx_btc">Bitcoin Transaction</string>
     <string name="tx_ln">Lightning Payment</string>
 
-    <string name="tx_state_unconfirmed"><![CDATA[<i>unconfirmed</i>]]></string>
-    <string name="tx_state_double_spent"><![CDATA[<i>double spent</i>]]></string>
+    <string name="tx_state_unconfirmed"><![CDATA[<b>unconfirmed</b>]]></string>
+    <string name="tx_state_double_spent"><![CDATA[<b>double spent</b>]]></string>
     <string name="tx_state_confs">depth %1$s of %2$s</string>
 
     <!-- /special tx/payment descriptions -->

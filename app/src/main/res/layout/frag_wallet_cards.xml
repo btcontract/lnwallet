@@ -82,7 +82,7 @@
         <androidx.cardview.widget.CardView
             card_view:cardCornerRadius="@dimen/corner_radius"
             android:onClick="goToReceiveBitcoinPage"
-            android:layout_marginTop="20dp"
+            android:layout_marginTop="15dp"
             style="@style/Card">
 
             <RelativeLayout

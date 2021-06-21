@@ -11,10 +11,10 @@ import fr.acinq.eclair.blockchain.electrum._
 import scodec.bits.{ByteVector, HexStringSyntax}
 import fr.acinq.bitcoin.Crypto.{PrivateKey, PublicKey}
 import scala.concurrent.{Await, ExecutionContextExecutor}
+import akka.actor.{ActorRef, ActorSystem, PoisonPill, Props}
 import fr.acinq.eclair.router.Router.{PublicChannel, RouterConf}
 import fr.acinq.eclair.transactions.{DirectedHtlc, RemoteFulfill}
 import fr.acinq.eclair.channel.{ChannelKeys, LocalParams, PersistentChannelData}
-import akka.actor.{ActorRef, ActorSystem, PoisonPill, Props, SupervisorStrategy}
 import immortan.sqlite.{ChannelTxFeesSummary, DBInterface, PreparedQuery, RichCursor}
 import fr.acinq.eclair.blockchain.electrum.db.WalletDb
 import fr.acinq.eclair.router.ChannelUpdateExt
@@ -86,12 +86,12 @@ object LNParams {
   implicit val system: ActorSystem = ActorSystem("immortan-actor-system")
   implicit val ec: ExecutionContextExecutor = scala.concurrent.ExecutionContext.Implicits.global
 
-  def createWallet(walletDb: WalletDb, seed: ByteVector, walletType: ElectrumWalletType): WalletExt = {
-    val walletParams = ElectrumWallet.WalletParameters(chainHash, walletDb, minDustLimit, swipeRange = 10, allowSpendUnconfirmed = true)
-    val clientPool = system.actorOf(SimpleSupervisor.props(Props(new ElectrumClientPool(blockCount, chainHash)), "pool", SupervisorStrategy.Resume))
-    val watcher = system.actorOf(SimpleSupervisor.props(Props(new ElectrumWatcher(blockCount, clientPool)), "watcher", SupervisorStrategy.Resume))
-    val wallet = system.actorOf(Props(new ElectrumWallet(seed, clientPool, walletParams, walletType)), "wallet")
-    val catcher = system.actorOf(Props(new WalletEventsCatcher), "catcher")
+  def createWallet(walletDb: WalletDb, ewt: ElectrumWalletType): WalletExt = {
+    val params = ElectrumWallet.WalletParameters(walletDb, minDustLimit, swipeRange = 10, allowSpendUnconfirmed = true)
+    val clientPool = system.actorOf(Props(new ElectrumClientPool(blockCount, chainHash)), "connection-pool")
+    val watcher = system.actorOf(Props(new ElectrumWatcher(blockCount, clientPool)), "channel-tx-watcher")
+    val wallet = system.actorOf(Props(new ElectrumWallet(clientPool, params, ewt)), "chain-wallet")
+    val catcher = system.actorOf(Props(new WalletEventsCatcher), "events-catcher")
     val eclairWallet = new ElectrumEclairWallet(wallet, chainHash)
     WalletExt(eclairWallet, catcher, clientPool, watcher)
   }

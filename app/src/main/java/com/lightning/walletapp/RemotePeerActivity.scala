@@ -83,7 +83,7 @@ class RemotePeerActivity extends BaseActivity with ExternalDataChecker { me =>
 
       hasInfo match {
         case nc: NormalChannelRequest if criticalSupportAvailable => nc.requestChannel.foreach(none, revertAndInform)
-        case hc: HostedChannelRequest if criticalSupportAvailable && isPeerSupports(HostedChannels) => UITask(me askHostedChannel hc.secret).run
+        case hc: HostedChannelRequest if criticalSupportAvailable && isPeerSupports(HostedChannels) => askHostedChannel(hc.secret)
         case _: HasRemoteInfoWrap => switchView(showProgress = false)
         case _ => whenBackPressed.run
       }
