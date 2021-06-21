@@ -204,7 +204,7 @@ class RemotePeerActivity extends BaseActivity with ExternalDataChecker { me =>
   }
 
   def sharePeerSpecificNodeId(view: View): Unit =
-    println(s"-- ${hasInfo.remoteInfo.nodeSpecificPubKey.toString}")
+    share(hasInfo.remoteInfo.nodeSpecificPubKey.toString)
 
   def requestHostedChannel(view: View): Unit =
     me askHostedChannel randomBytes32
