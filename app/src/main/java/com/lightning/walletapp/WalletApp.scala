@@ -4,10 +4,11 @@ import immortan._
 import immortan.utils._
 import immortan.sqlite._
 import fr.acinq.eclair._
-
 import scala.concurrent.duration._
 import com.lightning.walletapp.sqlite._
 import com.lightning.walletapp.R.string._
+import fr.acinq.eclair.blockchain.electrum._
+
 import android.os.{Build, VibrationEffect}
 import immortan.crypto.Tools.{Fiat2Btc, none, runAnd}
 import android.net.{ConnectivityManager, NetworkCapabilities}
@@ -15,10 +16,10 @@ import fr.acinq.bitcoin.{Block, ByteVector32, Satoshi, SatoshiLong}
 import fr.acinq.eclair.blockchain.{CurrentBlockCount, EclairWallet}
 import fr.acinq.eclair.channel.{CMD_CHECK_FEERATE, PersistentChannelData}
 import android.app.{Application, NotificationChannel, NotificationManager}
-import fr.acinq.eclair.blockchain.electrum.{CheckPoint, ElectrumClientPool, ElectrumWalletType}
 import android.content.{ClipData, ClipboardManager, Context, Intent, SharedPreferences}
 import fr.acinq.eclair.blockchain.electrum.ElectrumWallet.{TransactionReceived, WalletReady}
 import com.lightning.walletapp.utils.{AwaitService, DelayedNotification, LocalBackup, WebsocketBus}
+
 import fr.acinq.eclair.router.Router.RouterConf
 import androidx.appcompat.app.AppCompatDelegate
 import immortan.utils.Denomination.formatFiat
@@ -27,8 +28,8 @@ import android.text.format.DateFormat
 import androidx.multidex.MultiDex
 import rx.lang.scala.Observable
 import android.widget.Toast
+import akka.actor.Props
 import java.util.Date
-
 import scala.util.Try
 
 
@@ -172,8 +173,16 @@ object WalletApp {
       }
     }
 
-    val chainWalletType = ElectrumWalletType.make(EclairWallet.BIP84, secret.seed, LNParams.chainHash)
-    LNParams.chainWallet = LNParams.createWallet(extDataBag, chainWalletType)
+    // Initialize chain wallet
+    import LNParams.{ec, timeout, system}
+    val ewt = ElectrumWalletType.make(EclairWallet.BIP84, secret.seed, LNParams.chainHash)
+    val params = ElectrumWallet.WalletParameters(extDataBag, LNParams.minDustLimit, swipeRange = 10, allowSpendUnconfirmed = true)
+    val pool = system.actorOf(Props(new ElectrumClientPool(LNParams.blockCount, LNParams.chainHash)), "connection-pool")
+    val watcher = system.actorOf(Props(new ElectrumWatcher(LNParams.blockCount, pool)), "channel-tx-watcher")
+    val wallet = system.actorOf(Props(new ElectrumWallet(pool, params, ewt)), "chain-wallet")
+    val catcher = system.actorOf(Props(new WalletEventsCatcher), "events-catcher")
+    val eclairWallet = new ElectrumEclairWallet(wallet, LNParams.chainHash)
+    LNParams.chainWallet = WalletExt(eclairWallet, catcher, pool, watcher)
 
     // Take care of essential listeners of all kinds
     // Listeners added here will be called first
@@ -199,7 +208,7 @@ object WalletApp {
       override def onChainSynchronized(event: WalletReady): Unit = {
         // The main point of this is to use unix timestamp instead of chain tip stamp to define whether we are deeply in past
         lastChainBalance = LastChainBalance(event.confirmedBalance, event.unconfirmedBalance, System.currentTimeMillis)
-        extDataBag.putLastChainBalance(lastChainBalance, chainWalletType.tag)
+        extDataBag.putLastChainBalance(lastChainBalance, EclairWallet.BIP84)
       }
 
       override def onTransactionReceived(event: TransactionReceived): Unit = {

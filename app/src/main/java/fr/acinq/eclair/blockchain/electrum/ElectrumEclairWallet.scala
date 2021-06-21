@@ -57,23 +57,20 @@ class ElectrumEclairWallet(val wallet: ActorRef, chainHash: ByteVector32)(implic
         }
     }
 
-  override def commit(tx: Transaction): Future[Boolean] =
-    (wallet ? BroadcastTransaction(tx)) flatMap {
-      case ElectrumClient.BroadcastTransactionResponse(_, None) =>
-        // tx broadcast successfully: commit tx
-        (wallet ? CommitTransaction(tx)).mapTo[Boolean]
-      case ElectrumClient.BroadcastTransactionResponse(_, errorOpt) if errorOpt.exists(_.message contains "transaction already in block chain") =>
-        // tx was already in the blockchain, that's weird but it is OK
-        (wallet ? CommitTransaction(tx)).mapTo[Boolean]
-      case ElectrumClient.BroadcastTransactionResponse(_, errorOpt) if errorOpt.isDefined =>
-        // tx broadcast definitely failed
-        Future(false)
-      case ElectrumClient.ServerError(_: ElectrumClient.BroadcastTransaction, _) =>
-        // tx broadcast definitely failed
-        Future(false)
-    }
+  override def commit(tx: Transaction): Future[Boolean] = {
+    val alreadyInChain = "already in block chain"
+    val broadcast = BroadcastTransaction(tx)
+    val commit = CommitTransaction(tx)
 
-  private val emptyUtxo: ByteVector => TxOut = TxOut(Satoshi(0L), _: ByteVector)
+    (wallet ? broadcast).flatMap {
+      case ElectrumClient.BroadcastTransactionResponse(_, None) => (wallet ? commit).mapTo[Boolean]
+      case ElectrumClient.BroadcastTransactionResponse(_, errorOpt) if errorOpt.exists(_.message contains alreadyInChain) => (wallet ? commit).mapTo[Boolean]
+      case ElectrumClient.BroadcastTransactionResponse(_, errorOpt) if errorOpt.isDefined => Future(false)
+      case ElectrumClient.ServerError(_: ElectrumClient.BroadcastTransaction, _) => Future(false)
+    }
+  }
+
+  private val emptyUtxo: ByteVector => TxOut = pubKeyScript => TxOut(Satoshi(0L), pubKeyScript)
 
   override def sendPreimageBroadcast(preimages: Set[ByteVector32], address: String, feeRatePerKw: FeeratePerKw): Future[TxAndFee] = {
     val preimageTxOuts = preimages.toList.map(_.bytes).map(OP_PUSHDATA.apply).grouped(2).map(OP_RETURN :: _).map(Script.write).map(emptyUtxo)

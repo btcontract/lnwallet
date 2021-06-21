@@ -84,7 +84,7 @@ class ElectrumWallet(client: ActorRef, params: ElectrumWallet.WalletParameters, 
         goto(RUNNING) using persistAndNotify(data)
       } else {
         client ! ElectrumClient.GetHeaders(data.blockchain.tip.height + 1, RETARGETING_PERIOD)
-        log.info(s"syncing headers from ${data.blockchain.height} to $height, ready=${data.isReady(params.swipeRange)}")
+        log.info(s"syncing headers from ${data.blockchain.height} to $height")
         goto(SYNCING) using data
       }
   }
@@ -629,17 +629,17 @@ case class ElectrumWallet84(secrets: Option[AccountAndXPrivKey], xPub: ExtendedP
   }
 }
 
-case class ElectrumData(ewt: ElectrumWalletType,
-                        blockchain: Blockchain, accountKeys: Vector[ExtendedPublicKey], changeKeys: Vector[ExtendedPublicKey],
-                        status: Map[ByteVector32, String] = Map.empty, transactions: Map[ByteVector32, Transaction] = Map.empty,
-                        heights: Map[ByteVector32, Int] = Map.empty, history: Map[ByteVector32, TransactionHistoryItemList] = Map.empty,
-                        proofs: Map[ByteVector32, GetMerkleResponse] = Map.empty, pendingHistoryRequests: Set[ByteVector32] = Set.empty,
-                        pendingTransactionRequests: Set[ByteVector32] = Set.empty, pendingHeadersRequests: Set[GetHeaders] = Set.empty,
+case class ElectrumData(ewt: ElectrumWalletType, blockchain: Blockchain, accountKeys: Vector[ExtendedPublicKey],
+                        changeKeys: Vector[ExtendedPublicKey], status: Map[ByteVector32, String] = Map.empty, transactions: Map[ByteVector32, Transaction] = Map.empty,
+                        heights: Map[ByteVector32, Int] = Map.empty, history: Map[ByteVector32, TransactionHistoryItemList] = Map.empty, proofs: Map[ByteVector32, GetMerkleResponse] = Map.empty,
+                        pendingHistoryRequests: Set[ByteVector32] = Set.empty, pendingTransactionRequests: Set[ByteVector32] = Set.empty, pendingHeadersRequests: Set[GetHeaders] = Set.empty,
                         pendingTransactions: List[Transaction] = Nil, lastReadyMessage: Option[WalletReady] = None) {
 
   lazy val accountKeyMap: Map[ByteVector32, ExtendedPublicKey] = accountKeys.map(key => ewt.computeScriptHashFromPublicKey(key.publicKey) -> key).toMap
 
   lazy val changeKeyMap: Map[ByteVector32, ExtendedPublicKey] = changeKeys.map(key => ewt.computeScriptHashFromPublicKey(key.publicKey) -> key).toMap
+
+  private lazy val firstUnusedAccountKeys = accountKeys.view.filter(key => status get ewt.computeScriptHashFromPublicKey(key.publicKey) contains new String).take(MAX_RECEIVE_ADDRESSES)
 
   private lazy val firstUnusedChangeKeys = changeKeys.find(key => status get ewt.computeScriptHashFromPublicKey(key.publicKey) contains new String)
 
@@ -652,13 +652,9 @@ case class ElectrumData(ewt: ElectrumWalletType,
 
   def generateReadyMessage: WalletReady = WalletReady(balance.confirmed, balance.unconfirmed, blockchain.tip.height, blockchain.tip.header.time, ewt.tag)
 
-  def isReady(swipeRange: Int): Boolean = status.values.count(_.isEmpty) >= swipeRange * 2 && pendingTransactionRequests.isEmpty && pendingHistoryRequests.isEmpty
-
-  def isAlien(txid: ByteVector32): Boolean = !transactions.contains(txid) && !pendingTransactionRequests.contains(txid) && !pendingTransactions.exists(_.txid == txid)
-
   def currentReceiveAddresses: Address2PubKey = {
-    val keys = accountKeys.take(MAX_RECEIVE_ADDRESSES)
-    keys.map(ewt.textAddress).zip(keys).toMap
+    val privateKeys = if (firstUnusedAccountKeys.isEmpty) accountKeys.take(MAX_RECEIVE_ADDRESSES) else firstUnusedAccountKeys
+    privateKeys.map(ewt.textAddress).zip(privateKeys).toMap
   }
 
   def isMine(txIn: TxIn): Boolean = ewt.extractPubKeySpentFrom(txIn).map(ewt.computePublicKeyScript).map(Script.write).exists(publicScriptMap.contains)
@@ -738,7 +734,9 @@ case class ElectrumData(ewt: ElectrumWalletType,
   }
 
   type SatOpt = Option[Satoshi]
+
   type ReceivedSentFee = (Satoshi, Satoshi, SatOpt)
+
   def computeTransactionDelta(tx: Transaction): Option[ReceivedSentFee] = {
     // Computes the effect of this transaction on the wallet
     val ourInputs = tx.txIn.filter(isMine)
