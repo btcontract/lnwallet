@@ -50,10 +50,10 @@ import scala.util.Try
 
 
 object HubActivity {
-  var txInfos: Set[TxInfo] = Set.empty
-  var paymentInfos: Set[PaymentInfo] = Set.empty
-  var payMarketInfos: Set[PayLinkInfo] = Set.empty
-  var relayedPreimageInfos: Set[RelayedPreimageInfo] = Set.empty
+  var txInfos: Iterable[TxInfo] = Iterable.empty
+  var paymentInfos: Iterable[PaymentInfo] = Iterable.empty
+  var payMarketInfos: Iterable[PayLinkInfo] = Iterable.empty
+  var relayedPreimageInfos: Iterable[RelayedPreimageInfo] = Iterable.empty
   var allInfos: Seq[TransactionDetails] = Nil
 
   var lastInChannelOutgoing: Map[FullPaymentTag, OutgoingAdds] = Map.empty
@@ -83,17 +83,17 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
 
   // PAYMENT LIST
 
-  def reloadTxInfos: Unit = txInfos = WalletApp.txDataBag.listRecentTxs(Table.DEFAULT_LIMIT.get).set(WalletApp.txDataBag.toTxInfo)
-  def reloadPaymentInfos: Unit = paymentInfos = LNParams.cm.payBag.listRecentPayments(Table.DEFAULT_LIMIT.get).set(LNParams.cm.payBag.toPaymentInfo)
-  def reloadRelayedPreimageInfos: Unit = relayedPreimageInfos = LNParams.cm.payBag.listRecentRelays(Table.DEFAULT_LIMIT.get).set(LNParams.cm.payBag.toRelayedPreimageInfo)
-  def reloadPayMarketInfos: Unit = payMarketInfos = WalletApp.payMarketBag.listRecentLinks(Table.DEFAULT_LIMIT.get).set(WalletApp.payMarketBag.toLinkInfo)
+  def reloadTxInfos: Unit = txInfos = WalletApp.txDataBag.listRecentTxs(Table.DEFAULT_LIMIT.get).map(WalletApp.txDataBag.toTxInfo)
+  def reloadPaymentInfos: Unit = paymentInfos = LNParams.cm.payBag.listRecentPayments(Table.DEFAULT_LIMIT.get).map(LNParams.cm.payBag.toPaymentInfo)
+  def reloadRelayedPreimageInfos: Unit = relayedPreimageInfos = LNParams.cm.payBag.listRecentRelays(Table.DEFAULT_LIMIT.get).map(LNParams.cm.payBag.toRelayedPreimageInfo)
+  def reloadPayMarketInfos: Unit = payMarketInfos = WalletApp.payMarketBag.listRecentLinks(Table.DEFAULT_LIMIT.get).map(WalletApp.payMarketBag.toLinkInfo)
 
   def updAllInfos: Unit = {
     val itemsToDisplayMap = Map(
-      R.id.bitcoinPayments -> txInfos.toList,
-      R.id.lightningPayments -> paymentInfos.toList,
-      R.id.relayedPayments -> relayedPreimageInfos.toList,
-      R.id.payMarketLinks -> payMarketInfos.toList
+      R.id.bitcoinPayments -> txInfos,
+      R.id.lightningPayments -> paymentInfos,
+      R.id.relayedPayments -> relayedPreimageInfos,
+      R.id.payMarketLinks -> payMarketInfos
     )
 
     val checkedIds = walletCards.toggleGroup.getCheckedButtonIds.asScala.map(_.toInt)
@@ -114,9 +114,9 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
     }
 
   def loadSearch(query: String): Unit = WalletApp.txDataBag.db.txWrap {
-    txInfos = WalletApp.txDataBag.searchTransactions(query).set(WalletApp.txDataBag.toTxInfo)
-    paymentInfos = LNParams.cm.payBag.searchPayments(query).set(LNParams.cm.payBag.toPaymentInfo)
-    payMarketInfos = WalletApp.payMarketBag.searchLinks(query).set(WalletApp.payMarketBag.toLinkInfo)
+    txInfos = WalletApp.txDataBag.searchTransactions(query).map(WalletApp.txDataBag.toTxInfo)
+    paymentInfos = LNParams.cm.payBag.searchPayments(query).map(LNParams.cm.payBag.toPaymentInfo)
+    payMarketInfos = WalletApp.payMarketBag.searchLinks(query).map(WalletApp.payMarketBag.toLinkInfo)
     updAllInfos
   }
 

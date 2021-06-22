@@ -5,7 +5,12 @@ import android.view.View
 import scala.util.Try
 
 
-class EmergencyActivity extends BaseActivity { me =>
-  def INIT(state: Bundle): Unit = me setContentView R.layout.activity_emergency
-  def shareErrorReport(view: View): Unit = Try(getIntent getStringExtra UncaughtHandler.ERROR_REPORT).foreach(share)
+class EmergencyActivity extends BaseActivity {
+  def INIT(state: Bundle): Unit = setContentView(R.layout.activity_emergency)
+
+  def shareErrorReport(view: View): Unit = {
+    val info = Try(getIntent getStringExtra UncaughtHandler.ERROR_REPORT)
+    info.foreach(println)
+    info.foreach(share)
+  }
 }
