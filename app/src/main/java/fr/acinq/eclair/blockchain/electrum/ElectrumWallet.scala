@@ -262,28 +262,25 @@ class ElectrumWallet(client: ActorRef, params: ElectrumWallet.WalletParameters, 
       Try(Blockchain.addHeadersChunk(data.blockchain, start, headers)) match {
         case Success(blockchain1) =>
           params.walletDb.addHeaders(start, headers)
-          stay() using data.copy(blockchain = blockchain1)
+          stay using data.copy(blockchain = blockchain1)
         case Failure(error) =>
           log.error("electrum server sent bad headers, disconnecting", error)
           sender ! PoisonPill
           goto(DISCONNECTED) using data
       }
 
-    case Event(GetTransactionResponse(tx, context_opt), data) =>
-      log.debug(s"received transaction ${tx.txid}")
-      data.computeTransactionDelta(tx) match {
-        case Some((received, sent, feeOpt)) =>
-          log.info(s"successfully connected txid=${tx.txid}")
-          context.system.eventStream.publish(data.transactionReceived(tx, feeOpt, received, sent))
-          // when we have successfully processed a new tx, we retry all pending txes to see if they can be added now
-          data.pendingTransactions.foreach(self ! GetTransactionResponse(_, context_opt))
-          val data1 = data.copy(transactions = data.transactions + (tx.txid -> tx), pendingTransactionRequests = data.pendingTransactionRequests - tx.txid, pendingTransactions = Nil)
-          stay using persistAndNotify(data1)
-        case None =>
-          // missing parents
-          log.info(s"couldn't connect txid=${tx.txid}")
-          val data1 = data.copy(pendingTransactionRequests = data.pendingTransactionRequests - tx.txid, pendingTransactions = data.pendingTransactions :+ tx)
-          stay using persistAndNotify(data1)
+    case Event(GetTransactionResponse(tx, contextOpt), data) =>
+      val data1 = data.copy(pendingTransactionRequests = data.pendingTransactionRequests - tx.txid)
+
+      data.computeTransactionDelta(tx).map { case (received, sent, feeOpt) =>
+        for (pendingTx <- data.pendingTransactions) self ! GetTransactionResponse(pendingTx, contextOpt)
+        context.system.eventStream publish data.transactionReceived(tx, feeOpt, received, sent, ewt.xPub)
+        val data2 = data1.copy(transactions = data.transactions.updated(tx.txid, tx), pendingTransactions = Nil)
+        stay using persistAndNotify(data2)
+      } getOrElse {
+        // We are currently missing parents for this transaction
+        val data2 = data1.copy(pendingTransactions = data.pendingTransactions :+ tx)
+        stay using persistAndNotify(data2)
       }
 
     case Event(ServerError(GetTransaction(txid, _), error), data) if data.pendingTransactionRequests.contains(txid) =>
@@ -291,7 +288,6 @@ class ElectrumWallet(client: ActorRef, params: ElectrumWallet.WalletParameters, 
       log.error(s"server cannot find history tx $txid: $error")
       sender ! PoisonPill
       goto(DISCONNECTED) using data
-
 
     case Event(response@GetMerkleResponse(txid, _, height, _, _), data) =>
       data.blockchain.getHeader(height).orElse(params.walletDb.getHeader(height)) match {
@@ -323,19 +319,15 @@ class ElectrumWallet(client: ActorRef, params: ElectrumWallet.WalletParameters, 
       }
 
     case Event(bc@ElectrumClient.BroadcastTransaction(tx), _) =>
-      log.info(s"broadcasting txid=${tx.txid}")
       client forward bc
       stay
 
-    case Event(CommitTransaction(tx), data) =>
-      log.info(s"committing txid=${tx.txid}")
-      val data1 = data.commitTransaction(tx)
-      // we use the initial state to compute the effect of the tx
-      // note: we know that computeTransactionDelta and the fee will be defined, because we built the tx ourselves so
-      // we know all the parents
-      val (received, sent, Some(fee)) = data.computeTransactionDelta(tx).get
-      // we notify here because the tx won't be downloaded again (it has been added to the state at commit)
-      context.system.eventStream.publish(data1.transactionReceived(tx, Some(fee), received, sent))
+    case Event(commit: CommitTransaction, data) =>
+      val data1 = data.commitTransaction(commit.tx)
+      // We use the initial state to compute the effect of the tx
+      val (received, sent, fee) = data.computeTransactionDelta(commit.tx).get
+      // We notify here because the tx won't be downloaded again (it has been added to the state at commit)
+      context.system.eventStream publish data1.transactionReceived(commit.tx, fee, received, sent, ewt.xPub)
       stay using persistAndNotify(data1) replying true
   }
 
@@ -435,7 +427,7 @@ object ElectrumWallet {
 
   sealed trait WalletEvent
 
-  case class TransactionReceived(tx: Transaction, depth: Long, received: Satoshi, sent: Satoshi, walletAddreses: List[String], feeOpt: Option[Satoshi] = None) extends WalletEvent
+  case class TransactionReceived(tx: Transaction, depth: Long, received: Satoshi, sent: Satoshi, walletAddreses: List[String], xPub: ExtendedPublicKey, feeOpt: Option[Satoshi] = None) extends WalletEvent
 
   case class WalletReady(confirmedBalance: Satoshi, unconfirmedBalance: Satoshi, height: Long, timestamp: Long, tag: String) extends WalletEvent
 
@@ -728,9 +720,9 @@ case class ElectrumData(ewt: ElectrumWalletType, blockchain: Blockchain, account
     }
   }
 
-  def transactionReceived(tx: Transaction, feeOpt: Option[Satoshi], received: Satoshi, sent: Satoshi): TransactionReceived = {
-    val walletAddresses = tx.txOut.filter(isMine).map(_.publicKeyScript).flatMap(publicScriptMap.get).map(ewt.textAddress)
-    TransactionReceived(tx, computeTransactionDepth(tx.txid), received, sent, walletAddresses.toList, feeOpt)
+  def transactionReceived(tx: Transaction, feeOpt: Option[Satoshi], received: Satoshi, sent: Satoshi, xPub: ExtendedPublicKey): TransactionReceived = {
+    val walletAddresses = tx.txOut.filter(isMine).map(_.publicKeyScript).flatMap(publicScriptMap.get).map(ewt.textAddress).toList
+    TransactionReceived(tx, computeTransactionDepth(tx.txid), received, sent, walletAddresses, xPub, feeOpt)
   }
 
   type SatOpt = Option[Satoshi]

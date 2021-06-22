@@ -213,7 +213,7 @@ object WalletApp {
 
       override def onTransactionReceived(event: TransactionReceived): Unit = {
         def addChainTx(received: Satoshi, sent: Satoshi, description: TxDescription, isIncoming: Long): Unit = txDataBag.db txWrap {
-          txDataBag.addTx(event.tx, event.depth, received, sent, event.feeOpt, description, isIncoming, lastChainBalance.totalBalance, LNParams.fiatRates.info.rates)
+          txDataBag.addTx(event.tx, event.depth, received, sent, event.feeOpt, event.xPub, description, isIncoming, lastChainBalance.totalBalance, LNParams.fiatRates.info.rates)
           txDataBag.addSearchableTransaction(description.queryText(event.tx.txid), event.tx.txid)
         }
 

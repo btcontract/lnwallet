@@ -6,8 +6,10 @@ import fr.acinq.bitcoin.{ByteVector32, Satoshi, Transaction}
 import immortan.{ChannelMaster, TxDescription, TxInfo}
 import java.lang.{Long => JLong}
 
+import fr.acinq.bitcoin.DeterministicWallet.ExtendedPublicKey
 import immortan.crypto.Tools.Fiat2Btc
 import fr.acinq.eclair.MilliSatoshi
+
 import scala.util.Try
 
 
@@ -31,12 +33,12 @@ class SQLiteTx(val db: DBInterface) {
         sent = Satoshi(rc long 2), count = rc long 3)
     }
 
-  def addTx(tx: Transaction, depth: Long, received: Satoshi, sent: Satoshi, feeOpt: Option[Satoshi],
+  def addTx(tx: Transaction, depth: Long, received: Satoshi, sent: Satoshi, feeOpt: Option[Satoshi], xPub: ExtendedPublicKey,
             description: TxDescription, isIncoming: Long, balanceSnap: MilliSatoshi, fiatRateSnap: Fiat2Btc): Unit = {
 
-    db.change(TxTable.newSql, tx.toString, tx.txid.toHex, depth: JLong, received.toLong: JLong, sent.toLong: JLong,
-      feeOpt.map(_.toLong: JLong).getOrElse(0L: JLong), System.currentTimeMillis: JLong, description.toJson.compactPrint,
-      balanceSnap.toLong: JLong, fiatRateSnap.toJson.compactPrint, isIncoming: JLong, 0L: JLong /* NOT DOUBLE SPENT YET */)
+    db.change(TxTable.newSql, tx.toString, tx.txid.toHex, xPub.publicKey.toString /* WHICH WALLET DOES IT COME FROM */, depth: JLong, received.toLong: JLong,
+      sent.toLong: JLong, feeOpt.map(_.toLong: JLong).getOrElse(0L: JLong), System.currentTimeMillis: JLong, description.toJson.compactPrint, balanceSnap.toLong: JLong,
+      fiatRateSnap.toJson.compactPrint, isIncoming: JLong, 0L: JLong /* NOT DOUBLE SPENT YET */)
     ChannelMaster.next(ChannelMaster.txDbStream)
   }
 
