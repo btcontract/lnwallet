@@ -212,8 +212,8 @@ object WalletApp {
       }
 
       override def onTransactionReceived(event: TransactionReceived): Unit = {
-        def replaceChainTx(received: Satoshi, sent: Satoshi, description: TxDescription, isIncoming: Long): Unit = txDataBag.db txWrap {
-          txDataBag.replaceTx(event.tx, event.depth, received, sent, event.feeOpt, description, isIncoming, lastChainBalance.totalBalance, LNParams.fiatRates.info.rates)
+        def addChainTx(received: Satoshi, sent: Satoshi, description: TxDescription, isIncoming: Long): Unit = txDataBag.db txWrap {
+          txDataBag.addTx(event.tx, event.depth, received, sent, event.feeOpt, description, isIncoming, lastChainBalance.totalBalance, LNParams.fiatRates.info.rates)
           txDataBag.addSearchableTransaction(description.queryText(event.tx.txid), event.tx.txid)
         }
 
@@ -221,9 +221,9 @@ object WalletApp {
         val defSentTxDescription = TxDescription.define(LNParams.cm.all.values, Nil, event.tx)
         val sentTxDescription = txDescriptions.getOrElse(event.tx.txid, defSentTxDescription)
 
-        if (event.sent == event.received + fee) replaceChainTx(event.received, event.sent - fee, sentTxDescription, isIncoming = 0L)
-        else if (event.sent > event.received) replaceChainTx(received = 0L.sat, event.sent - event.received - fee, sentTxDescription, isIncoming = 0L)
-        else replaceChainTx(event.received - event.sent, sent = 0L.sat, TxDescription.define(LNParams.cm.all.values, event.walletAddreses, event.tx), isIncoming = 1L)
+        if (event.sent == event.received + fee) addChainTx(event.received, event.sent - fee, sentTxDescription, isIncoming = 0L)
+        else if (event.sent > event.received) addChainTx(received = 0L.sat, event.sent - event.received - fee, sentTxDescription, isIncoming = 0L)
+        else addChainTx(event.received - event.sent, sent = 0L.sat, TxDescription.define(LNParams.cm.all.values, event.walletAddreses, event.tx), isIncoming = 1L)
       }
     }
 

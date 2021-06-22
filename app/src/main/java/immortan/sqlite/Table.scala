@@ -241,8 +241,6 @@ object TxTable extends Table {
 
   val newVirtualSql = s"INSERT INTO $fts$table ($search, $txid) VALUES (?, ?)"
 
-  val deleteSql = s"DELETE FROM $table WHERE $txid = ?"
-
   // Selecting, updating
 
   val selectRecentSql = s"SELECT * FROM $table ORDER BY $id DESC LIMIT ?"

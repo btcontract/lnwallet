@@ -14,7 +14,6 @@ import com.lightning.walletapp.R.string._
 import immortan.utils.ImplicitJsonFormats._
 import com.lightning.walletapp.HubActivity._
 
-import scala.util.{Success, Try}
 import java.lang.{Integer => JInt}
 import immortan.sqlite.{SQLiteData, Table}
 import android.view.{MenuItem, View, ViewGroup}
@@ -47,23 +46,18 @@ import org.ndeftools.Message
 import java.util.TimerTask
 import android.os.Bundle
 import android.net.Uri
+import scala.util.Try
 
 
 object HubActivity {
-  var txInfos: Iterable[TxInfo] = Iterable.empty
-  var paymentInfos: Iterable[PaymentInfo] = Iterable.empty
-  var payMarketInfos: Iterable[PayLinkInfo] = Iterable.empty
-  var relayedPreimageInfos: Iterable[RelayedPreimageInfo] = Iterable.empty
-  var hashToReveals: Map[ByteVector32, RevealedLocalFulfills] = Map.empty
+  var txInfos: Set[TxInfo] = Set.empty
+  var paymentInfos: Set[PaymentInfo] = Set.empty
+  var payMarketInfos: Set[PayLinkInfo] = Set.empty
+  var relayedPreimageInfos: Set[RelayedPreimageInfo] = Set.empty
   var allInfos: Seq[TransactionDetails] = Nil
 
-  var lastSeenInChannelOutgoing: Map[FullPaymentTag, OutgoingAdds] = Map.empty
-
-  var lightningPaymentsAdded: Set[ByteVector32] = Set.empty
-  var bitcoinPaymentsAdded: Set[ByteVector32] = Set.empty
-  var relayedPaymentsAdded: Set[ByteVector32] = Set.empty
-  var payMarketLinksAdded: Set[String] = Set.empty
-
+  var lastInChannelOutgoing: Map[FullPaymentTag, OutgoingAdds] = Map.empty
+  var lastHashToReveals: Map[ByteVector32, RevealedLocalFulfills] = Map.empty
   // Run clear up method once on app start, do not re-run it every time this activity gets restarted
   lazy val markAsFailedOnce: Unit = LNParams.cm.markAsFailed(paymentInfos, LNParams.cm.allInChannelOutgoing)
 }
@@ -89,21 +83,24 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
 
   // PAYMENT LIST
 
-  def reloadTxInfos: Unit = txInfos = WalletApp.txDataBag.listRecentTxs(Table.DEFAULT_LIMIT.get).map(WalletApp.txDataBag.toTxInfo)
-  def reloadPaymentInfos: Unit = paymentInfos = LNParams.cm.payBag.listRecentPayments(Table.DEFAULT_LIMIT.get).map(LNParams.cm.payBag.toPaymentInfo)
-  def reloadPayMarketInfos: Unit = payMarketInfos = WalletApp.payMarketBag.listRecentLinks(Table.DEFAULT_LIMIT.get).map(WalletApp.payMarketBag.toLinkInfo)
-  def reloadRelayedPreimageInfos: Unit = relayedPreimageInfos = LNParams.cm.payBag.listRecentRelays(Table.DEFAULT_LIMIT.get).map(LNParams.cm.payBag.toRelayedPreimageInfo)
+  def reloadTxInfos: Unit = txInfos = WalletApp.txDataBag.listRecentTxs(Table.DEFAULT_LIMIT.get).set(WalletApp.txDataBag.toTxInfo)
+  def reloadPaymentInfos: Unit = paymentInfos = LNParams.cm.payBag.listRecentPayments(Table.DEFAULT_LIMIT.get).set(LNParams.cm.payBag.toPaymentInfo)
+  def reloadRelayedPreimageInfos: Unit = relayedPreimageInfos = LNParams.cm.payBag.listRecentRelays(Table.DEFAULT_LIMIT.get).set(LNParams.cm.payBag.toRelayedPreimageInfo)
+  def reloadPayMarketInfos: Unit = payMarketInfos = WalletApp.payMarketBag.listRecentLinks(Table.DEFAULT_LIMIT.get).set(WalletApp.payMarketBag.toLinkInfo)
 
   def updAllInfos: Unit = {
-    val checkedIds = walletCards.toggleGroup.getCheckedButtonIds.asScala.map(_.toInt)
-    val itemsMap = Map(R.id.bitcoinPayments -> txInfos, R.id.lightningPayments -> paymentInfos,
-      R.id.relayedPayments -> relayedPreimageInfos, R.id.payMarketLinks -> payMarketInfos)
+    val itemsToDisplayMap = Map(
+      R.id.bitcoinPayments -> txInfos.toList,
+      R.id.lightningPayments -> paymentInfos.toList,
+      R.id.relayedPayments -> relayedPreimageInfos.toList,
+      R.id.payMarketLinks -> payMarketInfos.toList
+    )
 
-    hashToReveals = LNParams.cm.allIncomingRevealed
+    val checkedIds = walletCards.toggleGroup.getCheckedButtonIds.asScala.map(_.toInt)
     allInfos = DelayedRefunds(LNParams.cm.allDelayedRefundsLeft.map(_.txOut.head.amount).sum.toMilliSatoshi) match {
       case _ if isSearchOn => (txInfos ++ paymentInfos ++ payMarketInfos).toList.sortBy(_.seenAt)(Ordering[Long].reverse)
-      case dr if dr.totalAmount > 0L.msat => (checkedIds.flatMap(itemsMap) :+ dr).sortBy(_.seenAt)(Ordering[Long].reverse)
-      case _ => checkedIds.flatMap(itemsMap).sortBy(_.seenAt)(Ordering[Long].reverse)
+      case dr if dr.totalAmount > 0L.msat => (checkedIds.flatMap(itemsToDisplayMap) :+ dr).sortBy(_.seenAt)(Ordering[Long].reverse)
+      case _ => checkedIds.flatMap(itemsToDisplayMap).sortBy(_.seenAt)(Ordering[Long].reverse)
     }
   }
 
@@ -117,15 +114,15 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
     }
 
   def loadSearch(query: String): Unit = WalletApp.txDataBag.db.txWrap {
-    txInfos = WalletApp.txDataBag.searchTransactions(query).map(WalletApp.txDataBag.toTxInfo)
-    paymentInfos = LNParams.cm.payBag.searchPayments(query).map(LNParams.cm.payBag.toPaymentInfo)
-    payMarketInfos = WalletApp.payMarketBag.searchLinks(query).map(WalletApp.payMarketBag.toLinkInfo)
+    txInfos = WalletApp.txDataBag.searchTransactions(query).set(WalletApp.txDataBag.toTxInfo)
+    paymentInfos = LNParams.cm.payBag.searchPayments(query).set(LNParams.cm.payBag.toPaymentInfo)
+    payMarketInfos = WalletApp.payMarketBag.searchLinks(query).set(WalletApp.payMarketBag.toLinkInfo)
     updAllInfos
   }
 
   val searchWorker: ThrottledWork[String, Unit] = new ThrottledWork[String, Unit] {
     def work(query: String): Observable[Unit] = Rx.ioQueue.map(_ => if (query.nonEmpty) loadSearch(query) else loadRecent)
-    def process(query: String, searchLoadResultEffect: Unit): Unit = UITask(paymentsAdapter.notifyDataSetChanged).run
+    def process(userTypedQuery: String, searchLoadResultEffect: Unit): Unit = paymentAdapterDataChanged.run
   }
 
   val payLinkImageMemo: LoadingCache[Bytes, Bitmap] = memoize {
@@ -136,11 +133,6 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
     override def getItem(pos: Int): TransactionDetails = allInfos(pos)
     override def getItemId(position: Int): Long = position
     override def getCount: Int = allInfos.size
-
-    override def notifyDataSetChanged: Unit = {
-      lastSeenInChannelOutgoing = LNParams.cm.allInChannelOutgoing
-      super.notifyDataSetChanged
-    }
 
     override def getView(position: Int, savedView: View, parent: ViewGroup): View = {
       val view = if (null == savedView) getLayoutInflater.inflate(R.layout.frag_payment_line, null) else savedView
@@ -300,7 +292,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
     }
 
     private def setOutgoingPaymentMeta(info: PaymentInfo): Unit = {
-      val currentInChannel = lastSeenInChannelOutgoing.getOrElse(info.fullTag, Nil)
+      val currentInChannel = lastInChannelOutgoing.getOrElse(info.fullTag, Nil)
       val isActive = PaymentStatus.PENDING == info.status || currentInChannel.nonEmpty
       if (isActive) meta setText WalletApp.app.plurOrZero(partsInFlight)(currentInChannel.size).html // Show either number of parts or that we are still preparing
       else meta setText WalletApp.app.when(info.date).html // Payment has either succeeded or failed AND no leftovers are present in FSM, show timestamp
@@ -324,10 +316,10 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
     }
 
     private def paymentBackground(fullTag: FullPaymentTag): Int = {
-      if (ChannelMaster.dangerousHCRevealed(hashToReveals, LNParams.blockCount.get, fullTag.paymentHash).nonEmpty) R.drawable.border_red
+      if (ChannelMaster.dangerousHCRevealed(lastHashToReveals, LNParams.blockCount.get, fullTag.paymentHash).nonEmpty) R.drawable.border_red
       else if (LNParams.cm.opm.data.payments contains fullTag) R.drawable.border_blue // An active outgoing FSM is present for this tag
-      else if (lastSeenInChannelOutgoing contains fullTag) R.drawable.border_blue // Payments in channel are present for this tag
       else if (LNParams.cm.inProcessors contains fullTag) R.drawable.border_blue // An active incoming FSM exists for this tag
+      else if (lastInChannelOutgoing contains fullTag) R.drawable.border_blue // Payments in channel are present for this tag
       else R.drawable.border_gray
     }
   }
@@ -412,7 +404,6 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
   private var paymentSubscription = Option.empty[Subscription]
   private var preimageSubscription = Option.empty[Subscription]
   private var unknownReestablishSubscription = Option.empty[Subscription]
-  private var addedSubscription = Option.empty[Subscription]
 
   private val netListener = new Monitor.ConnectivityListener {
     override def onConnectivityChanged(ct: Int, isConnected: Boolean, isFast: Boolean): Unit = UITask {
@@ -503,7 +494,6 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
     paymentSubscription.foreach(_.unsubscribe)
     preimageSubscription.foreach(_.unsubscribe)
     unknownReestablishSubscription.foreach(_.unsubscribe)
-    addedSubscription.foreach(_.unsubscribe)
 
     LNParams.chainWallet.eventsCatcher ! WalletEventsCatcher.Remove(chainListener)
     for (channel <- LNParams.cm.all.values) channel.listeners -= me
@@ -671,7 +661,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
 
       walletCards.toggleGroup addOnButtonCheckedListener new OnButtonCheckedListener {
         def onButtonChecked(g: MaterialButtonToggleGroup, checkId: Int, isChecked: Boolean): Unit =
-          runAnd(updAllInfos)(paymentsAdapter.notifyDataSetChanged)
+          runAnd(updAllInfos)(paymentAdapterDataChanged.run)
       }
 
       itemsList.addHeaderView(walletCards.view)
@@ -683,32 +673,31 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
       walletCards.updateView
 
       runInFutureProcessOnUI(loadRecent, none) { _ =>
-        setVis(allInfos.nonEmpty, walletCards.listCaption)
-        setVis(WalletApp.showRateUs && paymentInfos.forall(_.status == PaymentStatus.SUCCEEDED) && allInfos.size > 4 && allInfos.size < 8, walletCards.rateTeaser)
         // We suggest user to rate us if: no rate attempt has been made before, LN payments were successful, user has been using an app for certain period
+        setVis(WalletApp.showRateUs && paymentInfos.forall(_.status == PaymentStatus.SUCCEEDED) && allInfos.size > 4 && allInfos.size < 8, walletCards.rateTeaser)
         walletCards.searchField addTextChangedListener onTextChange(searchWorker.addWork)
-        updateToggleMenu
+        paymentAdapterDataChanged.run
       }
 
       val window = 500.millis
       // Throttle all types of burst updates, but make sure the last one is always called
-      val stateEvents = Rx.uniqueFirstAndLastWithinWindow(ChannelMaster.stateUpdateStream, window)
       val txEvents = Rx.uniqueFirstAndLastWithinWindow(ChannelMaster.txDbStream, window).doOnNext(_ => reloadTxInfos)
-      val paymentEvents = Rx.uniqueFirstAndLastWithinWindow(ChannelMaster.paymentDbStream, window).doOnNext(_ => reloadPaymentInfos)
       val relayEvents = Rx.uniqueFirstAndLastWithinWindow(ChannelMaster.relayDbStream, window).doOnNext(_ => reloadRelayedPreimageInfos)
+      val marketEvents = Rx.uniqueFirstAndLastWithinWindow(ChannelMaster.payMarketDbStream, window).doOnNext(_ => reloadPayMarketInfos)
+      val paymentEvents = Rx.uniqueFirstAndLastWithinWindow(ChannelMaster.paymentDbStream, window).doOnNext(_ => reloadPaymentInfos)
 
-      preimageSubscription = ChannelMaster.remoteFulfillStream.subscribe(fulfill => resolveAction(fulfill).run, none).asSome
-      stateSubscription = txEvents.merge(paymentEvents).merge(relayEvents).doOnNext(_ => updAllInfos).merge(stateEvents).subscribe(_ => UITask(paymentsAdapter.notifyDataSetChanged).run).asSome
+      val stateEvents = Rx.uniqueFirstAndLastWithinWindow(ChannelMaster.stateUpdateStream, window).doOnNext { _ =>
+        // We need this data to show active and dangerous payments, but it's costly to recalculate it for each card
+        lastInChannelOutgoing = LNParams.cm.allInChannelOutgoing
+        lastHashToReveals = LNParams.cm.allIncomingRevealed
+      }
+
+      stateSubscription = txEvents.merge(paymentEvents).merge(relayEvents).merge(marketEvents).doOnNext(_ => updAllInfos).merge(stateEvents).subscribe(_ => paymentAdapterDataChanged.run).asSome
       statusSubscription = Rx.uniqueFirstAndLastWithinWindow(ChannelMaster.statusUpdateStream, window).merge(stateEvents).subscribe(_ => UITask(walletCards.updateView).run).asSome
       paymentSubscription = ChannelMaster.hashRevealStream.merge(ChannelMaster.remoteFulfillStream).throttleFirst(window).subscribe(_ => Vibrator.vibrate).asSome
+      preimageSubscription = ChannelMaster.remoteFulfillStream.subscribe(fulfill => resolveAction(fulfill).run, none).asSome
       unknownReestablishSubscription = ChannelMaster.unknownReestablishStream.subscribe(chanUnknown, none).asSome
-
-      val relay = ChannelMaster.relayAddedStream.doOnNext(plusOne => relayedPaymentsAdded += plusOne)
-      val chain = ChannelMaster.chainTxAddedStream.doOnNext(plusOne => bitcoinPaymentsAdded += plusOne)
-      val ln = ChannelMaster.lnPaymentAddedStream.doOnNext(plusOne => lightningPaymentsAdded += plusOne)
-      val pay = ChannelMaster.payLinkAddedStream.doOnNext(_ => reloadPayMarketInfos).doOnNext(plusOne => payMarketLinksAdded += plusOne)
-      addedSubscription = relay.merge(chain).merge(ln).merge(pay).subscribe(_ => UITask(updateToggleMenu).run, none).asSome
-      timer.scheduleAtFixedRate(UITask(paymentsAdapter.notifyDataSetChanged), 30000, 30000)
+      timer.scheduleAtFixedRate(paymentAdapterDataChanged, 30000, 30000)
       markAsFailedOnce
     } else {
       WalletApp.freePossiblyUsedResouces
@@ -727,8 +716,8 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
   def bringMenu(view: View): Unit = {
     val popupMenu = new PopupMenu(me, view)
     popupMenu setOnMenuItemClickListener new PopupMenu.OnMenuItemClickListener {
-      override def onMenuItemClick(selectedMenuItem: MenuItem): Boolean = {
-        if (selectedMenuItem.getItemId == 1) me goTo ClassNames.statActivityClass
+      override def onMenuItemClick(selectedPopupMenuSection: MenuItem): Boolean = {
+        if (selectedPopupMenuSection.getItemId == 1) me goTo ClassNames.statActivityClass
         false
       }
     }
@@ -749,20 +738,14 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
 
   def cancelSearch(view: View): Unit = {
     TransitionManager.beginDelayedTransition(walletCards.view)
-    walletCards.defaultHeader setVisibility View.VISIBLE
-    walletCards.searchWrap setVisibility View.GONE
+    walletCards.defaultHeader.setVisibility(View.VISIBLE)
+    walletCards.searchWrap.setVisibility(View.GONE)
     walletCards.searchField.setText(new String)
-    paymentsAdapter.notifyDataSetChanged
   }
 
   def bringSendFromClipboard(view: View): Unit = {
-    def explainClipboardFailure: TimerTask = UITask {
-      val message = getString(error_nothing_in_clipboard).html
-      snack(contentWindow, message, dialog_ok, _.dismiss)
-    }
-
-    runInFutureProcessOnUI(InputParser.recordValue(WalletApp.app.getBufferUnsafe),
-      _ => explainClipboardFailure.run)(_ => me checkExternalData explainClipboardFailure)
+    def explainClipboardFailure: TimerTask = UITask { snack(contentWindow, getString(error_nothing_in_clipboard).html, dialog_ok, _.dismiss) /* Notify user */ }
+    runInFutureProcessOnUI(InputParser.recordValue(WalletApp.app.getBufferUnsafe), _ => explainClipboardFailure.run)(_ => me checkExternalData explainClipboardFailure)
   }
 
   def bringScanner(view: View): Unit = callScanner(me)
@@ -941,13 +924,11 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
     }
   }
 
-  def updateToggleMenu: Unit = {
-    if (lightningPaymentsAdded.nonEmpty) walletCards.lightningPayments.setText(s" +${lightningPaymentsAdded.size}")
-    if (bitcoinPaymentsAdded.nonEmpty) walletCards.bitcoinPayments.setText(s" +${bitcoinPaymentsAdded.size}")
-    if (relayedPaymentsAdded.nonEmpty) walletCards.relayedPayments.setText(s" +${relayedPaymentsAdded.size}")
-    if (payMarketLinksAdded.nonEmpty) walletCards.payMarketLinks.setText(s" +${payMarketLinksAdded.size}")
+  def paymentAdapterDataChanged: TimerTask = UITask {
+    setVis(txInfos.nonEmpty || paymentInfos.nonEmpty || relayedPreimageInfos.nonEmpty || payMarketInfos.nonEmpty, walletCards.listCaption)
     setVis(relayedPreimageInfos.nonEmpty, walletCards.relayedPayments)
     setVis(payMarketInfos.nonEmpty, walletCards.payMarketLinks)
+    paymentsAdapter.notifyDataSetChanged
   }
 
   // Payment actions
@@ -956,17 +937,14 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
     paymentInfos.find(_.paymentHash == fulfill.ourAdd.paymentHash).flatMap(_.action).foreach {
       case data: MessageAction => mkCheckFormNeutral(_.dismiss, none, _ => share(data.message), actionPopup(data.finalMessage.html, data), dialog_ok, dialog_cancel, dialog_share)
       case data: UrlAction => mkCheckFormNeutral(_ => browse(data.url), none, _ => share(data.url), actionPopup(data.finalMessage.html, data), dialog_open, dialog_cancel, dialog_share)
-      case data: AESAction => showAesAction(fulfill.theirPreimage, data)
+      case data: AESAction => showAesAction(fulfill.theirPreimage, data) getOrElse mkCheckForm(_.dismiss, none, actionPopup(getString(dialog_lnurl_decrypt_fail), data), dialog_ok, noRes = -1)
     }
   }
 
-  private def showAesAction(preimage: ByteVector32, aes: AESAction): Unit = Try {
+  private def showAesAction(preimage: ByteVector32, aes: AESAction) = Try {
     val secret = SQLiteData byteVecToString AES.decode(data = aes.ciphertextBytes, key = preimage.toArray, initVector = aes.ivBytes)
     val msg = if (secret.length > 36) s"${aes.finalMessage}<br><br><tt>$secret</tt><br>" else s"${aes.finalMessage}<br><br><tt><big>$secret</big></tt><br>"
-    (secret, msg.html)
-  } match {
-    case Success(secret ~ msg) => mkCheckFormNeutral(_.dismiss, none, _ => share(secret), actionPopup(msg, aes), dialog_ok, dialog_cancel, dialog_share)
-    case _ => mkCheckForm(_.dismiss, none, actionPopup(getString(dialog_lnurl_decrypt_fail), aes), dialog_ok, noRes = -1)
+    mkCheckFormNeutral(_.dismiss, none, _ => share(secret), actionPopup(msg.html, aes), dialog_ok, dialog_cancel, dialog_share)
   }
 
   private def actionPopup(msg: CharSequence, action: PaymentAction) = {

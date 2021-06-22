@@ -16,7 +16,7 @@ class SQLitePayMarket(db: DBInterface) {
     db.change(PayMarketTable.updInfoSql, payReq.metaDataTextPlain, lastMsat, stamp, hash, thumbnailImageString64, lnUrl.request)
     db.change(PayMarketTable.newSql, lnUrl.request, payReq.metaDataTextPlain, lastMsat, stamp, hash, thumbnailImageString64)
     db.change(PayMarketTable.newVirtualSql, s"${lnUrl.uri.getHost} ${payReq.metaDataTextPlain}", lnUrl.request)
-    ChannelMaster.payLinkAddedStream.onNext(lnUrl.request)
+    ChannelMaster.next(ChannelMaster.payMarketDbStream)
   }
 
   def searchLinks(rawSearchQuery: String): RichCursor = db.search(PayMarketTable.searchSql, rawSearchQuery)

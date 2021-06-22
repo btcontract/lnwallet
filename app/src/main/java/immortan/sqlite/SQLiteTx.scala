@@ -31,18 +31,14 @@ class SQLiteTx(val db: DBInterface) {
         sent = Satoshi(rc long 2), count = rc long 3)
     }
 
-  def replaceTx(tx: Transaction, depth: Long, received: Satoshi, sent: Satoshi, feeOpt: Option[Satoshi],
-                description: TxDescription, isIncoming: Long, balanceSnap: MilliSatoshi, fiatRateSnap: Fiat2Btc): Unit =
-    db txWrap {
-      val txidString = tx.txid.toHex
-      db.change(TxTable.deleteSql, txidString)
-      db.change(TxTable.newSql, tx.toString, txidString, depth: JLong, received.toLong: JLong, sent.toLong: JLong,
-        feeOpt.map(_.toLong: JLong).getOrElse(0L: JLong), System.currentTimeMillis: JLong, description.toJson.compactPrint,
-        balanceSnap.toLong: JLong, fiatRateSnap.toJson.compactPrint, isIncoming: JLong, 0L: JLong /* NOT DOUBLE SPENT YET */)
+  def addTx(tx: Transaction, depth: Long, received: Satoshi, sent: Satoshi, feeOpt: Option[Satoshi],
+            description: TxDescription, isIncoming: Long, balanceSnap: MilliSatoshi, fiatRateSnap: Fiat2Btc): Unit = {
 
-      ChannelMaster.chainTxAddedStream.onNext(tx.txid)
-      ChannelMaster.next(ChannelMaster.txDbStream)
-    }
+    db.change(TxTable.newSql, tx.toString, tx.txid.toHex, depth: JLong, received.toLong: JLong, sent.toLong: JLong,
+      feeOpt.map(_.toLong: JLong).getOrElse(0L: JLong), System.currentTimeMillis: JLong, description.toJson.compactPrint,
+      balanceSnap.toLong: JLong, fiatRateSnap.toJson.compactPrint, isIncoming: JLong, 0L: JLong /* NOT DOUBLE SPENT YET */)
+    ChannelMaster.next(ChannelMaster.txDbStream)
+  }
 
   def toTxInfo(rc: RichCursor): TxInfo =
     TxInfo(rc string TxTable.rawTx, rc string TxTable.txid, rc long TxTable.depth, Satoshi(rc long TxTable.receivedSat),

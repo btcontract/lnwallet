@@ -37,20 +37,16 @@ object ChannelMaster {
   final val updateCounter = new AtomicLong(0)
   final val stateUpdateStream: Subject[Long] = Subject[Long]
   final val statusUpdateStream: Subject[Long] = Subject[Long]
+
+  final val payMarketDbStream: Subject[Long] = Subject[Long]
   final val paymentDbStream: Subject[Long] = Subject[Long]
   final val relayDbStream: Subject[Long] = Subject[Long]
   final val txDbStream: Subject[Long] = Subject[Long]
 
   def next(stream: Subject[Long] = null): Unit = stream.onNext(updateCounter.incrementAndGet)
-
-  final val hashRevealStream: Subject[ByteVector32] = Subject[ByteVector32]
-  final val remoteFulfillStream: Subject[RemoteFulfill] = Subject[RemoteFulfill]
   final val unknownReestablishStream: Subject[UnknownReestablish] = Subject[UnknownReestablish]
-
-  final val lnPaymentAddedStream: Subject[ByteVector32] = Subject[ByteVector32]
-  final val chainTxAddedStream: Subject[ByteVector32] = Subject[ByteVector32]
-  final val relayAddedStream: Subject[ByteVector32] = Subject[ByteVector32]
-  final val payLinkAddedStream: Subject[String] = Subject[String]
+  final val remoteFulfillStream: Subject[RemoteFulfill] = Subject[RemoteFulfill]
+  final val hashRevealStream: Subject[ByteVector32] = Subject[ByteVector32]
 
   final val NO_PREIMAGE = ByteVector32.One
   final val NO_SECRET = ByteVector32.Zeroes

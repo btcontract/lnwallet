@@ -57,8 +57,6 @@ class SQLitePayment(db: DBInterface, preimageDb: DBInterface) extends PaymentBag
         action.map(_.toJson.compactPrint).getOrElse(PaymentInfo.NO_ACTION), hashString, prex.pr.paymentSecret.get.toHex, 0L: JLong /* RECEIVED AMOUNT = 0 FOR OUTGOING */,
         finalAmount.toLong: JLong /* SENT IS KNOWN */, 0L: JLong /* FEE IS UNCERTAIN YET */, balanceSnap.toLong: JLong, fiatRateSnap.toJson.compactPrint,
         chainFee.toLong: JLong, 0: JInt /* INCOMING TYPE = 0 */)
-
-      ChannelMaster.lnPaymentAddedStream.onNext(prex.pr.paymentHash)
       ChannelMaster.next(ChannelMaster.paymentDbStream)
     }
 
@@ -71,8 +69,6 @@ class SQLitePayment(db: DBInterface, preimageDb: DBInterface) extends PaymentBag
         PaymentInfo.NO_ACTION, hashString, prex.pr.paymentSecret.get.toHex, prex.pr.amount.getOrElse(0L.msat).toLong: JLong /* MUST COME FROM PR! 0 WHEN UNDEFINED */,
         0L: JLong /* SENT = 0 MSAT, NOTHING TO SEND */, 0L: JLong /* NO FEE FOR INCOMING PAYMENT */, balanceSnap.toLong: JLong, fiatRateSnap.toJson.compactPrint,
         chainFee.toLong: JLong, 1: JInt /* INCOMING TYPE = 1 */)
-
-      ChannelMaster.lnPaymentAddedStream.onNext(prex.pr.paymentHash)
       ChannelMaster.next(ChannelMaster.paymentDbStream)
     }
 
@@ -100,7 +96,6 @@ class SQLitePayment(db: DBInterface, preimageDb: DBInterface) extends PaymentBag
 
   def addRelayedPreimageInfo(fullTag: FullPaymentTag, preimage: ByteVector32, relayed: MilliSatoshi, earned: MilliSatoshi): Unit = {
     db.change(RelayTable.newSql, fullTag.paymentHash.toHex, fullTag.paymentSecret.toHex, preimage.toHex, System.currentTimeMillis: JLong, relayed.toLong: JLong, earned.toLong: JLong)
-    ChannelMaster.relayAddedStream.onNext(fullTag.paymentHash)
     ChannelMaster.next(ChannelMaster.relayDbStream)
   }
 
