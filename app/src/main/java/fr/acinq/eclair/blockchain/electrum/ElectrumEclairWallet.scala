@@ -1,42 +1,29 @@
-/*
- * Copyright 2019 ACINQ SAS
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
-
 package fr.acinq.eclair.blockchain.electrum
 
 import fr.acinq.eclair.blockchain.EclairWallet._
 import fr.acinq.eclair.blockchain.electrum.ElectrumWallet._
-import fr.acinq.eclair.blockchain.electrum.ElectrumClient.BroadcastTransaction
 import fr.acinq.bitcoin.{ByteVector32, OP_PUSHDATA, OP_RETURN, Satoshi, Script, Transaction, TxIn, TxOut}
 import fr.acinq.eclair.blockchain.{EclairWallet, MakeFundingTxResponse, OnChainBalance, TxAndFee}
 import scala.concurrent.{ExecutionContext, Future}
 import akka.actor.{ActorRef, ActorSystem}
 
+import fr.acinq.eclair.blockchain.electrum.ElectrumClient.BroadcastTransaction
+import fr.acinq.eclair.blockchain.electrum.db.CompleteChainWalletInfo
 import fr.acinq.eclair.blockchain.fee.FeeratePerKw
 import fr.acinq.eclair.addressToPublicKeyScript
 import scodec.bits.ByteVector
+import akka.util.Timeout
 import akka.pattern.ask
 
 
-class ElectrumEclairWallet(val wallet: ActorRef, chainHash: ByteVector32)(implicit system: ActorSystem, ec: ExecutionContext, timeout: akka.util.Timeout) extends EclairWallet {
+case class ElectrumEclairWallet(wallet: ActorRef, ewt: ElectrumWalletType, info: CompleteChainWalletInfo)(implicit system: ActorSystem, ec: ExecutionContext, timeout: Timeout) extends EclairWallet {
+  override def getReceiveAddresses: Future[Address2PubKey] = (wallet ? GetCurrentReceiveAddresses).mapTo[GetCurrentReceiveAddressesResponse].map(_.address2PubKey)
+  private def isInChain(error: fr.acinq.eclair.blockchain.bitcoind.rpc.Error): Boolean = error.message.toLowerCase contains "already in block chain"
+  private def emptyUtxo(pubKeyScript: ByteVector): TxOut = TxOut(Satoshi(0L), pubKeyScript)
 
   override def getBalance: Future[OnChainBalance] = (wallet ? GetBalance).mapTo[GetBalanceResponse].map {
     balance => OnChainBalance(balance.confirmed, balance.unconfirmed)
   }
-
-  override def getReceiveAddresses: Future[Address2PubKey] = (wallet ? GetCurrentReceiveAddresses).mapTo[GetCurrentReceiveAddressesResponse].map(_.a2p)
 
   override def makeFundingTx(pubkeyScript: ByteVector, amount: Satoshi, feeRatePerKw: FeeratePerKw): Future[MakeFundingTxResponse] =
     getBalance.flatMap {
@@ -58,28 +45,25 @@ class ElectrumEclairWallet(val wallet: ActorRef, chainHash: ByteVector32)(implic
     }
 
   override def commit(tx: Transaction): Future[Boolean] = {
-    val alreadyInChain = "already in block chain"
     val broadcast = BroadcastTransaction(tx)
     val commit = CommitTransaction(tx)
 
     (wallet ? broadcast).flatMap {
       case ElectrumClient.BroadcastTransactionResponse(_, None) => (wallet ? commit).mapTo[Boolean]
-      case ElectrumClient.BroadcastTransactionResponse(_, errorOpt) if errorOpt.exists(_.message contains alreadyInChain) => (wallet ? commit).mapTo[Boolean]
-      case ElectrumClient.BroadcastTransactionResponse(_, errorOpt) if errorOpt.isDefined => Future(false)
+      case res: ElectrumClient.BroadcastTransactionResponse if res.error.exists(isInChain) => (wallet ? commit).mapTo[Boolean]
+      case res: ElectrumClient.BroadcastTransactionResponse if res.error.isDefined => Future(false)
       case ElectrumClient.ServerError(_: ElectrumClient.BroadcastTransaction, _) => Future(false)
     }
   }
 
-  private val emptyUtxo: ByteVector => TxOut = pubKeyScript => TxOut(Satoshi(0L), pubKeyScript)
-
   override def sendPreimageBroadcast(preimages: Set[ByteVector32], address: String, feeRatePerKw: FeeratePerKw): Future[TxAndFee] = {
-    val preimageTxOuts = preimages.toList.map(_.bytes).map(OP_PUSHDATA.apply).grouped(2).map(OP_RETURN :: _).map(Script.write).map(emptyUtxo)
-    val sendAll = SendAll(Script write addressToPublicKeyScript(address, chainHash), preimageTxOuts.toList, feeRatePerKw, OPT_IN_FULL_RBF)
+    val preimageTxOuts = preimages.toList.map(_.bytes).map(OP_PUSHDATA.apply).grouped(2).map(OP_RETURN :: _).map(Script.write).map(emptyUtxo).toList
+    val sendAll = SendAll(Script write addressToPublicKeyScript(address, ewt.chainHash), preimageTxOuts, feeRatePerKw, OPT_IN_FULL_RBF)
     (wallet ? sendAll).mapTo[CompleteTransactionResponse].map(_.result.get)
   }
 
   override def sendPayment(amount: Satoshi, address: String, feeRatePerKw: FeeratePerKw): Future[TxAndFee] = {
-    val publicKeyScript = Script write addressToPublicKeyScript(address, chainHash)
+    val publicKeyScript = Script write addressToPublicKeyScript(address, ewt.chainHash)
 
     getBalance.flatMap {
       case chainBalance if chainBalance.totalBalance == amount =>

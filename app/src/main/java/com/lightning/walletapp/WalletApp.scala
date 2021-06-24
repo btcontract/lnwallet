@@ -4,13 +4,13 @@ import immortan._
 import immortan.utils._
 import immortan.sqlite._
 import fr.acinq.eclair._
+import immortan.crypto.Tools._
 import scala.concurrent.duration._
 import com.lightning.walletapp.sqlite._
 import com.lightning.walletapp.R.string._
 import fr.acinq.eclair.blockchain.electrum._
 
 import android.os.{Build, VibrationEffect}
-import immortan.crypto.Tools.{Fiat2Btc, none, runAnd}
 import android.net.{ConnectivityManager, NetworkCapabilities}
 import fr.acinq.bitcoin.{Block, ByteVector32, Satoshi, SatoshiLong}
 import fr.acinq.eclair.blockchain.{CurrentBlockCount, EclairWallet}
@@ -19,7 +19,7 @@ import android.app.{Application, NotificationChannel, NotificationManager}
 import android.content.{ClipData, ClipboardManager, Context, Intent, SharedPreferences}
 import fr.acinq.eclair.blockchain.electrum.ElectrumWallet.{TransactionReceived, WalletReady}
 import com.lightning.walletapp.utils.{AwaitService, DelayedNotification, LocalBackup, WebsocketBus}
-
+import fr.acinq.eclair.blockchain.electrum.db.{CompleteChainWalletInfo, SigningWallet, WatchingWallet}
 import fr.acinq.eclair.router.Router.RouterConf
 import androidx.appcompat.app.AppCompatDelegate
 import immortan.utils.Denomination.formatFiat
@@ -27,6 +27,7 @@ import android.icu.text.SimpleDateFormat
 import android.text.format.DateFormat
 import androidx.multidex.MultiDex
 import rx.lang.scala.Observable
+import scodec.bits.ByteVector
 import android.widget.Toast
 import akka.actor.Props
 import java.util.Date
@@ -37,16 +38,15 @@ object WalletApp {
   var txDataBag: SQLiteTx = _
   var payMarketBag: SQLitePayMarket = _
   var extDataBag: SQLiteDataExtended = _
-  var lastChainBalance: LastChainBalance = _
   var app: WalletApp = _
 
   // When sending a tx locally we know recipent address and user provided memo
   // store this info here to use it when chain wallet receives a sent tx
   var txDescriptions: Map[ByteVector32, TxDescription] = Map.empty
 
-  final val dbFileNameMisc = "misc1.db" // TODO: put back
-  final val dbFileNameGraph = "graph1.db" // TODO: put back
-  final val dbFileNameEssential = "essential3.db" // TODO: put back
+  final val dbFileNameMisc = "misc.db"
+  final val dbFileNameGraph = "graph.db"
+  final val dbFileNameEssential = "essential.db"
 
   val backupSaveWorker: ThrottledWork[String, Any] = new ThrottledWork[String, Any] {
     private def attemptStore: Unit = LocalBackup.encryptAndWritePlainBackup(app, dbFileNameEssential, LNParams.chainHash, LNParams.secret.seed)
@@ -72,14 +72,14 @@ object WalletApp {
   def capLNFeeToChain: Boolean = app.prefs.getBoolean(CAP_LN_FEE_TO_CHAIN, false)
   def showRateUs: Boolean = app.prefs.getBoolean(SHOW_RATE_US, true)
 
-  def isAlive: Boolean = null != txDataBag && null != payMarketBag && null != extDataBag && null != lastChainBalance && null != app
+  def isAlive: Boolean = null != txDataBag && null != payMarketBag && null != extDataBag && null != app
 
   def freePossiblyUsedResouces: Unit = {
     // Drop whatever network connections we still have
     WebsocketBus.workers.keys.foreach(WebsocketBus.forget)
     CommsTower.workers.values.map(_.pair).foreach(CommsTower.forget)
     // Clear listeners, destroy actors, finalize state machines
-    try LNParams.chainWallet.becomeShutDown catch none
+    try LNParams.chainWallets.becomeShutDown catch none
     try LNParams.fiatRates.becomeShutDown catch none
     try LNParams.feeRates.becomeShutDown catch none
     try LNParams.cm.becomeShutDown catch none
@@ -107,9 +107,6 @@ object WalletApp {
       txDataBag = new SQLiteTx(miscInterface)
       payMarketBag = new SQLitePayMarket(miscInterface)
       extDataBag = new SQLiteDataExtended(miscInterface)
-
-      val lastBalanceTry = extDataBag.tryGetLastChainBalance(EclairWallet.BIP84)
-      lastChainBalance = lastBalanceTry getOrElse LastChainBalance(0L.sat, 0L.sat)
     }
   }
 
@@ -124,7 +121,7 @@ object WalletApp {
 
     val chanBag = new SQLiteChannel(essentialInterface, channelTxFeesDb = extDataBag.db) {
       override def put(data: PersistentChannelData): PersistentChannelData = {
-        backupSaveWorker.replaceWork("RESTART-DELAYED-BACKUP-SAVING")
+        backupSaveWorker.replaceWork("LN-TRIGGERED-DELAYED-BACKUP-SAVING")
         super.put(data)
       }
     }
@@ -175,17 +172,54 @@ object WalletApp {
 
     // Initialize chain wallet
     import LNParams.{ec, timeout, system}
-    val ewt = ElectrumWalletType.make(EclairWallet.BIP84, secret.seed, LNParams.chainHash)
-    val params = ElectrumWallet.WalletParameters(extDataBag, LNParams.minDustLimit, swipeRange = 10, allowSpendUnconfirmed = true)
-    val pool = system.actorOf(Props(new ElectrumClientPool(LNParams.blockCount, LNParams.chainHash)), "connection-pool")
-    val watcher = system.actorOf(Props(new ElectrumWatcher(LNParams.blockCount, pool)), "channel-tx-watcher")
-    val wallet = system.actorOf(Props(new ElectrumWallet(pool, params, ewt)), "chain-wallet")
-    val catcher = system.actorOf(Props(new WalletEventsCatcher), "events-catcher")
-    val eclairWallet = new ElectrumEclairWallet(wallet, LNParams.chainHash)
-    LNParams.chainWallet = WalletExt(eclairWallet, catcher, pool, watcher)
+    val walletBag = new SQLiteChainWallet(essentialInterface) {
+      override def addChainWallet(info: CompleteChainWalletInfo): Unit = {
+        backupSaveWorker.replaceWork("CHAIN-TRIGGERED-DELAYED-BACKUP-SAVING")
+        super.addChainWallet(info)
+      }
+    }
 
-    // Take care of essential listeners of all kinds
-    // Listeners added here will be called first
+    val params = WalletParameters(extDataBag, walletBag, LNParams.minDustLimit, swipeRange = 10, allowSpendUnconfirmed = true)
+    val pool = system.actorOf(Props apply new ElectrumClientPool(LNParams.blockCount, LNParams.chainHash), "connection-pool")
+    val sync = system.actorOf(Props apply new ElectrumChainSync(pool, params.headerDb, LNParams.chainHash), "chain-sync")
+    val watcher = system.actorOf(Props apply new ElectrumWatcher(LNParams.blockCount, pool), "channel-tx-watcher")
+    val catcher = system.actorOf(Props(new WalletEventsCatcher), "events-catcher")
+    val storedWallets = walletBag.listWallets
+
+    val readyWallets = {
+      if (storedWallets.isEmpty) {
+        val signingWallet = SigningWallet(EclairWallet.BIP84, isRemovable = false)
+        val ewt = ElectrumWalletType.makeSigningWallet(EclairWallet.BIP84, secret.keys.master, LNParams.chainHash)
+        val wallet = system.actorOf(Props apply new ElectrumWallet(pool, sync, params, ewt), s"signing-chain-wallet-single")
+        val infoEmptyData = CompleteChainWalletInfo(signingWallet, ewt.xPub.publicKey, params.emptyPersistentDataBytes, 0L.sat, ewt.tag)
+        val electrumWallet = ElectrumEclairWallet(wallet, ewt, infoEmptyData)
+        walletBag.addChainWallet(infoEmptyData)
+        wallet ! infoEmptyData.data
+        List(electrumWallet)
+      } else {
+        storedWallets.zipWithIndex.toList map {
+          case CompleteChainWalletInfo(core: SigningWallet, pub, data, lastBalance, label) ~ idx =>
+            val ewt = ElectrumWalletType.makeSigningWallet(tag = core.walletType, master = secret.keys.master, LNParams.chainHash)
+            val wallet = system.actorOf(Props apply new ElectrumWallet(pool, sync, params, ewt), s"signing-wallet-$idx")
+            val infoNoPersistent = CompleteChainWalletInfo(core, pub, ByteVector.empty, lastBalance, label)
+            val result = ElectrumEclairWallet(wallet, ewt, infoNoPersistent)
+            wallet ! data
+            result
+
+          case CompleteChainWalletInfo(core: WatchingWallet, pub, data, lastBalance, label) ~ idx =>
+            val ewt = ElectrumWalletType.makeWatchingWallet(tag = core.walletType, xPub = core.xPub, LNParams.chainHash)
+            val wallet = system.actorOf(Props apply new ElectrumWallet(pool, sync, params, ewt), s"watching-wallet-$idx")
+            val infoNoPersistent = CompleteChainWalletInfo(core, pub, ByteVector.empty, lastBalance, label)
+            val result = ElectrumEclairWallet(wallet, ewt, infoNoPersistent)
+            wallet ! data
+            result
+        }
+      }
+    }
+
+    // Chain wallets and sync have already been initialized, they will start interacting with network
+    LNParams.chainWallets = LNParams.WalletExt(readyWallets, catcher, sync, pool, watcher, params.walletDb)
+    // IMPORTANT: listeners added here must be called first
     pf.listeners += LNParams.cm.opm
 
     LNParams.feeRates.listeners += new FeeRatesListener {
@@ -201,19 +235,15 @@ object WalletApp {
         extDataBag.putFiatRatesInfo(newRatesInfo)
     }
 
-    LNParams.chainWallet.eventsCatcher ! new WalletEventsListener {
-      override def onChainTipKnown(event: CurrentBlockCount): Unit =
-        LNParams.cm.initConnect
+    LNParams.chainWallets.catcher ! new WalletEventsListener {
+      override def onChainTipKnown(event: CurrentBlockCount): Unit = LNParams.cm.initConnect
 
-      override def onChainSynchronized(event: WalletReady): Unit = {
-        // The main point of this is to use unix timestamp instead of chain tip stamp to define whether we are deeply in past
-        lastChainBalance = LastChainBalance(event.confirmedBalance, event.unconfirmedBalance, System.currentTimeMillis)
-        extDataBag.putLastChainBalance(lastChainBalance, EclairWallet.BIP84)
-      }
+      override def onChainSynchronized(event: WalletReady): Unit = LNParams.chainWallets = LNParams.chainWallets.lastBalanceUpdated(event)
 
       override def onTransactionReceived(event: TransactionReceived): Unit = {
         def addChainTx(received: Satoshi, sent: Satoshi, description: TxDescription, isIncoming: Long): Unit = txDataBag.db txWrap {
-          txDataBag.addTx(event.tx, event.depth, received, sent, event.feeOpt, event.xPub, description, isIncoming, lastChainBalance.totalBalance, LNParams.fiatRates.info.rates)
+          val lastWalletBalance = LNParams.chainWallets.wallets.find(event.sameXpub).map(_.info.lastBalance).getOrElse(0L.sat).toMilliSatoshi
+          txDataBag.addTx(event.tx, event.depth, received, sent, event.feeOpt, event.xPub, description, isIncoming, lastWalletBalance, LNParams.fiatRates.info.rates)
           txDataBag.addSearchableTransaction(description.queryText(event.tx.txid), event.tx.txid)
         }
 

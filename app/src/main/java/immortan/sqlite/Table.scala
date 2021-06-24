@@ -6,11 +6,8 @@ import java.util.concurrent.atomic.AtomicInteger
 
 trait Table {
   def createStatements: Seq[String]
-
   val Tuple2(id, fts) = Tuple2("_id", "fts4")
-
   val IDAUTOINC = s"$id INTEGER PRIMARY KEY AUTOINCREMENT"
-
   val UNIQUE = "UNIQUE"
 }
 
@@ -32,6 +29,26 @@ object ChannelTable extends Table {
   val selectAllSql = s"SELECT * FROM $table ORDER BY $id ASC"
 
   def createStatements: Seq[String] = s"CREATE TABLE IF NOT EXISTS $table($IDAUTOINC, $channelId TEXT NOT NULL $UNIQUE, $data BLOB NOT NULL)" :: Nil
+}
+
+object ChainWalletTable extends Table {
+  val (table, info, xPub, data, lastBalance, label) = ("cwallet", "info", "xpub", "data", "lastbalance", "label")
+
+  val newSql = s"INSERT OR IGNORE INTO $table ($info, $xPub, $data, $lastBalance, $label) VALUES (?, ?, ?, ?, ?)"
+
+  val killSql = s"DELETE FROM $table WHERE $xPub = ?"
+
+  val updSql = s"UPDATE $table SET $data = ?, $lastBalance = ? WHERE $xPub = ?"
+
+  val updLabelSql = s"UPDATE $table SET $label = ? WHERE $xPub = ?"
+
+  val selectSql = s"SELECT * FROM $table"
+
+  def createStatements: Seq[String] =
+    s"""CREATE TABLE IF NOT EXISTS $table(
+      $IDAUTOINC, $info TEXT NOT NULL, $xPub TEXT NOT NULL $UNIQUE,
+      $data BLOB NOT NULL, $lastBalance INTEGER NOT NULL, $label TEXT NOT NULL
+    )""" :: Nil
 }
 
 object HtlcInfoTable extends Table {

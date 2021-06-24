@@ -515,7 +515,7 @@ trait HasTypicalChainFee {
   }
 
   def replaceOutgoingPayment(ext: PaymentRequestExt, description: PaymentDescription, action: Option[PaymentAction], sentAmount: MilliSatoshi): Unit =
-    LNParams.cm.payBag.replaceOutgoingPayment(ext, description, action, sentAmount, WalletApp.lastChainBalance.totalBalance, LNParams.fiatRates.info.rates, typicalChainTxFee)
+    LNParams.cm.payBag.replaceOutgoingPayment(ext, description, action, sentAmount, LNParams.cm.totalBalance, LNParams.fiatRates.info.rates, typicalChainTxFee)
 }
 
 trait QRActivity extends BaseActivity { me =>

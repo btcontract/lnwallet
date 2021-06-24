@@ -10,6 +10,7 @@ class DBInterfaceSQLiteAndroidEssential(context: Context, name: String) extends 
 
   def onCreate(dbs: SQLiteDatabase): Unit = {
     ChannelTable.createStatements.foreach(dbs.execSQL)
+    ChainWalletTable.createStatements.foreach(dbs.execSQL)
     HtlcInfoTable.createStatements.foreach(dbs.execSQL)
     PreimageTable.createStatements.foreach(dbs.execSQL)
   }

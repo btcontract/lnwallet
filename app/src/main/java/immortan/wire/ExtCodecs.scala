@@ -5,6 +5,7 @@ import scodec.codecs._
 import fr.acinq.eclair.wire.CommonCodecs._
 import fr.acinq.eclair.wire.ChannelCodecs._
 import fr.acinq.eclair.wire.LightningMessageCodecs._
+import fr.acinq.bitcoin.DeterministicWallet.ExtendedPublicKey
 import fr.acinq.eclair.wire.LastCrossSignedState
 import fr.acinq.bitcoin.Crypto.PublicKey
 
@@ -34,4 +35,12 @@ object ExtCodecs {
       (listOfN(uint8, text) withContext "mnemonic") ::
       (varsizebinarydata withContext "seed")
   }.as[WalletSecret]
+
+  val extendedPublicKeyCodec = {
+    ("publickeybytes" | varsizebinarydata) ::
+      ("chaincode" | bytes32) ::
+      ("depth" | uint16) ::
+      ("path" | keyPathCodec) ::
+      ("parent" | int64)
+  }.as[ExtendedPublicKey]
 }

@@ -45,7 +45,7 @@ class QRChainActivity extends QRActivity { me =>
 
   def INIT(state: Bundle): Unit =
     if (WalletApp.isAlive && LNParams.isOperational) {
-      runFutureProcessOnUI(LNParams.chainWallet.wallet.getReceiveAddresses, onFail) { freshAddressMap =>
+      runFutureProcessOnUI(LNParams.chainWallets.lnWallet.getReceiveAddresses, onFail) { freshAddressMap =>
         val layoutManager = new CarouselLayoutManager(CarouselLayoutManager.HORIZONTAL, false)
         layoutManager.setPostLayoutListener(new CarouselZoomPostLayoutListener)
         layoutManager.setMaxVisibleItems(MAX_RECEIVE_ADDRESSES)

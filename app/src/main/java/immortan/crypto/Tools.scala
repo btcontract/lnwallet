@@ -32,8 +32,12 @@ object Tools {
   type Fiat2Btc = Map[String, Double]
   final val SEPARATOR = " "
 
+  def stringToPubKey(xPub: String) = PublicKey(ByteVector fromValidHex xPub)
+
   def trimmed(text: String): String = text.trim.take(144)
+
   def none: PartialFunction[Any, Unit] = { case _ => }
+
   def runAnd[T](result: T)(action: Any): T = result
 
   implicit class Any2Some[T](underlying: T) {

@@ -179,6 +179,8 @@ class ChannelMaster(val payBag: PaymentBag, val chanBag: ChannelBag, val dataBag
     .collect { case fullTag if fullTag.tag == PaymentTagTlv.LOCALLY_SENT && !inFlightOutgoing.contains(fullTag) => fullTag.paymentHash }
     .foreach(payBag.updAbortedOutgoing)
 
+  def totalBalance: MilliSatoshi = all.values.filter(Channel.isOperationalOrWaiting).map(Channel.estimateBalance).sum
+
   def allInChannelOutgoing: Map[FullPaymentTag, OutgoingAdds] = all.values.flatMap(Channel.chanAndCommitsOpt).flatMap(_.commits.allOutgoing).groupBy(_.fullTag)
 
   def allIncomingRevealed: Map[ByteVector32, RevealedLocalFulfills] = all.values.flatMap(Channel.chanAndCommitsOpt).flatMap(_.commits.revealedFulfills).groupBy(_.theirAdd.paymentHash)

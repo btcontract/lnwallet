@@ -2,12 +2,15 @@ package immortan.utils
 
 import immortan._
 import spray.json._
+import immortan.wire.ExtCodecs._
 import fr.acinq.eclair.blockchain.fee._
 import fr.acinq.eclair.wire.CommonCodecs._
 import fr.acinq.eclair.wire.LightningMessageCodecs._
-import immortan.utils.FiatRates.{BitpayItemList, CoinGeckoItemMap}
-import fr.acinq.bitcoin.{ByteVector32, Satoshi}
 
+import fr.acinq.bitcoin.{ByteVector32, Satoshi}
+import immortan.utils.FiatRates.{BitpayItemList, CoinGeckoItemMap}
+import fr.acinq.eclair.blockchain.electrum.db.{ChainWalletInfo, SigningWallet, WatchingWallet}
+import fr.acinq.bitcoin.DeterministicWallet.ExtendedPublicKey
 import immortan.utils.PayRequest.AdditionalRoute
 import fr.acinq.eclair.wire.ChannelUpdate
 import fr.acinq.bitcoin.Crypto.PublicKey
@@ -48,8 +51,29 @@ object ImplicitJsonFormats extends DefaultJsonProtocol {
 
   implicit val satoshiFmt: JsonFormat[Satoshi] = jsonFormat[Long, Satoshi](Satoshi.apply, "underlying")
 
-  implicit val lastChainBalanceFmt: RootJsonFormat[LastChainBalance] = jsonFormat[Satoshi, Satoshi, Long,
-    LastChainBalance](LastChainBalance.apply, "confirmed", "unconfirmed", "timestamp")
+  implicit val extendedPublicKeyFmt: JsonFormat[ExtendedPublicKey] = sCodecJsonFmt(extendedPublicKeyCodec)
+
+  // Chain wallet types
+
+  implicit object ChainWalletInfoFmt extends JsonFormat[ChainWalletInfo] {
+    def read(raw: JsValue): ChainWalletInfo = raw.asJsObject.fields(TAG) match {
+      case JsString("WatchingWallet") => raw.convertTo[WatchingWallet]
+      case JsString("SigningWallet") => raw.convertTo[SigningWallet]
+      case _ => throw new Exception
+    }
+
+    def write(internal: ChainWalletInfo): JsValue = internal match {
+      case walletInfo: WatchingWallet => walletInfo.toJson
+      case walletInfo: SigningWallet => walletInfo.toJson
+      case _ => throw new Exception
+    }
+  }
+
+  implicit val signingWalletFmt: JsonFormat[SigningWallet] = taggedJsonFmt(jsonFormat[String, Boolean,
+    SigningWallet](SigningWallet.apply, "walletType", "isRemovable"), tag = "SigningWallet")
+
+  implicit val watchingWalletFmt: JsonFormat[WatchingWallet] = taggedJsonFmt(jsonFormat[String, ExtendedPublicKey, Boolean,
+    WatchingWallet](WatchingWallet.apply, "walletType", "xPub", "isRemovable"), tag = "WatchingWallet")
 
   // Tx description
 
@@ -189,21 +213,29 @@ object ImplicitJsonFormats extends DefaultJsonProtocol {
 
   // Chain feerates
 
-  implicit val bitGoFeeRateStructureFmt: JsonFormat[BitGoFeeRateStructure] = jsonFormat[Map[String, Long], Long, BitGoFeeRateStructure](BitGoFeeRateStructure.apply, "feeByBlockTarget", "feePerKb")
+  implicit val bitGoFeeRateStructureFmt: JsonFormat[BitGoFeeRateStructure] =
+    jsonFormat[Map[String, Long], Long, BitGoFeeRateStructure](BitGoFeeRateStructure.apply, "feeByBlockTarget", "feePerKb")
 
-  implicit val earnDotComFeeRateItemFmt: JsonFormat[EarnDotComFeeRateItem] = jsonFormat[Long, Long, Long, Long, Long, EarnDotComFeeRateItem](EarnDotComFeeRateItem.apply, "minFee", "maxFee", "memCount", "minDelay", "maxDelay")
+  implicit val earnDotComFeeRateItemFmt: JsonFormat[EarnDotComFeeRateItem] =
+    jsonFormat[Long, Long, Long, Long, Long, EarnDotComFeeRateItem](EarnDotComFeeRateItem.apply, "minFee", "maxFee", "memCount", "minDelay", "maxDelay")
 
-  implicit val earnDotComFeeRateStructureFmt: JsonFormat[EarnDotComFeeRateStructure] = jsonFormat[List[EarnDotComFeeRateItem], EarnDotComFeeRateStructure](EarnDotComFeeRateStructure.apply, "fees")
+  implicit val earnDotComFeeRateStructureFmt: JsonFormat[EarnDotComFeeRateStructure] =
+    jsonFormat[List[EarnDotComFeeRateItem], EarnDotComFeeRateStructure](EarnDotComFeeRateStructure.apply, "fees")
 
-  implicit val feeratePerKBFmt: JsonFormat[FeeratePerKB] = jsonFormat[Satoshi, FeeratePerKB](FeeratePerKB.apply, "feerate")
+  implicit val feeratePerKBFmt: JsonFormat[FeeratePerKB] =
+    jsonFormat[Satoshi, FeeratePerKB](FeeratePerKB.apply, "feerate")
 
-  implicit val feeratesPerKBFmt: JsonFormat[FeeratesPerKB] = jsonFormat[FeeratePerKB, FeeratePerKB, FeeratePerKB, FeeratePerKB, FeeratePerKB, FeeratePerKB, FeeratePerKB, FeeratePerKB, FeeratePerKB,
+  implicit val feeratesPerKBFmt: JsonFormat[FeeratesPerKB] =
+    jsonFormat[FeeratePerKB, FeeratePerKB, FeeratePerKB, FeeratePerKB, FeeratePerKB, FeeratePerKB, FeeratePerKB, FeeratePerKB, FeeratePerKB,
       FeeratesPerKB](FeeratesPerKB.apply, "mempoolMinFee", "block_1", "blocks_2", "blocks_6", "blocks_12", "blocks_36", "blocks_72", "blocks_144", "blocks_1008")
 
-  implicit val feeratePerKwFmt: JsonFormat[FeeratePerKw] = jsonFormat[Satoshi, FeeratePerKw](FeeratePerKw.apply, "feerate")
+  implicit val feeratePerKwFmt: JsonFormat[FeeratePerKw] =
+    jsonFormat[Satoshi, FeeratePerKw](FeeratePerKw.apply, "feerate")
 
-  implicit val feeratesPerKwFmt: JsonFormat[FeeratesPerKw] = jsonFormat[FeeratePerKw, FeeratePerKw, FeeratePerKw, FeeratePerKw, FeeratePerKw, FeeratePerKw, FeeratePerKw, FeeratePerKw, FeeratePerKw,
-    FeeratesPerKw](FeeratesPerKw.apply, "mempoolMinFee", "block_1", "blocks_2", "blocks_6", "blocks_12", "blocks_36", "blocks_72", "blocks_144", "blocks_1008")
+  implicit val feeratesPerKwFmt: JsonFormat[FeeratesPerKw] =
+    jsonFormat[FeeratePerKw, FeeratePerKw, FeeratePerKw, FeeratePerKw, FeeratePerKw, FeeratePerKw, FeeratePerKw, FeeratePerKw, FeeratePerKw,
+      FeeratesPerKw](FeeratesPerKw.apply, "mempoolMinFee", "block_1", "blocks_2", "blocks_6", "blocks_12", "blocks_36", "blocks_72", "blocks_144", "blocks_1008")
 
-  implicit val feeRatesInfoFmt: JsonFormat[FeeRatesInfo] = jsonFormat[FeeratesPerKw, List[FeeratesPerKB], Long, FeeRatesInfo](FeeRatesInfo.apply, "smoothed", "history", "stamp")
+  implicit val feeRatesInfoFmt: JsonFormat[FeeRatesInfo] =
+    jsonFormat[FeeratesPerKw, List[FeeratesPerKB], Long, FeeRatesInfo](FeeRatesInfo.apply, "smoothed", "history", "stamp")
 }

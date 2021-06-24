@@ -1,9 +1,8 @@
 <resources>
     <string name="lang">eng</string>
     <string name="app_name">TESTNET</string>
-    <string name="rate_me">&#9825; Rate me</string>
+    <string name="rateme">&#9825; Rate me</string>
 
-    <string name="sync">SYNC</string>
     <string name="offline">OFFLINE</string>
     <string name="bitcoin_wallet">Bitcoin</string>
     <string name="lightning_wallet">Lightning</string>
@@ -23,7 +22,7 @@
     <string name="setup_recovery_phrase">Recovery phrase only</string>
     <string name="setup_backup_file">Backup + recovery phrase</string>
 
-    <string name="setup_create_new_hint">A fresh Bitcoin wallet with a new BIP-39 recovery phrase will be generated from scratch.</string>
+    <string name="setup_create_new_hint">A completely fresh Bitcoin wallet with a new recovery phrase will be generated from scratch.</string>
 
     <string name="setup_backup_file_hint">
         Provide a file containing Lightning backup, then provide a recovery

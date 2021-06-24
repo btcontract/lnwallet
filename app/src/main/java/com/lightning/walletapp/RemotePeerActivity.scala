@@ -151,12 +151,12 @@ class RemotePeerActivity extends BaseActivity with ExternalDataChecker { me =>
   def fundNewChannel(view: View): Unit = {
     val body = getLayoutInflater.inflate(R.layout.frag_input_on_chain, null).asInstanceOf[ViewGroup]
     val manager = new RateManager(body, extraText = None, visHintRes = -1, LNParams.fiatRates.info.rates, WalletApp.fiatCode)
-    val canSend = LNParams.denomination.parsedWithSign(WalletApp.lastChainBalance.totalBalance, cardIn, cardZero)
-    val canSendFiat = WalletApp.currentMsatInFiatHuman(WalletApp.lastChainBalance.totalBalance)
+    val canSend = LNParams.denomination.parsedWithSign(LNParams.chainWallets.lnWallet.info.lastBalance.toMilliSatoshi, cardIn, cardZero)
+    val canSendFiat = WalletApp.currentMsatInFiatHuman(LNParams.chainWallets.lnWallet.info.lastBalance.toMilliSatoshi)
 
     def attempt(alert: AlertDialog): Unit = {
-      NCFunderOpenHandler.makeFunding(LNParams.chainWallet, manager.resultSat, feeView.rate) foreach { fakeFunding =>
-        new NCFunderOpenHandler(hasInfo.remoteInfo, fakeFunding, feeView.rate, LNParams.chainWallet, LNParams.cm) {
+      NCFunderOpenHandler.makeFunding(LNParams.chainWallets, manager.resultSat, feeView.rate) foreach { fakeFunding =>
+        new NCFunderOpenHandler(hasInfo.remoteInfo, fakeFunding, feeView.rate, LNParams.chainWallets, LNParams.cm) {
           override def onEstablished(chan: ChannelNormal): Unit = disconnectListenersAndFinish
           override def onFailure(reason: Throwable): Unit = revertAndInform(reason)
         }
@@ -168,7 +168,7 @@ class RemotePeerActivity extends BaseActivity with ExternalDataChecker { me =>
     }
 
     lazy val alert = {
-      def setMax(alert1: AlertDialog): Unit = manager.updateText(WalletApp.lastChainBalance.totalBalance)
+      def setMax(alert1: AlertDialog): Unit = manager.updateText(LNParams.chainWallets.lnWallet.info.lastBalance.toMilliSatoshi)
       val builder = titleBodyAsViewBuilder(getString(rpa_open_nc).asColoredView(R.color.cardBitcoin), manager.content)
       mkCheckFormNeutral(attempt, none, setMax, builder, dialog_pay, dialog_cancel, dialog_max)
     }
@@ -189,7 +189,7 @@ class RemotePeerActivity extends BaseActivity with ExternalDataChecker { me =>
     }
 
     lazy val worker = new ThrottledWork[Satoshi, MakeFundingTxResponse] {
-      def work(amount: Satoshi): Observable[MakeFundingTxResponse] = Rx fromFutureOnIo NCFunderOpenHandler.makeFunding(LNParams.chainWallet, amount, feeView.rate)
+      def work(amount: Satoshi): Observable[MakeFundingTxResponse] = Rx fromFutureOnIo NCFunderOpenHandler.makeFunding(LNParams.chainWallets, amount, feeView.rate)
       def process(amount: Satoshi, res: MakeFundingTxResponse): Unit = feeView.update(feeOpt = Some(res.fee.toMilliSatoshi), showIssue = false)
       override def error(exc: Throwable): Unit = feeView.update(feeOpt = None, showIssue = manager.resultSat >= LNParams.minFundingSatoshis)
     }
@@ -220,7 +220,7 @@ class RemotePeerActivity extends BaseActivity with ExternalDataChecker { me =>
       alert.dismiss
 
       // We only need local params to extract defaultFinalScriptPubKey
-      val localParams = LNParams.makeChannelParams(LNParams.chainWallet, isFunder = false, LNParams.minFundingSatoshis)
+      val localParams = LNParams.makeChannelParams(LNParams.chainWallets, isFunder = false, LNParams.minFundingSatoshis)
       new HCOpenHandler(hasInfo.remoteInfo, secret, localParams.defaultFinalScriptPubKey, LNParams.cm) {
         def onEstablished(channel: ChannelHosted): Unit = disconnectListenersAndFinish
         def onFailure(reason: Throwable): Unit = revertAndInform(reason)

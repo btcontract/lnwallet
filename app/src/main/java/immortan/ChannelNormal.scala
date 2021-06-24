@@ -24,10 +24,10 @@ import scala.util.Try
 
 
 object ChannelNormal {
-  def make(initListeners: Set[ChannelListener], normalData: HasNormalCommitments, cw: WalletExt, bag: ChannelBag): ChannelNormal = new ChannelNormal(bag) {
+  def make(initListeners: Set[ChannelListener], normalData: HasNormalCommitments, cw: LNParams.WalletExt, bag: ChannelBag): ChannelNormal = new ChannelNormal(bag) {
     def SEND(messages: LightningMessage*): Unit = CommsTower.sendMany(messages, normalData.commitments.remoteInfo.nodeSpecificPair)
     def STORE(normalData1: PersistentChannelData): PersistentChannelData = bag.put(normalData1)
-    val chainWallet: WalletExt = cw
+    val chainWallet: LNParams.WalletExt = cw
     listeners = initListeners
     doProcess(normalData)
   }
@@ -39,7 +39,8 @@ abstract class ChannelNormal(bag: ChannelBag) extends Channel { me =>
     if (watchSpent) chainWallet.watcher ! WatchSpent(receiver, cs.commitInput.outPoint.txid, cs.commitInput.outPoint.index.toInt, cs.commitInput.txOut.publicKeyScript, BITCOIN_FUNDING_SPENT)
   }
 
-  val chainWallet: WalletExt
+  val chainWallet: LNParams.WalletExt
+
   def doProcess(change: Any): Unit =
     Tuple3(data, change, state) match {
 
@@ -105,7 +106,7 @@ abstract class ChannelNormal(bag: ChannelBag) extends Channel { me =>
         // Persist a channel unconditionally, try to re-publish a funding tx on restart unconditionally (don't react to commit=false, we can't trust remote servers on this)
         StoreBecomeSend(DATA_WAIT_FOR_FUNDING_CONFIRMED(commits, wait.fundingTx.asSome, System.currentTimeMillis, Left(wait.lastSent), deferred = None), WAIT_FUNDING_DONE)
         bag.addChannelTxFee(wait.fundingTxFee, wait.fundingTx.txid.toHex, ChannelTxFeesTable.TAG_CHAIN_FEE)
-        chainWallet.wallet.commit(wait.fundingTx)
+        chainWallet.lnWallet.commit(wait.fundingTx)
 
       // OPENING PHASE: FUNDEE FLOW
 
@@ -449,7 +450,7 @@ abstract class ChannelNormal(bag: ChannelBag) extends Channel { me =>
         // We put back the watch (operation is idempotent) because corresponding event may have been already fired while we were in SLEEPING state
         chainWallet.watcher ! WatchConfirmed(receiver, wait.commitments.commitInput.outPoint.txid, wait.commitments.commitInput.txOut.publicKeyScript, LNParams.minDepthBlocks, BITCOIN_FUNDING_DEPTHOK)
         // Getting remote ChannelReestablish means our chain wallet is online (since we start connecting channels only after it becomes online), it makes sense to retry a funding broadcast here
-        wait.fundingTx.foreach(chainWallet.wallet.commit)
+        wait.fundingTx.foreach(chainWallet.lnWallet.commit)
         BECOME(wait, WAIT_FUNDING_DONE)
 
 

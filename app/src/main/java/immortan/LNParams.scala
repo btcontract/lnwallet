@@ -7,6 +7,7 @@ import fr.acinq.eclair.wire._
 import immortan.crypto.Tools._
 import fr.acinq.eclair.Features._
 import scala.concurrent.duration._
+import com.softwaremill.quicklens._
 import fr.acinq.eclair.blockchain.electrum._
 import scodec.bits.{ByteVector, HexStringSyntax}
 import akka.actor.{ActorRef, ActorSystem, PoisonPill}
@@ -16,7 +17,10 @@ import fr.acinq.eclair.router.Router.{PublicChannel, RouterConf}
 import fr.acinq.eclair.transactions.{DirectedHtlc, RemoteFulfill}
 import fr.acinq.eclair.channel.{ChannelKeys, LocalParams, PersistentChannelData}
 import immortan.sqlite.{ChannelTxFeesSummary, DBInterface, PreparedQuery, RichCursor}
+import fr.acinq.eclair.blockchain.electrum.ElectrumWallet.WalletReady
+import fr.acinq.eclair.blockchain.electrum.db.WalletDb
 import fr.acinq.eclair.router.ChannelUpdateExt
+import fr.acinq.eclair.blockchain.EclairWallet
 import java.util.concurrent.atomic.AtomicLong
 import immortan.SyncMaster.ShortChanIdSet
 import immortan.crypto.Noise.KeyPair
@@ -62,7 +66,7 @@ object LNParams {
 
   var secret: WalletSecret = _
   var chainHash: ByteVector32 = _
-  var chainWallet: WalletExt = _
+  var chainWallets: WalletExt = _
   var cm: ChannelMaster = _
 
   var ourInit: Init = _
@@ -77,7 +81,7 @@ object LNParams {
   val blockCount: AtomicLong = new AtomicLong(0L)
 
   def isOperational: Boolean =
-    null != chainHash && null != secret && null != chainWallet && null != syncParams &&
+    null != chainHash && null != secret && null != chainWallets && null != syncParams &&
       null != trampoline && null != fiatRates && null != feeRates && null != denomination &&
       null != cm && null != cm.inProcessors && null != cm.sendTo && null != routerConf && null != ourInit
 
@@ -106,7 +110,7 @@ object LNParams {
 
   // We make sure force-close pays directly to wallet
   def makeChannelParams(chainWallet: WalletExt, isFunder: Boolean, fundingAmount: Satoshi): LocalParams = {
-    val walletKey = Await.result(chainWallet.wallet.getReceiveAddresses, atMost = 40.seconds).values.head.publicKey
+    val walletKey = Await.result(chainWallet.lnWallet.getReceiveAddresses, atMost = 40.seconds).values.head.publicKey
     makeChannelParams(Script.write(Script.pay2wpkh(walletKey).toList), walletKey, isFunder, fundingAmount)
   }
 
@@ -126,6 +130,13 @@ object LNParams {
   def isPeerSupports(theirInit: Init)(feature: Feature): Boolean = Features.canUseFeature(ourInit.features, theirInit.features, feature)
 
   def defaultTrampolineOn = TrampolineOn(minPayment, maximumMsat = 1000000000L.msat, feeBaseMsat = 10000L.msat, feeProportionalMillionths = 1000L, exponent = 0.0, logExponent = 0.0, minRoutingCltvExpiryDelta)
+
+  // Defined here since when modified it takes implicit parameters
+  case class WalletExt(wallets: List[ElectrumEclairWallet], catcher: ActorRef, sync: ActorRef, pool: ActorRef, watcher: ActorRef, db: WalletDb) extends CanBeShutDown { me =>
+    def lastBalanceUpdated(event: WalletReady): WalletExt = me.modify(_.wallets.eachWhere(event.sameXpub).info.lastBalance).setTo(event.unconfirmedBalance + event.confirmedBalance)
+    override def becomeShutDown: Unit = wallets.map(_.wallet) ++ List(catcher, sync, pool, watcher) foreach (_ ! PoisonPill)
+    lazy val lnWallet: ElectrumEclairWallet = wallets.find(_.ewt.tag == EclairWallet.BIP84).get
+  }
 }
 
 class SyncParams {
@@ -170,22 +181,11 @@ case class RemoteNodeInfo(nodeId: PublicKey, address: NodeAddress, alias: String
 }
 
 case class WalletSecret(keys: LightningNodeKeys, mnemonic: List[String], seed: ByteVector)
-
-case class WalletExt(wallet: ElectrumEclairWallet, eventsCatcher: ActorRef, clientPool: ActorRef, watcher: ActorRef) extends CanBeShutDown {
-  override def becomeShutDown: Unit = List(eventsCatcher, clientPool, watcher).foreach(_ ! PoisonPill)
-}
+case class UpdateAddHtlcExt(theirAdd: UpdateAddHtlc, remoteInfo: RemoteNodeInfo)
+case class SwapInStateExt(state: SwapInState, nodeId: PublicKey)
 
 case class UnknownReestablish(worker: CommsTower.Worker, reestablish: ChannelReestablish) {
   def requestClose: Unit = worker.handler process Error(reestablish.channelId, "please publish your local commitment")
-}
-
-case class UpdateAddHtlcExt(theirAdd: UpdateAddHtlc, remoteInfo: RemoteNodeInfo)
-
-case class SwapInStateExt(state: SwapInState, nodeId: PublicKey)
-
-case class LastChainBalance(confirmed: Satoshi, unconfirmed: Satoshi, stamp: Long = 0L) {
-  def isTooLongAgo: Boolean = System.currentTimeMillis - 3600 * 24 * 7 * 1000L > stamp
-  val totalBalance: MilliSatoshi = confirmed.toMilliSatoshi + unconfirmed
 }
 
 // Interfaces

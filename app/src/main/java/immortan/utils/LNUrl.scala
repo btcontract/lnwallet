@@ -26,6 +26,13 @@ object LNUrl {
     LNUrl(request)
   }
 
+  def checkHost(host: String): Uri = Uri.parse(host) match { case uri =>
+    val isOnion = host.startsWith("http://") && uri.getHost.endsWith(NodeAddress.onionSuffix)
+    val isSSLPlain = host.startsWith("https://") && !uri.getHost.endsWith(NodeAddress.onionSuffix)
+    require(isSSLPlain || isOnion, "URI is neither Plain/HTTPS nor Onion/HTTP request")
+    uri
+  }
+
   def guardResponse(raw: String): String = {
     val validJson = Try(raw.parseJson.asJsObject.fields)
     val hasError = validJson.map(_ apply "reason").map(json2String)
@@ -34,15 +41,12 @@ object LNUrl {
     raw
   }
 
-  def checkHost(host: String): Uri = Uri.parse(host) match { case uri =>
-    val isOnion = host.startsWith("http://") && uri.getHost.endsWith(NodeAddress.onionSuffix)
-    val isSSLPlain = host.startsWith("https://") && !uri.getHost.endsWith(NodeAddress.onionSuffix)
-    require(isSSLPlain || isOnion, "URI is neither Plain/HTTPS nor Onion/HTTP request")
-    uri
-  }
+  def noRedirectGuardedGet(url: String): String =
+    guardResponse(HttpRequest.get(url, false).connectTimeout(15000)
+      .followRedirects(false).header("Connection", "close").body)
 
   def level2DataResponse(bld: Uri.Builder): Observable[String] = Rx.ioQueue.map { _ =>
-    guardResponse(HttpRequest.get(bld.build.toString, false).connectTimeout(15000).header("Connection", "close").body)
+    noRedirectGuardedGet(bld.build.toString)
   }
 }
 
@@ -60,7 +64,7 @@ case class LNUrl(request: String) {
   }
 
   def level1DataResponse: Observable[LNUrlData] = Rx.ioQueue.map { _ =>
-    val lnUrlData = to[LNUrlData](LNUrl guardResponse HttpRequest.get(uri.toString, false).connectTimeout(15000).header("Connection", "close").body)
+    val lnUrlData = to[LNUrlData](LNUrl noRedirectGuardedGet uri.toString)
     require(lnUrlData.checkAgainstParent(this), "1st/2nd level callback domain mismatch")
     lnUrlData
   }
