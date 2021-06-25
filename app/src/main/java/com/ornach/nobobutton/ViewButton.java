@@ -10,7 +10,7 @@ import androidx.annotation.AttrRes;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
-import com.lightning.walletapp.R;
+import com.btcontract.wallet.R;
 
 
 public class ViewButton extends LinearLayout {

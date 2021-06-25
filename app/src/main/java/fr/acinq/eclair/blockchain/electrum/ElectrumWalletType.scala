@@ -10,15 +10,15 @@ import scala.util.Try
 
 
 object ElectrumWalletType {
-  def makeSigningWallet(tag: String, master: ExtendedPrivateKey, chainHash: ByteVector32): ElectrumWalletType = tag match {
-    case EclairWallet.BIP32 => makeSigningWallet(EclairWallet.BIP32, xPriv32(master, chainHash), chainHash)
-    case EclairWallet.BIP44 => makeSigningWallet(EclairWallet.BIP44, xPriv44(master, chainHash), chainHash)
-    case EclairWallet.BIP49 => makeSigningWallet(EclairWallet.BIP49, xPriv49(master, chainHash), chainHash)
-    case EclairWallet.BIP84 => makeSigningWallet(EclairWallet.BIP84, xPriv84(master, chainHash), chainHash)
+  def makeSigningType(tag: String, master: ExtendedPrivateKey, chainHash: ByteVector32): ElectrumWalletType = tag match {
+    case EclairWallet.BIP32 => makeSigningType(EclairWallet.BIP32, xPriv32(master, chainHash), chainHash)
+    case EclairWallet.BIP44 => makeSigningType(EclairWallet.BIP44, xPriv44(master, chainHash), chainHash)
+    case EclairWallet.BIP49 => makeSigningType(EclairWallet.BIP49, xPriv49(master, chainHash), chainHash)
+    case EclairWallet.BIP84 => makeSigningType(EclairWallet.BIP84, xPriv84(master, chainHash), chainHash)
     case _ => throw new RuntimeException
   }
 
-  def makeSigningWallet(tag: String, secrets: AccountAndXPrivKey, chainHash: ByteVector32): ElectrumWalletType = tag match {
+  def makeSigningType(tag: String, secrets: AccountAndXPrivKey, chainHash: ByteVector32): ElectrumWalletType = tag match {
     case EclairWallet.BIP32 => ElectrumWallet32(secrets.asSome, publicKey(secrets.xPriv), chainHash)
     case EclairWallet.BIP44 => ElectrumWallet32(secrets.asSome, publicKey(secrets.xPriv), chainHash)
     case EclairWallet.BIP49 => ElectrumWallet49(secrets.asSome, publicKey(secrets.xPriv), chainHash)
@@ -26,7 +26,7 @@ object ElectrumWalletType {
     case _ => throw new RuntimeException
   }
 
-  def makeWatchingWallet(tag: String, xPub: ExtendedPublicKey, chainHash: ByteVector32): ElectrumWalletType = tag match {
+  def makeWatchingType(tag: String, xPub: ExtendedPublicKey, chainHash: ByteVector32): ElectrumWalletType = tag match {
     case EclairWallet.BIP32 => ElectrumWallet32(secrets = None, xPub, chainHash)
     case EclairWallet.BIP44 => ElectrumWallet32(secrets = None, xPub, chainHash)
     case EclairWallet.BIP49 => ElectrumWallet49(secrets = None, xPub, chainHash)
