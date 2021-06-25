@@ -198,20 +198,20 @@ object WalletApp {
         List(electrumWallet)
       } else {
         storedWallets.zipWithIndex.toList map {
-          case CompleteChainWalletInfo(core: SigningWallet, pub, data, lastBalance, label) ~ idx =>
-            val ewt = ElectrumWalletType.makeSigningWallet(tag = core.walletType, master = secret.keys.master, LNParams.chainHash)
+          case CompleteChainWalletInfo(core: SigningWallet, pub, persistent, lastBalance, label) ~ idx =>
+            val ewt = ElectrumWalletType.makeSigningWallet(tag = core.walletType, secret.keys.master, LNParams.chainHash)
             val wallet = system.actorOf(Props apply new ElectrumWallet(pool, sync, params, ewt), s"signing-wallet-$idx")
             val infoNoPersistent = CompleteChainWalletInfo(core, pub, ByteVector.empty, lastBalance, label)
             val result = ElectrumEclairWallet(wallet, ewt, infoNoPersistent)
-            wallet ! data
+            wallet ! persistent
             result
 
-          case CompleteChainWalletInfo(core: WatchingWallet, pub, data, lastBalance, label) ~ idx =>
-            val ewt = ElectrumWalletType.makeWatchingWallet(tag = core.walletType, xPub = core.xPub, LNParams.chainHash)
+          case CompleteChainWalletInfo(core: WatchingWallet, pub, persistent, lastBalance, label) ~ idx =>
+            val ewt = ElectrumWalletType.makeWatchingWallet(tag = core.walletType, core.xPub, LNParams.chainHash)
             val wallet = system.actorOf(Props apply new ElectrumWallet(pool, sync, params, ewt), s"watching-wallet-$idx")
             val infoNoPersistent = CompleteChainWalletInfo(core, pub, ByteVector.empty, lastBalance, label)
             val result = ElectrumEclairWallet(wallet, ewt, infoNoPersistent)
-            wallet ! data
+            wallet ! persistent
             result
         }
       }

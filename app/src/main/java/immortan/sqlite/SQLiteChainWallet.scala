@@ -2,8 +2,6 @@ package immortan.sqlite
 
 import spray.json._
 import immortan.utils.ImplicitJsonFormats._
-
-import java.lang.{Long => JLong}
 import fr.acinq.eclair.blockchain.electrum.db.{ChainWalletInfo, CompleteChainWalletInfo, WalletDb}
 import fr.acinq.eclair.blockchain.electrum.db.sqlite.SqliteWalletDb.persistentDataCodec
 import fr.acinq.eclair.blockchain.electrum.PersistentData
@@ -17,11 +15,11 @@ class SQLiteChainWallet(val db: DBInterface) extends WalletDb {
 
   def addChainWallet(info: CompleteChainWalletInfo): Unit =
     db.change(ChainWalletTable.newSql, info.core.toJson.compactPrint, info.pub.toString,
-      info.data.toArray, info.lastBalance.toLong: JLong, info.label)
+      info.data.toArray, info.lastBalance.toLong: java.lang.Long, info.label)
 
   def persist(data: PersistentData, lastBalance: Satoshi, pub: PublicKey): Unit =
     db.change(ChainWalletTable.updSql, persistentDataCodec.encode(data).require.toByteArray,
-      lastBalance.toLong: JLong, pub.toString)
+      lastBalance.toLong: java.lang.Long, pub.toString)
 
   def updateLabel(label: String, pub: PublicKey): Unit = db.change(ChainWalletTable.updLabelSql, label, pub.toString)
 

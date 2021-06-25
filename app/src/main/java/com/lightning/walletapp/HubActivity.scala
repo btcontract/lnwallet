@@ -414,7 +414,6 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
       // First, update payments to highlight nearly expired revealed incoming now that chain tip it known
       // Second, check if any of unconfirmed chain transactions became confirmed or double-spent
       UITask(walletCards.updateView).run
-      println(s"-- got wallet ready")
 
       for {
         transactionInfo <- txInfos if !transactionInfo.isDeeplyBuried && !transactionInfo.isDoubleSpent
