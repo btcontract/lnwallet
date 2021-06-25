@@ -7,6 +7,7 @@
     <!-- Payment list + header -->
 
     <ListView
+        android:scrollbars="none"
         android:id="@+id/itemsList"
         android:clipToPadding="false"
         android:footerDividersEnabled="false"

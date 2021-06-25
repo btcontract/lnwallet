@@ -233,6 +233,7 @@
 
                     <TextView
                         android:maxLines="1"
+                        android:ellipsize="end"
                         android:id="@+id/amount"
                         android:textStyle="bold"
                         android:layout_toStartOf="@+id/meta"

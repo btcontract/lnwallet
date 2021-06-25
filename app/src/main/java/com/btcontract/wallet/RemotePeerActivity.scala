@@ -123,14 +123,10 @@ class RemotePeerActivity extends BaseActivity with ExternalDataChecker { me =>
   override def onBackPressed: Unit =
     whenBackPressed.run
 
-  override def onResume: Unit = {
-    checkExternalData(whenBackPressed)
-    super.onResume
-  }
-
   def INIT(state: Bundle): Unit =
     if (WalletApp.isAlive && LNParams.isOperational) {
       setContentView(R.layout.activity_remote_peer)
+      checkExternalData(whenBackPressed)
     } else {
       WalletApp.freePossiblyUsedResouces
       me exitTo ClassNames.mainActivityClass

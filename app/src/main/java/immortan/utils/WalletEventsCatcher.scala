@@ -1,6 +1,5 @@
 package immortan.utils
 
-import fr.acinq.eclair.blockchain.electrum.ElectrumClient._
 import fr.acinq.eclair.blockchain.electrum.ElectrumWallet._
 import fr.acinq.eclair.blockchain.CurrentBlockCount
 import immortan.crypto.Tools.none

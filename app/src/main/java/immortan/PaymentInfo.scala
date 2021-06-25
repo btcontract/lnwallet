@@ -121,7 +121,6 @@ case class TxInfo(txString: String, txidString: String, depth: Long, receivedSat
 
   val isIncoming: Boolean = 1L == incoming
   val isDoubleSpent: Boolean = 1L == doubleSpent
-  val isDeeplyBuried: Boolean = depth >= LNParams.minDepthBlocks
   lazy val fiatRateSnapshot: Fiat2Btc = to[Fiat2Btc](fiatRatesString)
   lazy val description: TxDescription = to[TxDescription](descriptionString)
   lazy val txid: ByteVector32 = ByteVector32.fromValidHex(txidString)

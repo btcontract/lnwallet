@@ -248,13 +248,7 @@ trait BaseActivity extends AppCompatActivity { me =>
 
   // Scanner
 
-  final private val scannerRequestCode = 101
-
-  type GrantResults = Array[Int]
-
-  override def onRequestPermissionsResult(reqCode: Int, permissions: Array[String], grantResults: GrantResults): Unit =
-    if (reqCode == scannerRequestCode && grantResults.nonEmpty && grantResults.head == PackageManager.PERMISSION_GRANTED)
-      callScanner(null)
+  final val scannerRequestCode = 101
 
   def callScanner(checker: ExternalDataChecker): Unit = {
     val allowed = ContextCompat.checkSelfPermission(me, android.Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED

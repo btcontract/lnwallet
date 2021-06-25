@@ -22,6 +22,7 @@ class QRSplitActivity extends QRActivity with ExternalDataChecker with HasTypica
       setContentView(R.layout.activity_qr_split_invoice)
       val splitCaption = getString(R.string.dialog_split_ln)
       splitQrCaption setText splitCaption.format(new String).html
+      checkExternalData(noneRunnable)
     } else {
       WalletApp.freePossiblyUsedResouces
       me exitTo ClassNames.mainActivityClass
@@ -53,10 +54,5 @@ class QRSplitActivity extends QRActivity with ExternalDataChecker with HasTypica
   override def checkExternalData(whenNone: Runnable): Unit = InputParser.checkAndMaybeErase {
     case splitParams: SplitParams => showSplitInvoice(splitParams)
     case _ => finish
-  }
-
-  override def onResume: Unit = {
-    checkExternalData(noneRunnable)
-    super.onResume
   }
 }

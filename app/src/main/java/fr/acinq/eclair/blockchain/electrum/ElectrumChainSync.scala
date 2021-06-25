@@ -29,21 +29,18 @@ class ElectrumChainSync(client: ActorRef, headerDb: HeaderDb, chainHash: ByteVec
 
   when(WAITING_FOR_TIP) {
     case Event(response: ElectrumClient.HeaderSubscriptionResponse, blockchain) if response.height < blockchain.height =>
-      log.info("Electrum peer is behind us, killing and switching to new one")
       goto(DISCONNECTED) replying PoisonPill
 
     case Event(_: ElectrumClient.HeaderSubscriptionResponse, blockchain) if blockchain.bestchain.isEmpty =>
       client ! ElectrumClient.GetHeaders(blockchain.checkpoints.size * RETARGETING_PERIOD, RETARGETING_PERIOD)
-      log.info("Performing full chain sync")
       goto(SYNCING)
 
     case Event(response: ElectrumClient.HeaderSubscriptionResponse, blockchain) if response.header == blockchain.tip.header =>
       context.system.eventStream.publish(blockchain)
       goto(RUNNING)
 
-    case Event(response: ElectrumClient.HeaderSubscriptionResponse, blockchain) =>
+    case Event(_: ElectrumClient.HeaderSubscriptionResponse, blockchain) =>
       client ! ElectrumClient.GetHeaders(blockchain.tip.height + 1, RETARGETING_PERIOD)
-      log.info(s"Syncing headers ${blockchain.height} to ${response.height}")
       goto(SYNCING)
   }
 

@@ -94,12 +94,14 @@
                     android:layout_marginEnd="3dp"
                     android:textColor="@color/colorAccent"
                     android:text="@string/bitcoin_wallet"
+                    android:layout_centerVertical="true"
                     android:id="@+id/unusedAnchorId1"
                     style="@style/BoundedView"/>
 
                 <TextView
                     android:id="@+id/totalBitcoinBalance"
                     android:layout_alignParentEnd="true"
+                    android:layout_centerVertical="true"
                     style="@style/Emphasized"/>
 
                 <!-- No coins present -->
@@ -121,30 +123,45 @@
             android:layout_marginTop="5dp"
             style="@style/Card">
 
-            <RelativeLayout
+            <LinearLayout
                 android:padding="15dp"
+                android:orientation="vertical"
                 android:background="@drawable/panel_lightning_bg"
                 style="@style/FillingView">
 
-                <TextView
-                    android:layout_marginEnd="3dp"
-                    android:textColor="@color/colorAccent"
-                    android:text="@string/lightning_wallet"
-                    android:id="@+id/unusedAnchorId2"
-                    style="@style/BoundedView"/>
+                <!-- Text and balance -->
 
-                <TextView
-                    android:id="@+id/totalLightningBalance"
-                    android:layout_alignParentEnd="true"
-                    style="@style/Emphasized"/>
+                <RelativeLayout style="@style/FillingView">
 
-                <!-- Channel state and in-flight payment indicators -->
+                    <TextView
+                        android:layout_marginEnd="3dp"
+                        android:textColor="@color/colorAccent"
+                        android:text="@string/lightning_wallet"
+                        android:layout_centerVertical="true"
+                        android:id="@+id/unusedAnchorId2"
+                        style="@style/BoundedView"/>
+
+                    <TextView
+                        android:id="@+id/totalLightningBalance"
+                        android:layout_alignParentEnd="true"
+                        android:layout_centerVertical="true"
+                        style="@style/Emphasized"/>
+
+                    <ImageView
+                        android:background="@drawable/baseline_add_24"
+                        android:layout_centerVertical="true"
+                        android:layout_alignParentEnd="true"
+                        android:id="@+id/addChannelTip"
+                        style="@style/BoundedView"/>
+
+                </RelativeLayout>
+
+                <!-- Indicators and payment state -->
 
                 <LinearLayout
                     android:gravity="center"
                     android:paddingTop="10dp"
                     android:id="@+id/channelStateIndicators"
-                    android:layout_below="@+id/totalLightningBalance"
                     android:orientation="horizontal"
                     style="@style/FillingView">
 
@@ -153,6 +170,8 @@
                         android:layout_height="wrap_content"
                         android:layout_width="0dp"
                         android:layout_weight="1"/>
+
+                    <!-- Payment state line -->
 
                     <LinearLayout
                         android:orientation="horizontal"
@@ -175,16 +194,7 @@
 
                     </LinearLayout>
                 </LinearLayout>
-
-                <!-- No channels present -->
-
-                <ImageView
-                    style="@style/BoundedView"
-                    android:id="@+id/addChannelTip"
-                    android:layout_alignParentEnd="true"
-                    android:background="@drawable/baseline_add_24"/>
-
-            </RelativeLayout>
+            </LinearLayout>
         </androidx.cardview.widget.CardView>
 
         <!-- Button and search bar -->

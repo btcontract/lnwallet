@@ -9,10 +9,10 @@ import fr.acinq.eclair.channel._
 import scala.concurrent.duration._
 import com.softwaremill.quicklens._
 import com.btcontract.wallet.Colors._
-import scala.collection.JavaConverters._
 import com.btcontract.wallet.R.string._
-import immortan.utils.ImplicitJsonFormats._
+import scala.collection.JavaConverters._
 import com.btcontract.wallet.HubActivity._
+import immortan.utils.ImplicitJsonFormats._
 
 import java.lang.{Integer => JInt}
 import immortan.sqlite.{SQLiteData, Table}
@@ -28,8 +28,8 @@ import fr.acinq.eclair.blockchain.fee.{FeeratePerKw, FeeratePerVByte}
 import fr.acinq.eclair.blockchain.electrum.ElectrumWallet.WalletReady
 import com.google.android.material.button.{MaterialButton, MaterialButtonToggleGroup}
 import com.google.android.material.button.MaterialButtonToggleGroup.OnButtonCheckedListener
-import com.btcontract.wallet.BaseActivity.StringOps
 import org.ndeftools.util.activity.NfcReaderActivity
+import com.btcontract.wallet.BaseActivity.StringOps
 import concurrent.ExecutionContext.Implicits.global
 import fr.acinq.eclair.transactions.RemoteFulfill
 import com.github.mmin18.widget.RealtimeBlurView
@@ -40,6 +40,7 @@ import immortan.ChannelListener.Malfunction
 import fr.acinq.eclair.blockchain.TxAndFee
 import com.indicator.ChannelIndicatorLine
 import androidx.appcompat.app.AlertDialog
+import android.content.pm.PackageManager
 import java.util.concurrent.TimeUnit
 import android.content.Intent
 import org.ndeftools.Message
@@ -263,14 +264,14 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
     }
 
     private def setTxMeta(info: TxInfo): Unit = {
-      if (info.isDeeplyBuried) meta setText WalletApp.app.when(info.date).html
-      else if (info.isDoubleSpent) meta setText getString(tx_state_double_spent).html
+      if (info.isDoubleSpent) meta setText getString(tx_state_double_spent).html
+      else if (info.depth >= LNParams.minDepthBlocks) meta setText WalletApp.app.when(info.date).html
       else if (info.depth > 0) meta setText getString(tx_state_confs).format(info.depth, LNParams.minDepthBlocks).html
       else meta setText getString(tx_state_unconfirmed).html
     }
 
     private def txStatusIcon(info: TxInfo): Int = {
-      if (info.isDeeplyBuried) R.drawable.baseline_done_24
+      if (info.depth >= LNParams.minDepthBlocks) R.drawable.baseline_done_24
       else if (info.isDoubleSpent) R.drawable.baseline_block_24
       else R.drawable.baseline_hourglass_empty_24
     }
@@ -416,12 +417,10 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
       UITask(walletCards.updateView).run
 
       for {
-        transactionInfo <- txInfos if !transactionInfo.isDeeplyBuried && !transactionInfo.isDoubleSpent
+        transactionInfo <- txInfos if transactionInfo.depth < LNParams.minDepthBlocks && !transactionInfo.isDoubleSpent
         (newDepth, newDoubleSpent) <- LNParams.chainWallets.lnWallet.doubleSpent(transactionInfo.tx)
         if newDepth != transactionInfo.depth || newDoubleSpent != transactionInfo.isDoubleSpent
-        _ = WalletApp.txDataBag.updStatus(transactionInfo.txid, newDepth, newDoubleSpent)
-        // Simulate preimage revealed using a txid to throttle multiple vibrations
-      } ChannelMaster.hashRevealStream.onNext(transactionInfo.txid)
+      } WalletApp.txDataBag.updStatus(transactionInfo.txid, newDepth, newDoubleSpent)
     }
   }
 
@@ -503,6 +502,11 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
     else if (isSearchOn) cancelSearch(null)
     else super.onBackPressed
   }
+
+  type GrantResults = Array[Int]
+  override def onRequestPermissionsResult(reqCode: Int, permissions: Array[String], grantResults: GrantResults): Unit =
+    if (reqCode == scannerRequestCode && grantResults.nonEmpty && grantResults.head == PackageManager.PERMISSION_GRANTED)
+      callScanner(me)
 
   override def checkExternalData(whenNone: Runnable): Unit = InputParser.checkAndMaybeErase {
     case bitcoinUri: BitcoinUri if bitcoinUri.isValid => bringSendBitcoinPopup(bitcoinUri)

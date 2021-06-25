@@ -26,6 +26,7 @@ class QRInvoiceActivity extends QRActivity with ExternalDataChecker { me =>
     if (WalletApp.isAlive && LNParams.isOperational) {
       setContentView(R.layout.activity_qr_lightning_invoice)
       invoiceQrCaption.setText(getString(R.string.dialog_receive_ln).html)
+      checkExternalData(noneRunnable)
     } else {
       WalletApp.freePossiblyUsedResouces
       me exitTo ClassNames.mainActivityClass
@@ -46,11 +47,6 @@ class QRInvoiceActivity extends QRActivity with ExternalDataChecker { me =>
   override def checkExternalData(whenNone: Runnable): Unit = InputParser.checkAndMaybeErase {
     case paymentRequestExt: PaymentRequestExt => showInvoice(paymentRequestExt)
     case _ => finish
-  }
-
-  override def onResume: Unit = {
-    checkExternalData(noneRunnable)
-    super.onResume
   }
 
   override def onDestroy: Unit = {
