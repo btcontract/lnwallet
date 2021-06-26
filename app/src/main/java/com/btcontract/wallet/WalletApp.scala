@@ -10,6 +10,7 @@ import com.btcontract.wallet.sqlite._
 import com.btcontract.wallet.R.string._
 import fr.acinq.eclair.blockchain.electrum._
 
+import android.widget.{EditText, Toast}
 import android.os.{Build, VibrationEffect}
 import android.net.{ConnectivityManager, NetworkCapabilities}
 import fr.acinq.bitcoin.{Block, ByteVector32, Satoshi, SatoshiLong}
@@ -20,6 +21,7 @@ import android.content.{ClipData, ClipboardManager, Context, Intent, SharedPrefe
 import fr.acinq.eclair.blockchain.electrum.ElectrumWallet.{TransactionReceived, WalletReady}
 import com.btcontract.wallet.utils.{AwaitService, DelayedNotification, LocalBackup, WebsocketBus}
 import fr.acinq.eclair.blockchain.electrum.db.{CompleteChainWalletInfo, SigningWallet, WatchingWallet}
+import android.view.inputmethod.InputMethodManager
 import fr.acinq.eclair.router.Router.RouterConf
 import androidx.appcompat.app.AppCompatDelegate
 import immortan.utils.Denomination.formatFiat
@@ -28,7 +30,6 @@ import android.text.format.DateFormat
 import androidx.multidex.MultiDex
 import rx.lang.scala.Observable
 import scodec.bits.ByteVector
-import android.widget.Toast
 import akka.actor.Props
 import java.util.Date
 import scala.util.Try
@@ -354,6 +355,16 @@ class WalletApp extends Application { me =>
     val manager = getSystemService(Context.CONNECTIVITY_SERVICE).asInstanceOf[ConnectivityManager]
     manager.getAllNetworks.exists(manager getNetworkCapabilities _ hasTransport NetworkCapabilities.TRANSPORT_VPN)
   } getOrElse false
+
+  def showKeyboard(field: EditText): Unit = Try {
+    val imm = getSystemService(Context.INPUT_METHOD_SERVICE).asInstanceOf[InputMethodManager]
+    imm.showSoftInput(field, InputMethodManager.SHOW_IMPLICIT)
+  }
+
+  def hideKeyboard(field: EditText): Unit = Try {
+    val imm = getSystemService(Context.INPUT_METHOD_SERVICE).asInstanceOf[InputMethodManager]
+    imm.hideSoftInputFromWindow(field.getWindowToken, 0)
+  }
 
   def copy(text: String): Unit = {
     val bufferContent = ClipData.newPlainText("wallet", text)

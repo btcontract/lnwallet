@@ -730,17 +730,19 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
   def isSearchOn: Boolean = walletCards.searchWrap.getVisibility == View.VISIBLE
 
   def bringSearch(view: View): Unit = {
-    TransitionManager.beginDelayedTransition(walletCards.view)
-    walletCards.defaultHeader setVisibility View.GONE
-    walletCards.searchWrap setVisibility View.VISIBLE
     walletCards.searchField.requestFocus
+    WalletApp.app.showKeyboard(walletCards.searchField)
+    TransitionManager.beginDelayedTransition(walletCards.view)
+    walletCards.defaultHeader.setVisibility(View.GONE)
+    walletCards.searchWrap.setVisibility(View.VISIBLE)
   }
 
   def cancelSearch(view: View): Unit = {
+    walletCards.searchField.setText(new String)
+    WalletApp.app.hideKeyboard(walletCards.searchField)
     TransitionManager.beginDelayedTransition(walletCards.view)
     walletCards.defaultHeader.setVisibility(View.VISIBLE)
     walletCards.searchWrap.setVisibility(View.GONE)
-    walletCards.searchField.setText(new String)
   }
 
   def bringSendFromClipboard(view: View): Unit = {
