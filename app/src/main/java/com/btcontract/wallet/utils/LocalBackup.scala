@@ -2,6 +2,10 @@ package com.btcontract.wallet.utils
 
 import android.os.Environment._
 import fr.acinq.bitcoin.{Block, ByteVector32, Crypto}
+import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
+import android.content.pm.PackageManager
+import androidx.core.app.ActivityCompat
 import fr.acinq.eclair.randomBytes
 import com.google.common.io.Files
 import android.content.Context
@@ -28,6 +32,10 @@ object LocalBackup { me =>
     val specifics = s"${me getNetwork chainHash}-${Crypto.hash160(seed).take(4).toHex}"
     new File(downloadsDir, s"$BACKUP_NAME-$specifics$BACKUP_EXTENSION")
   }
+
+  final val LOCAL_BACKUP_REQUEST_NUMBER = 105
+  def askPermission(activity: AppCompatActivity): Unit = ActivityCompat.requestPermissions(activity, Array(android.Manifest.permission.WRITE_EXTERNAL_STORAGE), LOCAL_BACKUP_REQUEST_NUMBER)
+  def isAllowed(activity: AppCompatActivity): Boolean = ContextCompat.checkSelfPermission(activity, android.Manifest.permission.WRITE_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED
 
   def downloadsDir: File = getExternalStoragePublicDirectory(DIRECTORY_DOWNLOADS)
 

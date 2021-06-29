@@ -36,9 +36,7 @@ object InputParser {
 
   def parse(rawInput: String): Any = rawInput take 2880 match {
     case uriLink if uriLink.startsWith(bitcoin) => BitcoinUri.fromRaw(uriLink)
-    case uriLink if uriLink.startsWith(lightning) => PaymentRequestExt.fromUri(uriLink)
     case uriLink if uriLink.startsWith(bitcoin.toUpperCase) => BitcoinUri.fromRaw(uriLink.toLowerCase)
-    case uriLink if uriLink.startsWith(lightning.toUpperCase) => PaymentRequestExt.fromUri(uriLink.toLowerCase)
     case nodeLink(key, host, port) => RemoteNodeInfo(PublicKey.fromBin(ByteVector fromValidHex key), NodeAddress.fromParts(host, port.toInt), host)
     case shortNodeLink(key, host) => RemoteNodeInfo(PublicKey.fromBin(ByteVector fromValidHex key), NodeAddress.fromParts(host, port = 9735), host)
     case lnPayReq(prefix, data) => PaymentRequestExt.fromRaw(s"$prefix$data")
@@ -48,14 +46,6 @@ object InputParser {
 }
 
 object PaymentRequestExt {
-  def fromUri(raw: String): PaymentRequestExt = {
-    val invoiceWithoutPrefix = raw.split(':').drop(1).mkString.replace("//", "")
-    val lnPayReq(invoicePrefix, invoiceData) = invoiceWithoutPrefix
-    val uri = Try(Uri parse s"$lightning//$invoiceWithoutPrefix")
-    val pr = PaymentRequest.read(s"$invoicePrefix$invoiceData")
-    PaymentRequestExt(uri, pr, s"$invoicePrefix$invoiceData")
-  }
-
   def fromRaw(raw: String): PaymentRequestExt = {
     val noUri: Try[Uri] = Failure(new RuntimeException)
     PaymentRequestExt(noUri, PaymentRequest.read(raw), raw)

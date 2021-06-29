@@ -55,8 +55,9 @@ object BaseActivity {
     def humanFour: String = source.grouped(4).mkString(s"\u0020")
 
     def shortAddress: String = {
+      val secondFirst = source.slice(4, 8)
       val doubleSmall = "<sup><small><small>&#8230;</small></small></sup>"
-      s"${source take 4}&#160;$doubleSmall&#160;${source takeRight 4}"
+      s"${source take 4}&#160;$secondFirst&#160;$doubleSmall&#160;${source takeRight 4}"
     }
   }
 }

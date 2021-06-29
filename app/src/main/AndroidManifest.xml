@@ -1,4 +1,6 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.btcontract.wallet">
+<manifest
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.btcontract.wallet">
 
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>
@@ -44,7 +46,7 @@
 
         <activity
             android:name="MainActivity"
-            android:theme="@style/AppThemeNoActionBar">
+            android:theme="@style/AppThemeNoActionBarMain">
 
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
@@ -65,7 +67,10 @@
                 <category android:name="android.intent.category.BROWSABLE"/>
                 <data android:scheme="lightning"/>
                 <data android:scheme="bitcoin"/>
-                <data android:scheme="lnurl"/>
+                <data android:scheme="lnurla"/>
+                <data android:scheme="lnurlc"/>
+                <data android:scheme="lnurlp"/>
+                <data android:scheme="lnurlw"/>
                 <data android:scheme="blw"/>
             </intent-filter>
 

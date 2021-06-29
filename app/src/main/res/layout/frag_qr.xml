@@ -14,13 +14,13 @@
 
     <ImageView
         android:id="@+id/qrCode"
-        android:layout_width="220dp"
-        android:layout_height="220dp"/>
+        android:layout_width="260dp"
+        android:layout_height="260dp"/>
 
     <LinearLayout
         android:gravity="center"
         android:paddingTop="10dp"
-        android:layout_width="220dp"
+        android:layout_width="260dp"
         android:orientation="horizontal"
         android:layout_height="wrap_content">
 

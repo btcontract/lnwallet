@@ -35,6 +35,7 @@ import fr.acinq.eclair.transactions.RemoteFulfill
 import com.github.mmin18.widget.RealtimeBlurView
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.slider.Slider
+import com.btcontract.wallet.utils.LocalBackup
 import androidx.transition.TransitionManager
 import immortan.ChannelListener.Malfunction
 import fr.acinq.eclair.blockchain.TxAndFee
@@ -174,7 +175,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
         case info: RelayedPreimageInfo =>
           setVis(isVisible = false, labelIcon)
           setVis(isVisible = false, detailsAndStatus)
-          meta setText WalletApp.app.when(info.date).html
+          meta setText WalletApp.app.when(info.date, WalletApp.app.dateFormat).html
           amount setText LNParams.denomination.directedWithSign(info.earned, 0L.msat, cardOut, cardIn, cardZero, isPlus = true).html
           nonLinkContainer setBackgroundResource paymentBackground(info.fullTag)
           setVis(isVisible = true, nonLinkContainer)
@@ -221,7 +222,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
           setVis(isVisible = true, linkContainer)
           setVis(isVisible = false, nonLinkContainer)
           val amount = LNParams.denomination.parsedWithSign(info.lastMsat, cardIn, lnCardZero)
-          lastAttempt setText getString(lnurl_pay_last_paid).format(WalletApp.app.when(info.date), amount).html
+          lastAttempt setText getString(lnurl_pay_last_paid).format(WalletApp.app.when(info.date, WalletApp.app.dateFormat), amount).html
           info.imageBytesTry.map(payLinkImageMemo.get).foreach(linkImage.setImageBitmap)
           domainName setText info.lnurl.uri.getHost
           textMetadata setText info.text
@@ -229,24 +230,19 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
 
     // TX helpers
 
-    private def txDescription(info: TxInfo): String = info.description match {
+    private def txDescription(transactionInfo: TxInfo): String = transactionInfo.description match {
+      case plain: PlainTxDescription => plain.label orElse plain.addresses.headOption.map(_.shortAddress) getOrElse getString(tx_btc)
       case _: ChanRefundingTxDescription => getString(tx_description_refunding)
       case _: HtlcClaimTxDescription => getString(tx_description_htlc_claiming)
       case _: ChanFundingTxDescription => getString(tx_description_funding)
       case _: OpReturnTxDescription => getString(tx_description_op_return)
       case _: PenaltyTxDescription => getString(tx_description_penalty)
-      case plain: PlainTxDescription => labelOrFallback(plain)
     }
 
     private def chainTxBackground(info: TxInfo): Int = info.description match {
       case _: HtlcClaimTxDescription if info.depth <= 0L => R.drawable.border_yellow
       case _: PenaltyTxDescription if info.depth <= 0L => R.drawable.border_yellow
       case _ => R.drawable.border_gray
-    }
-
-    private def labelOrFallback(desc: PlainTxDescription): String = desc.label.getOrElse {
-      val htmlOpt = desc.addresses.headOption.map(_.shortAddress).map(short => s"&#160;<font color=$cardZero>$short</font>")
-      getString(tx_btc) + htmlOpt.getOrElse(new String)
     }
 
     private def setTxTypeIcon(info: TxInfo): Unit = info.description match {
@@ -265,9 +261,9 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
 
     private def setTxMeta(info: TxInfo): Unit = {
       if (info.isDoubleSpent) meta setText getString(tx_state_double_spent).html
-      else if (info.depth >= LNParams.minDepthBlocks) meta setText WalletApp.app.when(info.date).html
+      else if (info.depth >= LNParams.minDepthBlocks) meta setText WalletApp.app.when(info.date, WalletApp.app.dateFormat).html
       else if (info.depth > 0) meta setText getString(tx_state_confs).format(info.depth, LNParams.minDepthBlocks).html
-      else meta setText getString(tx_state_unconfirmed).html
+      else meta setText pctCollected.head
     }
 
     private def txStatusIcon(info: TxInfo): Int = {
@@ -286,7 +282,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
     private def setIncomingPaymentMeta(info: PaymentInfo): Unit = {
       val valueHuman = LNParams.cm.inProcessors.get(info.fullTag).map(info.receivedRatio).map(WalletApp.app plurOrZero pctCollected)
       if (PaymentStatus.SUCCEEDED == info.status && valueHuman.isDefined) meta setText pctCollected.last.html // Notify user that we are not exactly done yet
-      else if (PaymentStatus.SUCCEEDED == info.status) meta setText WalletApp.app.when(info.date).html // Payment has been cleared in channels, show timestamp
+      else if (PaymentStatus.SUCCEEDED == info.status) meta setText WalletApp.app.when(info.date, WalletApp.app.dateFormat).html // Payment has been cleared in channels
       else meta setText valueHuman.getOrElse(pctCollected.head).html // Show either value collected so far or that we are still waiting
     }
 
@@ -294,7 +290,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
       val currentInChannel = lastInChannelOutgoing.getOrElse(info.fullTag, Nil)
       val isActive = PaymentStatus.PENDING == info.status || currentInChannel.nonEmpty
       if (isActive) meta setText WalletApp.app.plurOrZero(partsInFlight)(currentInChannel.size).html // Show either number of parts or that we are still preparing
-      else meta setText WalletApp.app.when(info.date).html // Payment has either succeeded or failed AND no leftovers are present in FSM, show timestamp
+      else meta setText WalletApp.app.when(info.date, WalletApp.app.dateFormat).html // Payment has either succeeded or failed AND no leftovers are present in FSM
     }
 
     private def setPaymentTypeIcon(info: PaymentInfo): Unit = {
@@ -479,6 +475,8 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
   // Lifecycle methods
 
   override def onResume: Unit = {
+    val backupAllowed = LocalBackup.isAllowed(me)
+    if (!backupAllowed) LocalBackup.askPermission(me)
     checkExternalData(noneRunnable)
     super.onResume
   }

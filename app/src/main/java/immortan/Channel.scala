@@ -42,7 +42,7 @@ object Channel {
   }
 
   def estimateBalance(chan: Channel): MilliSatoshi = chan.data match {
-    case data: HasNormalCommitments => data.commitments.localCommit.spec.toLocal
+    case data: HasNormalCommitments => data.commitments.latestReducedRemoteSpec.toRemote
     case data: HostedCommits => data.nextLocalSpec.toLocal
     case _ => MilliSatoshi(0L)
   }

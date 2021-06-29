@@ -29,11 +29,13 @@
                 android:layout_centerVertical="true"
                 android:id="@+id/offlineIndicator"
                 android:text="@string/offline"
+                android:layout_marginEnd="6dp"
                 android:visibility="gone"/>
 
             <TextView
                 android:id="@+id/rateTeaser"
                 android:text="@string/rateme"
+                android:layout_marginEnd="6dp"
                 android:onClick="bringRateDialog"
                 android:background="@drawable/border_green"
                 android:layout_toStartOf="@id/settingsButton"

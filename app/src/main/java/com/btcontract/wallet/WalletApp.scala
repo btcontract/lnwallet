@@ -130,7 +130,7 @@ object WalletApp {
     LNParams.secret = secret
     LNParams.syncParams = new TestNetSyncParams
     LNParams.chainHash = Block.TestnetGenesisBlock.hash
-    LNParams.routerConf = RouterConf(initRouteMaxLength = 6, CltvExpiryDelta(2016), maxParts = 10)
+    LNParams.routerConf = RouterConf(initCltvMaxDelta = CltvExpiryDelta(2016), initRouteMaxLength = 6)
     LNParams.denomination = if (useSatDenom) SatDenomination else BtcDenomination
     LNParams.ourInit = LNParams.createInit
 
@@ -292,12 +292,18 @@ class WalletApp extends Application { me =>
 
   private[this] lazy val metrics = getResources.getDisplayMetrics
   lazy val scrWidth: Double = metrics.widthPixels.toDouble / metrics.densityDpi
-  lazy val maxDialog: Double = metrics.densityDpi * 2.2
-  lazy val isTablet: Boolean = scrWidth > 3.5
+  lazy val maxDialog: Double = metrics.densityDpi * 2.3
 
-  lazy val timeFormat: SimpleDateFormat = {
-    val is24hour = DateFormat.is24HourFormat(me)
-    val format = if (is24hour) "d MMM yyyy" else "MMM dd, yyyy"
+  import android.provider.Settings.System.{getFloat, FONT_SCALE}
+  // Special handling for cases when user has chosen large font and screen size is constrained
+  lazy val tooFewSpace: Boolean = getFloat(getContentResolver, FONT_SCALE, 1) > 1 && scrWidth < 2.4
+
+  lazy val dateFormat: SimpleDateFormat = {
+    val format = (DateFormat.is24HourFormat(me), tooFewSpace) match {
+      case (is24Hour, false) => if (is24Hour) "d MMM yyyy" else "MMM dd, yyyy"
+      case (is24Hour, true) => if (is24Hour) "dd/MM/yy" else "MM/dd/yy"
+    }
+
     new SimpleDateFormat(format)
   }
 
@@ -333,16 +339,16 @@ class WalletApp extends Application { me =>
     }
   }
 
+  def when(thenDate: Date, format: SimpleDateFormat, now: Long = System.currentTimeMillis): String = thenDate.getTime match {
+    case ago if now - ago < 129600000 && !tooFewSpace => android.text.format.DateUtils.getRelativeTimeSpanString(ago, now, 0).toString
+    case _ => dateFormat.format(thenDate)
+  }
+
   def showStickyNotification(titleRes: Int, amount: MilliSatoshi): Unit = {
     val withTitle = foregroundServiceIntent.putExtra(AwaitService.TITLE_TO_DISPLAY, me getString titleRes)
     val bodyText = getString(incoming_notify_body).format(LNParams.denomination.asString(amount) + "\u00A0" + LNParams.denomination.sign)
     val withBodyAction = withTitle.putExtra(AwaitService.BODY_TO_DISPLAY, bodyText).setAction(AwaitService.ACTION_SHOW)
     androidx.core.content.ContextCompat.startForegroundService(me, withBodyAction)
-  }
-
-  def when(thenDate: Date, now: Long = System.currentTimeMillis): String = thenDate.getTime match {
-    case ago if now - ago < 129600000 => android.text.format.DateUtils.getRelativeTimeSpanString(ago, now, 0).toString
-    case _ => timeFormat.format(thenDate)
   }
 
   def quickToast(code: Int): Unit = quickToast(me getString code)
@@ -356,15 +362,9 @@ class WalletApp extends Application { me =>
     manager.getAllNetworks.exists(manager getNetworkCapabilities _ hasTransport NetworkCapabilities.TRANSPORT_VPN)
   } getOrElse false
 
-  def showKeyboard(field: EditText): Unit = Try {
-    val imm = getSystemService(Context.INPUT_METHOD_SERVICE).asInstanceOf[InputMethodManager]
-    imm.showSoftInput(field, InputMethodManager.SHOW_IMPLICIT)
-  }
-
-  def hideKeyboard(field: EditText): Unit = Try {
-    val imm = getSystemService(Context.INPUT_METHOD_SERVICE).asInstanceOf[InputMethodManager]
-    imm.hideSoftInputFromWindow(field.getWindowToken, 0)
-  }
+  def inputMethodManager: InputMethodManager = getSystemService(Context.INPUT_METHOD_SERVICE).asInstanceOf[InputMethodManager]
+  def showKeyboard(field: EditText): Unit = try inputMethodManager.showSoftInput(field, InputMethodManager.SHOW_IMPLICIT) catch none
+  def hideKeyboard(field: EditText): Unit = try inputMethodManager.hideSoftInputFromWindow(field.getWindowToken, 0) catch none
 
   def copy(text: String): Unit = {
     val bufferContent = ClipData.newPlainText("wallet", text)
