@@ -530,12 +530,12 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
 
             override val alert: AlertDialog = {
               val title = new TitleView(getString(dialog_split_ln) format prExt.brDescription)
+              val builder = titleBodyAsViewBuilder(title.asColoredView(R.color.cardLightning), manager.content)
               val leftHuman = LNParams.denomination.parsedWithSign(prExt.splitLeftover, cardIn, cardZero)
               val totalHuman = LNParams.denomination.parsedWithSign(origAmount, cardIn, cardZero)
-              title.addChipText(getString(dialog_ln_requested) format s"&#160;$totalHuman")
-              title.addChipText(getString(dialog_ln_left) format s"&#160;$leftHuman")
 
-              val builder = titleBodyAsViewBuilder(title.asColoredView(R.color.cardLightning), manager.content)
+              title.addChipText(getString(dialog_ln_requested) format s"&#160;$totalHuman", R.drawable.border_blue)
+              title.addChipText(getString(dialog_ln_left) format s"&#160;$leftHuman", R.drawable.border_blue)
               mkCheckFormNeutral(send, none, neutral, builder, dialog_pay, dialog_cancel, dialog_split)
             }
 
@@ -553,9 +553,8 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
             override val alert: AlertDialog = {
               val title = new TitleView(getString(dialog_send_ln) format prExt.brDescription)
               val totalHuman = LNParams.denomination.parsedWithSign(origAmount, cardIn, cardZero)
-              title.addChipText(getString(dialog_ln_requested) format s"&#160;$totalHuman")
-
               val builder = titleBodyAsViewBuilder(title.asColoredView(R.color.cardLightning), manager.content)
+              title.addChipText(getString(dialog_ln_requested).format(s"&#160;$totalHuman"), R.drawable.border_blue)
               mkCheckFormNeutral(send, none, neutral, builder, dialog_pay, dialog_cancel, dialog_split)
             }
 
@@ -721,7 +720,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
     }
 
     popupMenu.getMenu.add(0, 0, 0, menu_settings)
-    popupMenu.getMenu.add(0, 1, 1, menu_view_chans)
+    popupMenu.getMenu.add(0, 1, 1, menu_chans_stats)
     popupMenu.show
   }
 

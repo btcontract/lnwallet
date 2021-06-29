@@ -105,7 +105,6 @@ abstract class ChannelNormal(bag: ChannelBag) extends Channel { me =>
         watchConfirmedSpent(commits, watchConfirmed = true, watchSpent = true)
         // Persist a channel unconditionally, try to re-publish a funding tx on restart unconditionally (don't react to commit=false, we can't trust remote servers on this)
         StoreBecomeSend(DATA_WAIT_FOR_FUNDING_CONFIRMED(commits, wait.fundingTx.asSome, System.currentTimeMillis, Left(wait.lastSent), deferred = None), WAIT_FUNDING_DONE)
-        bag.addChannelTxFee(wait.fundingTxFee, wait.fundingTx.txid.toHex, ChannelTxFeesTable.TAG_CHAIN_FEE)
         chainWallet.lnWallet.commit(wait.fundingTx)
 
       // OPENING PHASE: FUNDEE FLOW

@@ -42,11 +42,11 @@
         Lightning channels can work correctly on one device at a time, please do not use them on previous device once restored on this one.</small>
     ]]></string>
 
-    <string name="action_recovery_phrase_title"><![CDATA[Wallet recovery phrase]]></string>
+    <string name="action_recovery_phrase_title">Wallet recovery phrase</string>
     <string name="action_recovery_phrase_hint">Type recovery words</string>
 
     <string name="menu_settings">Adjust wallet settings</string>
-    <string name="menu_view_chans">View channel details</string>
+    <string name="menu_chans_stats">Channels and stats</string>
 
     <string name="dialog_ok">OK</string>
     <string name="dialog_cancel">Cancel</string>
@@ -237,5 +237,26 @@
     ]]></string>
 
     <!-- /lnurl -->
+
+    <!-- statistics -->
+
+    <string name="stats_title_chain">Bitcoin transactions</string>
+    <string name="stats_title_relays">Lightning relays</string>
+    <string name="stats_title_ln">Lightning payments</string>
+
+    <string name="stats_item_sent">sent</string>
+    <string name="stats_item_received">received</string>
+    <string name="stats_item_payments">payments</string>
+    <string name="stats_item_transactions">transactions</string>
+
+    <string name="stats_item_fees">fees&#160;paid</string>
+    <string name="stats_item_channel_fees">channel&#160;fees&#160;paid</string>
+    <string name="stats_item_fees_saved">chain&#160;fees&#160;saved</string>
+
+    <string name="stats_item_relays">relays</string>
+    <string name="stats_item_relayed">relayed</string>
+    <string name="stats_item_earned">earned</string>
+
+    <!-- /statistics -->
 
 </resources>

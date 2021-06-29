@@ -16,7 +16,7 @@ import scala.concurrent.{Await, ExecutionContextExecutor}
 import fr.acinq.eclair.router.Router.{PublicChannel, RouterConf}
 import fr.acinq.eclair.transactions.{DirectedHtlc, RemoteFulfill}
 import fr.acinq.eclair.channel.{ChannelKeys, LocalParams, PersistentChannelData}
-import immortan.sqlite.{ChannelTxFeesSummary, DBInterface, PreparedQuery, RichCursor}
+import immortan.sqlite.{ChannelTxFeesSummary, DBInterface, PaymentSummary, PreparedQuery, RelaySummary, RichCursor}
 import fr.acinq.eclair.blockchain.electrum.ElectrumWallet.WalletReady
 import fr.acinq.eclair.blockchain.electrum.db.WalletDb
 import fr.acinq.eclair.router.ChannelUpdateExt
@@ -238,6 +238,9 @@ trait PaymentBag {
 
   def listRecentRelays(limit: Int): RichCursor
   def listRecentPayments(limit: Int): RichCursor
+
+  def paymentSummary: Try[PaymentSummary]
+  def relaySummary: Try[RelaySummary]
 
   def toRelayedPreimageInfo(rc: RichCursor): RelayedPreimageInfo
   def toPaymentInfo(rc: RichCursor): PaymentInfo

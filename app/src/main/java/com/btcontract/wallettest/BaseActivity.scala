@@ -262,22 +262,24 @@ trait BaseActivity extends AppCompatActivity { me =>
   implicit class TitleView(titleText: String) {
     val view: LinearLayout = getLayoutInflater.inflate(R.layout.frag_top_tip, null).asInstanceOf[LinearLayout]
     val flow: FlowLayout = view.findViewById(R.id.tipExtraTags).asInstanceOf[FlowLayout]
-    val title: TextView = clickableTextField(view findViewById R.id.tipTitle)
-    title setText titleText.html
+    val backArrow: ImageView = view.findViewById(R.id.backArrow).asInstanceOf[ImageView]
+    clickableTextField(view findViewById R.id.tipTitle).setText(titleText.html)
 
     def asDefView: LinearLayout = {
-      view setBackgroundColor 0x22AAAAAA
+      view.setBackgroundColor(0x22AAAAAA)
       view
     }
 
     def asColoredView(colorRes: Int): LinearLayout = {
-      view setBackgroundColor ContextCompat.getColor(me, colorRes)
+      val resultColor = ContextCompat.getColor(me, colorRes)
+      view.setBackgroundColor(resultColor)
       view
     }
 
-    def addChipText(chipText: String): Unit = {
+    def addChipText(chipText: String, backgroundRes: Int): Unit = {
       val text = getLayoutInflater.inflate(R.layout.frag_chip_text, flow, false)
       text.asInstanceOf[TextView].setText(chipText.html)
+      text.setBackgroundResource(backgroundRes)
       flow.setVisibility(View.VISIBLE)
       flow.addView(text)
     }

@@ -1,4 +1,1 @@
-<TextView
-    style="@style/ChipTextGrayMargin"
-    android:background="@drawable/border_blue"
-    xmlns:android="http://schemas.android.com/apk/res/android"/>
+<TextView style="@style/ChipTextGrayMargin"/>
