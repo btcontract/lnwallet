@@ -8,11 +8,11 @@ import immortan.crypto.Tools._
 import fr.acinq.eclair.channel._
 import scala.concurrent.duration._
 import com.softwaremill.quicklens._
+import scala.collection.JavaConverters._
 import com.btcontract.wallettest.Colors._
 import com.btcontract.wallettest.R.string._
-import scala.collection.JavaConverters._
-import com.btcontract.wallettest.HubActivity._
 import immortan.utils.ImplicitJsonFormats._
+import com.btcontract.wallettest.HubActivity._
 
 import java.lang.{Integer => JInt}
 import immortan.sqlite.{SQLiteData, Table}
@@ -28,14 +28,14 @@ import fr.acinq.eclair.blockchain.fee.{FeeratePerKw, FeeratePerVByte}
 import fr.acinq.eclair.blockchain.electrum.ElectrumWallet.WalletReady
 import com.google.android.material.button.{MaterialButton, MaterialButtonToggleGroup}
 import com.google.android.material.button.MaterialButtonToggleGroup.OnButtonCheckedListener
-import org.ndeftools.util.activity.NfcReaderActivity
 import com.btcontract.wallettest.BaseActivity.StringOps
+import org.ndeftools.util.activity.NfcReaderActivity
 import concurrent.ExecutionContext.Implicits.global
+import com.btcontract.wallettest.utils.LocalBackup
 import fr.acinq.eclair.transactions.RemoteFulfill
 import com.github.mmin18.widget.RealtimeBlurView
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.slider.Slider
-import com.btcontract.wallettest.utils.LocalBackup
 import androidx.transition.TransitionManager
 import immortan.ChannelListener.Malfunction
 import fr.acinq.eclair.blockchain.TxAndFee
@@ -362,16 +362,15 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
       val walletBalance = currentLnBalance + LNParams.chainWallets.lnWallet.info.lastBalance
       val allChannels = LNParams.cm.all.values.take(8)
 
-      TransitionManager.beginDelayedTransition(view)
-      setVis(allChannels.nonEmpty, channelStateIndicators)
-      totalFiatBalance setText WalletApp.currentMsatInFiatHuman(walletBalance).html
-      totalBalance setText LNParams.denomination.parsedWithSign(walletBalance, cardIn, totalZero).html
+      totalFiatBalance.setText(WalletApp.currentMsatInFiatHuman(walletBalance).html)
+      totalBalance.setText(LNParams.denomination.parsedWithSign(walletBalance, cardIn, totalZero).html)
+      totalLightningBalance.setText(LNParams.denomination.parsedWithSign(currentLnBalance, cardIn, lnCardZero).html)
+      totalBitcoinBalance.setText(LNParams.denomination.parsedWithSign(LNParams.chainWallets.lnWallet.info.lastBalance.toMilliSatoshi, cardIn, btcCardZero).html)
       channelIndicator.createIndicators(allChannels.toArray)
 
-      totalLightningBalance setText LNParams.denomination.parsedWithSign(currentLnBalance, cardIn, lnCardZero).html
-      totalBitcoinBalance setText LNParams.denomination.parsedWithSign(LNParams.chainWallets.lnWallet.info.lastBalance.toMilliSatoshi, cardIn, btcCardZero).html
       setVis(LNParams.chainWallets.lnWallet.info.lastBalance != 0L.sat, totalBitcoinBalance)
       setVis(LNParams.chainWallets.lnWallet.info.lastBalance == 0L.sat, receiveBitcoinTip)
+      setVis(allChannels.nonEmpty, channelStateIndicators)
       setVis(allChannels.nonEmpty, totalLightningBalance)
       setVis(allChannels.isEmpty, addChannelTip)
 
@@ -384,9 +383,9 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
       inFlightOutgoing setAlpha { if (hideAll) 0F else if (localOutCount > 0) 1F else 0.3F }
       inFlightRelayed setAlpha { if (hideAll) 0F else if (trampolineCount > 0) 1F else 0.3F }
 
-      inFlightIncoming setText localInCount.toString
-      inFlightOutgoing setText localOutCount.toString
-      inFlightRelayed setText trampolineCount.toString
+      inFlightIncoming.setText(localInCount.toString)
+      inFlightOutgoing.setText(localOutCount.toString)
+      inFlightRelayed.setText(trampolineCount.toString)
     }
   }
 
@@ -531,11 +530,8 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
             override val alert: AlertDialog = {
               val title = new TitleView(getString(dialog_split_ln) format prExt.brDescription)
               val builder = titleBodyAsViewBuilder(title.asColoredView(R.color.cardLightning), manager.content)
-              val leftHuman = LNParams.denomination.parsedWithSign(prExt.splitLeftover, cardIn, cardZero)
-              val totalHuman = LNParams.denomination.parsedWithSign(origAmount, cardIn, cardZero)
-
-              title.addChipText(getString(dialog_ln_requested) format s"&#160;$totalHuman", R.drawable.border_blue)
-              title.addChipText(getString(dialog_ln_left) format s"&#160;$leftHuman", R.drawable.border_blue)
+              title.addChipText(getString(dialog_ln_requested) format LNParams.denomination.parsedWithSign(prExt.splitLeftover, cardIn, cardZero), R.drawable.border_blue)
+              title.addChipText(getString(dialog_ln_left) format LNParams.denomination.parsedWithSign(origAmount, cardIn, cardZero), R.drawable.border_blue)
               mkCheckFormNeutral(send, none, neutral, builder, dialog_pay, dialog_cancel, dialog_split)
             }
 
@@ -554,7 +550,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
               val title = new TitleView(getString(dialog_send_ln) format prExt.brDescription)
               val totalHuman = LNParams.denomination.parsedWithSign(origAmount, cardIn, cardZero)
               val builder = titleBodyAsViewBuilder(title.asColoredView(R.color.cardLightning), manager.content)
-              title.addChipText(getString(dialog_ln_requested).format(s"&#160;$totalHuman"), R.drawable.border_blue)
+              title.addChipText(getString(dialog_ln_requested).format(totalHuman), R.drawable.border_blue)
               mkCheckFormNeutral(send, none, neutral, builder, dialog_pay, dialog_cancel, dialog_split)
             }
 
@@ -743,8 +739,13 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
   }
 
   def bringSendFromClipboard(view: View): Unit = {
-    def explainClipboardFailure: TimerTask = UITask { snack(contentWindow, getString(error_nothing_in_clipboard).html, dialog_ok, _.dismiss) /* Notify user */ }
-    runInFutureProcessOnUI(InputParser.recordValue(WalletApp.app.getBufferUnsafe), _ => explainClipboardFailure.run)(_ => me checkExternalData explainClipboardFailure)
+    def explainClipboardFailure: TimerTask = UITask {
+      val message = getString(error_nothing_in_clipboard)
+      snack(contentWindow, message.html, dialog_ok, _.dismiss)
+    }
+
+    runInFutureProcessOnUI(InputParser.recordValue(WalletApp.app.getBufferUnsafe),
+      _ => explainClipboardFailure.run)(_ => me checkExternalData explainClipboardFailure)
   }
 
   def bringScanner(view: View): Unit = callScanner(me)

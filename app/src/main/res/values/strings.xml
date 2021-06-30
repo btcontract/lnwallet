@@ -82,8 +82,8 @@
     <string name="dialog_split_ln"><![CDATA[Split <b>Lightning</b> payment%1$s]]></string>
     <string name="dialog_send_btc"><![CDATA[Send <b>Bitcoin</b> transaction<br><b>to address</b> %1$s%2$s]]></string>
     <string name="dialog_split_ln_tip">First let someone scan a split invoice.\nThen tap PAY at about the same time.</string>
-    <string name="dialog_ln_requested"><![CDATA[<b>requested</b>%1$s]]></string>
-    <string name="dialog_ln_left"><![CDATA[<b>left to pay</b>%1$s]]></string>
+    <string name="dialog_ln_requested"><![CDATA[<b>requested</b>&#160;%1$s]]></string>
+    <string name="dialog_ln_left"><![CDATA[<b>left to pay</b>&#160;%1$s]]></string>
 
     <!-- errors -->
 
@@ -240,22 +240,22 @@
 
     <!-- statistics -->
 
-    <string name="stats_title_chain">Bitcoin transactions</string>
-    <string name="stats_title_relays">Lightning relays</string>
-    <string name="stats_title_ln">Lightning payments</string>
+    <string name="stats_title_chan_loss"><![CDATA[<b>Channel force close fees</b>]]></string>
+    <string name="stats_title_chain"><![CDATA[<b>Bitcoin transactions</b>]]></string>
+    <string name="stats_title_relays"><![CDATA[<b>Lightning relays</b>]]></string>
+    <string name="stats_title_ln"><![CDATA[<b>Lightning payments</b>]]></string>
 
-    <string name="stats_item_sent">sent</string>
-    <string name="stats_item_received">received</string>
-    <string name="stats_item_payments">payments</string>
-    <string name="stats_item_transactions">transactions</string>
+    <string name="stats_item_sent"><![CDATA[<b>sent</b>&#160;%1$s]]></string>
+    <string name="stats_item_received"><![CDATA[<b>received</b>&#160;%1$s]]></string>
+    <string name="stats_item_payments"><![CDATA[<b>payments</b>&#160;%1$s]]></string>
+    <string name="stats_item_transactions"><![CDATA[<b>transactions</b>&#160;%1$s]]></string>
 
-    <string name="stats_item_fees">fees&#160;paid</string>
-    <string name="stats_item_channel_fees">channel&#160;fees&#160;paid</string>
-    <string name="stats_item_fees_saved">chain&#160;fees&#160;saved</string>
+    <string name="stats_item_fees"><![CDATA[<b>fees</b>&#160;%1$s]]></string>
+    <string name="stats_item_fees_saved"><![CDATA[<b>chain&#160;fees&#160;saved</b>&#160;%1$s]]></string>
 
-    <string name="stats_item_relays">relays</string>
-    <string name="stats_item_relayed">relayed</string>
-    <string name="stats_item_earned">earned</string>
+    <string name="stats_item_relays"><![CDATA[<b>relays</b>&#160;%1$s]]></string>
+    <string name="stats_item_relayed"><![CDATA[<b>routed</b>&#160;%1$s]]></string>
+    <string name="stats_item_earned"><![CDATA[<b>earned</b>&#160;%1$s]]></string>
 
     <!-- /statistics -->
 

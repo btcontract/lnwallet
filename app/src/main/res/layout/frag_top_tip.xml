@@ -24,7 +24,7 @@
 
     <org.apmem.tools.layouts.FlowLayout
         android:layout_marginStart="-2sp"
-        android:layout_marginTop="18sp"
+        android:layout_marginTop="15sp"
         android:id="@+id/tipExtraTags"
         style="@style/FillingView"
         android:visibility="gone"

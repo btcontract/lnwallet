@@ -184,7 +184,7 @@ trait BaseActivity extends AppCompatActivity { me =>
   // Builders
 
   def makeChoiceList[T <: Object](actions: Array[T], itemId: Int = android.R.layout.simple_list_item_1): ListView = {
-    val list = getLayoutInflater.inflate(R.layout.frag_list, null).asInstanceOf[ListView]
+    val list = getLayoutInflater.inflate(R.layout.frag_selector_list, null).asInstanceOf[ListView]
     list setAdapter new ArrayAdapter(me, itemId, actions)
     list
   }

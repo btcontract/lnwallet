@@ -167,7 +167,6 @@
 
     <style name="ChipTextGrayMargin" parent="ChipTextGray">
         <item name="android:layout_margin">2sp</item>
-        <item name="android:textStyle">bold</item>
     </style>
 
     <!-- nachos -->

@@ -282,6 +282,7 @@
             android:onClick="cancelSearch"
             android:tint="@color/colorAccent"
             android:layout_alignParentEnd="true"
+            android:layout_centerVertical="true"
             android:src="@drawable/baseline_close_18"
             android:background="?android:selectableItemBackground"
             style="@style/BoundedView"/>
