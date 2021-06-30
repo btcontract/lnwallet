@@ -185,38 +185,35 @@ object WalletApp {
     val sync = system.actorOf(Props apply new ElectrumChainSync(pool, params.headerDb, LNParams.chainHash), "chain-sync")
     val watcher = system.actorOf(Props apply new ElectrumWatcher(LNParams.blockCount, pool), "channel-tx-watcher")
     val catcher = system.actorOf(Props(new WalletEventsCatcher), "events-catcher")
-    val storedWallets = walletBag.listWallets
 
-    val readyWallets = {
-      if (storedWallets.isEmpty) {
-        val signingWallet = SigningWallet(EclairWallet.BIP84, isRemovable = false)
-        val ewt = ElectrumWalletType.makeSigningType(EclairWallet.BIP84, secret.keys.master, LNParams.chainHash)
-        val wallet = system.actorOf(Props apply new ElectrumWallet(pool, sync, params, ewt), s"signing-chain-wallet-single")
-        val infoEmptyData = CompleteChainWalletInfo(signingWallet, ewt.xPub.publicKey, params.emptyPersistentDataBytes, 0L.sat, ewt.tag)
-        val electrumWallet = ElectrumEclairWallet(wallet, ewt, infoEmptyData)
-        walletBag.addChainWallet(infoEmptyData)
-        wallet ! infoEmptyData.data
-        List(electrumWallet)
-      } else {
-        storedWallets.zipWithIndex.toList map {
-          case CompleteChainWalletInfo(core: SigningWallet, pub, persistent, lastBalance, label) ~ idx =>
-            val ewt = ElectrumWalletType.makeSigningType(tag = core.walletType, secret.keys.master, LNParams.chainHash)
-            val wallet = system.actorOf(Props apply new ElectrumWallet(pool, sync, params, ewt), s"signing-wallet-$idx")
-            val infoNoPersistent = CompleteChainWalletInfo(core, pub, ByteVector.empty, lastBalance, label)
-            val result = ElectrumEclairWallet(wallet, ewt, infoNoPersistent)
-            wallet ! persistent
-            result
+    val storedWallets = walletBag.listWallets.zipWithIndex.toList.map {
+      case CompleteChainWalletInfo(core: SigningWallet, pub, persistent, lastBalance, label) ~ idx =>
+        val ewt = ElectrumWalletType.makeSigningType(tag = core.walletType, secret.keys.master, LNParams.chainHash)
+        val wallet = system.actorOf(Props apply new ElectrumWallet(pool, sync, params, ewt), s"signing-wallet-$idx")
+        val infoNoPersistent = CompleteChainWalletInfo(core, pub, ByteVector.empty, lastBalance, label)
+        val result = ElectrumEclairWallet(wallet, ewt, infoNoPersistent)
+        wallet ! persistent
+        result
 
-          case CompleteChainWalletInfo(core: WatchingWallet, pub, persistent, lastBalance, label) ~ idx =>
-            val ewt = ElectrumWalletType.makeWatchingType(tag = core.walletType, core.xPub, LNParams.chainHash)
-            val wallet = system.actorOf(Props apply new ElectrumWallet(pool, sync, params, ewt), s"watching-wallet-$idx")
-            val infoNoPersistent = CompleteChainWalletInfo(core, pub, ByteVector.empty, lastBalance, label)
-            val result = ElectrumEclairWallet(wallet, ewt, infoNoPersistent)
-            wallet ! persistent
-            result
-        }
-      }
+      case CompleteChainWalletInfo(core: WatchingWallet, pub, persistent, lastBalance, label) ~ idx =>
+        val ewt = ElectrumWalletType.makeWatchingType(tag = core.walletType, core.xPub, LNParams.chainHash)
+        val wallet = system.actorOf(Props apply new ElectrumWallet(pool, sync, params, ewt), s"watching-wallet-$idx")
+        val infoNoPersistent = CompleteChainWalletInfo(core, pub, ByteVector.empty, lastBalance, label)
+        val result = ElectrumEclairWallet(wallet, ewt, infoNoPersistent)
+        wallet ! persistent
+        result
     }
+
+    val readyWallets = if (storedWallets.isEmpty) {
+      val signingWallet = SigningWallet(EclairWallet.BIP84, isRemovable = false)
+      val ewt = ElectrumWalletType.makeSigningType(EclairWallet.BIP84, secret.keys.master, LNParams.chainHash)
+      val wallet = system.actorOf(Props apply new ElectrumWallet(pool, sync, params, ewt), s"signing-chain-wallet-single")
+      val infoEmptyData = CompleteChainWalletInfo(signingWallet, ewt.xPub.publicKey, params.emptyPersistentDataBytes, 0L.sat, ewt.tag)
+      val electrumWallet = ElectrumEclairWallet(wallet, ewt, infoEmptyData)
+      walletBag.addChainWallet(infoEmptyData)
+      wallet ! infoEmptyData.data
+      List(electrumWallet)
+    } else storedWallets
 
     // Chain wallets and sync have already been initialized, they will start interacting with network
     LNParams.chainWallets = LNParams.WalletExt(readyWallets, catcher, sync, pool, watcher, params.walletDb)

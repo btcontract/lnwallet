@@ -461,21 +461,20 @@ trait BaseActivity extends AppCompatActivity { me =>
   }
 
   abstract class OffChainReceiver(initMaxReceivable: MilliSatoshi, initMinReceivable: MilliSatoshi, lnBalance: MilliSatoshi) extends HasTypicalChainFee {
-    val chans: Seq[ChanAndCommits] = (LNParams.cm.sortedReceivable _ andThen LNParams.cm.maxReceivable)(LNParams.cm.all.values)
+    val chans: Seq[ChanAndCommits] = LNParams.cm.maxReceivable(LNParams.cm sortedReceivable LNParams.cm.all.values).takeRight(4)
     require(chans.nonEmpty, "OffChainReceiver must be instantiated with at least one channel being able to receive")
     val body: ViewGroup = getLayoutInflater.inflate(R.layout.frag_input_off_chain, null).asInstanceOf[ViewGroup]
     val manager: RateManager = getManager
 
     val finalMinReceivable: MilliSatoshi = initMinReceivable.max(LNParams.minPayment)
-    val finalMaxReceivable: MilliSatoshi = initMaxReceivable.min(chans.head.commits.availableForReceive)
+    val finalMaxReceivable: MilliSatoshi = initMaxReceivable.min(chans.map(_.commits.availableForReceive).sum)
     val canReceiveHuman: String = LNParams.denomination.parsedWithSign(finalMaxReceivable, cardIn, cardZero)
     val canReceiveFiatHuman: String = WalletApp.currentMsatInFiatHuman(finalMaxReceivable)
 
     def receive(alert: AlertDialog): Unit = {
       val preimage: ByteVector32 = randomBytes32
       val description: PaymentDescription = getDescription
-      // For now we use a single largest channel to improve privacy and delivery chances
-      val prExt = LNParams.cm.makePrExt(manager.resultMsat, allowedChans = chans.take(1), description, preimage)
+      val prExt = LNParams.cm.makePrExt(toReceive = manager.resultMsat, allowedChans = chans, description, preimage)
       LNParams.cm.payBag.replaceIncomingPayment(prExt, preimage, description, lnBalance, LNParams.fiatRates.info.rates, typicalChainTxFee)
       processInvoice(prExt)
       alert.dismiss
