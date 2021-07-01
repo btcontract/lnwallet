@@ -14,7 +14,7 @@
 
         <TextView
             style="@style/InputHintView"
-            android:layout_marginEnd="15sp"
+            android:layout_marginEnd="15dp"
             android:id="@+id/fiatInputAmountHint"/>
 
     </FrameLayout>
@@ -35,7 +35,7 @@
 
         <TextView
             style="@style/InputHintView"
-            android:layout_marginEnd="15sp"
+            android:layout_marginEnd="15dp"
             android:id="@+id/inputAmountHint"/>
 
     </FrameLayout>
@@ -52,8 +52,8 @@
 
         <EditText
             style="@style/FillingView"
-            android:layout_marginLeft="13dp"
-            android:layout_marginRight="13dp"
+            android:layout_marginStart="11dp"
+            android:layout_marginEnd="14dp"
             android:id="@+id/extraInput"
             android:inputType="text"
             android:maxLines="1"/>
@@ -68,8 +68,7 @@
     <TextView
         style="@style/XMarginFillingView"
         android:id="@+id/extraInputVisibility"
-        android:layout_marginBottom="25dp"
-        android:textStyle="italic"/>
+        android:layout_marginBottom="25dp"/>
 
     <View style="@style/GrayDivider"/>
 </LinearLayout>

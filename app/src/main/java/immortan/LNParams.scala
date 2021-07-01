@@ -226,8 +226,9 @@ trait PaymentBag {
                              finalAmount: MilliSatoshi, balanceSnap: MilliSatoshi, fiatRateSnap: Fiat2Btc,
                              chainFee: MilliSatoshi)
 
-  def replaceIncomingPayment(prex: PaymentRequestExt, preimage: ByteVector32, description: PaymentDescription,
-                             balanceSnap: MilliSatoshi, fiatRateSnap: Fiat2Btc, chainFee: MilliSatoshi)
+  def replaceIncomingPayment(prex: PaymentRequestExt, preimage: ByteVector32,
+                             description: PaymentDescription, balanceSnap: MilliSatoshi,
+                             fiatRateSnap: Fiat2Btc)
 
   def getPaymentInfo(paymentHash: ByteVector32): Try[PaymentInfo]
 

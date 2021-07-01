@@ -349,7 +349,6 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
     val bitcoinPayments: MaterialButton = view.findViewById(R.id.bitcoinPayments).asInstanceOf[MaterialButton]
     val relayedPayments: MaterialButton = view.findViewById(R.id.relayedPayments).asInstanceOf[MaterialButton]
     val payMarketLinks: MaterialButton = view.findViewById(R.id.payMarketLinks).asInstanceOf[MaterialButton]
-    val searchWrap: RelativeLayout = view.findViewById(R.id.searchWrap).asInstanceOf[RelativeLayout]
     val searchField: EditText = view.findViewById(R.id.searchField).asInstanceOf[EditText]
 
     def updateFiatRates: Unit = {
@@ -720,22 +719,23 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
     popupMenu.show
   }
 
-  def isSearchOn: Boolean = walletCards.searchWrap.getVisibility == View.VISIBLE
+  def isSearchOn: Boolean = walletCards.searchField.getVisibility == View.VISIBLE
+  def keyBoardOn: Unit = WalletApp.app.showKeys(walletCards.searchField)
 
   def bringSearch(view: View): Unit = {
-    walletCards.searchField.requestFocus
-    WalletApp.app.showKeyboard(walletCards.searchField)
     TransitionManager.beginDelayedTransition(walletCards.view)
+    walletCards.searchField.setVisibility(View.VISIBLE)
     walletCards.defaultHeader.setVisibility(View.GONE)
-    walletCards.searchWrap.setVisibility(View.VISIBLE)
+    walletCards.searchField.requestFocus
+    keyBoardOn
   }
 
   def cancelSearch(view: View): Unit = {
     walletCards.searchField.setText(new String)
-    WalletApp.app.hideKeyboard(walletCards.searchField)
+    WalletApp.app.hideKeys(walletCards.searchField)
     TransitionManager.beginDelayedTransition(walletCards.view)
     walletCards.defaultHeader.setVisibility(View.VISIBLE)
-    walletCards.searchWrap.setVisibility(View.GONE)
+    walletCards.searchField.setVisibility(View.GONE)
   }
 
   def bringSendFromClipboard(view: View): Unit = {

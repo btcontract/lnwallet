@@ -48,8 +48,10 @@ class SQLitePayment(db: DBInterface, preimageDb: DBInterface) extends PaymentBag
     ChannelMaster.next(ChannelMaster.paymentDbStream)
   }
 
-  def replaceOutgoingPayment(prex: PaymentRequestExt, description: PaymentDescription, action: Option[PaymentAction],
-                             finalAmount: MilliSatoshi, balanceSnap: MilliSatoshi, fiatRateSnap: Fiat2Btc, chainFee: MilliSatoshi): Unit =
+  def replaceOutgoingPayment(prex: PaymentRequestExt,
+                             description: PaymentDescription, action: Option[PaymentAction],
+                             finalAmount: MilliSatoshi, balanceSnap: MilliSatoshi, fiatRateSnap: Fiat2Btc,
+                             chainFee: MilliSatoshi): Unit =
     db txWrap {
       val hashString = prex.pr.paymentHash.toHex
       db.change(PaymentTable.deleteSql, hashString)
@@ -60,15 +62,16 @@ class SQLitePayment(db: DBInterface, preimageDb: DBInterface) extends PaymentBag
       ChannelMaster.next(ChannelMaster.paymentDbStream)
     }
 
-  def replaceIncomingPayment(prex: PaymentRequestExt, preimage: ByteVector32, description: PaymentDescription,
-                             balanceSnap: MilliSatoshi, fiatRateSnap: Fiat2Btc, chainFee: MilliSatoshi): Unit =
+  def replaceIncomingPayment(prex: PaymentRequestExt,
+                             preimage: ByteVector32, description: PaymentDescription,
+                             balanceSnap: MilliSatoshi, fiatRateSnap: Fiat2Btc): Unit =
     db txWrap {
       val hashString = prex.pr.paymentHash.toHex
       db.change(PaymentTable.deleteSql, hashString)
       db.change(PaymentTable.newSql, prex.raw, preimage.toHex, PaymentStatus.PENDING: JInt, System.currentTimeMillis: JLong, description.toJson.compactPrint,
         PaymentInfo.NO_ACTION, hashString, prex.pr.paymentSecret.get.toHex, prex.pr.amount.getOrElse(0L.msat).toLong: JLong /* MUST COME FROM PR! 0 WHEN UNDEFINED */,
         0L: JLong /* SENT = 0 MSAT, NOTHING TO SEND */, 0L: JLong /* NO FEE FOR INCOMING PAYMENT */, balanceSnap.toLong: JLong, fiatRateSnap.toJson.compactPrint,
-        chainFee.toLong: JLong, 1: JInt /* INCOMING TYPE = 1 */)
+        0L: JLong /* NO CHAIN FEE FOR INCOMING PAYMENTS */, 1: JInt /* INCOMING TYPE = 1 */)
       ChannelMaster.next(ChannelMaster.paymentDbStream)
     }
 

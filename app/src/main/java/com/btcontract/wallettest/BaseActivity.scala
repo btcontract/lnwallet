@@ -460,22 +460,21 @@ trait BaseActivity extends AppCompatActivity { me =>
     }
   }
 
-  abstract class OffChainReceiver(initMaxReceivable: MilliSatoshi, initMinReceivable: MilliSatoshi, lnBalance: MilliSatoshi) extends HasTypicalChainFee {
-    val chans: Seq[ChanAndCommits] = LNParams.cm.maxReceivable(LNParams.cm sortedReceivable LNParams.cm.all.values).takeRight(4)
-    require(chans.nonEmpty, "OffChainReceiver must be instantiated with at least one channel being able to receive")
+  abstract class OffChainReceiver(initMaxReceivable: MilliSatoshi, initMinReceivable: MilliSatoshi, lnBalance: MilliSatoshi) {
+    val CommitsAndMax(cs, maxReceivable) = LNParams.cm.maxReceivable(LNParams.cm sortedReceivable LNParams.cm.all.values).get
     val body: ViewGroup = getLayoutInflater.inflate(R.layout.frag_input_off_chain, null).asInstanceOf[ViewGroup]
     val manager: RateManager = getManager
 
+    val finalMaxReceivable: MilliSatoshi = initMaxReceivable.min(maxReceivable)
     val finalMinReceivable: MilliSatoshi = initMinReceivable.max(LNParams.minPayment)
-    val finalMaxReceivable: MilliSatoshi = initMaxReceivable.min(chans.map(_.commits.availableForReceive).sum)
     val canReceiveHuman: String = LNParams.denomination.parsedWithSign(finalMaxReceivable, cardIn, cardZero)
     val canReceiveFiatHuman: String = WalletApp.currentMsatInFiatHuman(finalMaxReceivable)
 
     def receive(alert: AlertDialog): Unit = {
       val preimage: ByteVector32 = randomBytes32
       val description: PaymentDescription = getDescription
-      val prExt = LNParams.cm.makePrExt(toReceive = manager.resultMsat, allowedChans = chans, description, preimage)
-      LNParams.cm.payBag.replaceIncomingPayment(prExt, preimage, description, lnBalance, LNParams.fiatRates.info.rates, typicalChainTxFee)
+      val prExt = LNParams.cm.makePrExt(toReceive = manager.resultMsat, allowedChans = cs, description, preimage)
+      LNParams.cm.payBag.replaceIncomingPayment(prExt, preimage, description, lnBalance, LNParams.fiatRates.info.rates)
       processInvoice(prExt)
       alert.dismiss
     }

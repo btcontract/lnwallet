@@ -59,14 +59,11 @@ object Channel {
     case _ => false
   }
 
-  def isOperationalOrWaiting(chan: Channel): Boolean =
-    isOperational(chan) || isWaiting(chan)
+  def isOperationalOrWaiting(chan: Channel): Boolean = isOperational(chan) || isWaiting(chan)
 
-  def isOperationalAndOpen(chan: Channel): Boolean =
-    isOperational(chan) && OPEN == chan.state
+  def isOperationalAndOpen(chan: Channel): Boolean = isOperational(chan) && OPEN == chan.state
 
-  def isOperationalAndSleeping(chan: Channel): Boolean =
-    isOperational(chan) && SLEEPING == chan.state
+  def isOperationalAndSleeping(chan: Channel): Boolean = isOperational(chan) && SLEEPING == chan.state
 }
 
 trait Channel extends StateMachine[ChannelData] with CanBeRepliedTo { me =>
@@ -150,3 +147,4 @@ trait ChannelListener {
 }
 
 case class ChanAndCommits(chan: Channel, commits: Commitments)
+case class CommitsAndMax(commits: Seq[ChanAndCommits], maxReceivable: MilliSatoshi)
