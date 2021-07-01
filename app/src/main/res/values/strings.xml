@@ -257,6 +257,16 @@
     <string name="stats_item_relayed"><![CDATA[<b>routed</b>&#160;%1$s]]></string>
     <string name="stats_item_earned"><![CDATA[<b>earned</b>&#160;%1$s]]></string>
 
+    <string name="chan_capacity">Capacity</string>
+    <string name="chan_can_send">Can send</string>
+    <string name="chan_can_receive">Can receive</string>
+    <string name="chan_refundable">Refundable</string>
+    <string name="chan_in_flight">In-flight</string>
+    <string name="chan_depth">Funding depth</string>
+
+    <string name="chan_online">online</string>
+    <string name="chan_offline">offline</string>
+
     <!-- /statistics -->
 
 </resources>

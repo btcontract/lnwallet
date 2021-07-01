@@ -529,8 +529,8 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
             override val alert: AlertDialog = {
               val title = new TitleView(getString(dialog_split_ln) format prExt.brDescription)
               val builder = titleBodyAsViewBuilder(title.asColoredView(R.color.cardLightning), manager.content)
-              title.addChipText(getString(dialog_ln_requested) format LNParams.denomination.parsedWithSign(prExt.splitLeftover, cardIn, cardZero), R.drawable.border_blue)
-              title.addChipText(getString(dialog_ln_left) format LNParams.denomination.parsedWithSign(origAmount, cardIn, cardZero), R.drawable.border_blue)
+              title.addChipText(getString(dialog_ln_requested) format LNParams.denomination.parsedWithSign(origAmount, cardIn, cardZero), R.drawable.border_blue)
+              title.addChipText(getString(dialog_ln_left) format LNParams.denomination.parsedWithSign(prExt.splitLeftover, cardIn, cardZero), R.drawable.border_blue)
               mkCheckFormNeutral(send, none, neutral, builder, dialog_pay, dialog_cancel, dialog_split)
             }
 

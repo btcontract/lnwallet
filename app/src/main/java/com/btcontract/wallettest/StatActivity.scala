@@ -54,7 +54,7 @@ class StatActivity extends BaseActivity { me =>
 
           for (summary <- txSummary) {
             val slotTitle = new TitleView(me getString stats_title_chain)
-            slotTitle.addChipText(getString(stats_item_transactions).format(summary.count), R.drawable.border_yellow)
+            slotTitle.addChipText(getString(stats_item_transactions).format(summary.count), R.drawable.border_gray)
             slotTitle.addChipText(getString(stats_item_received) format LNParams.denomination.directedWithSign(summary.received, 0L.sat, cardOut, cardIn, cardZero, isPlus = true), R.drawable.border_gray)
             slotTitle.addChipText(getString(stats_item_sent) format LNParams.denomination.directedWithSign(0L.sat, summary.sent, cardOut, cardIn, cardZero, isPlus = false), R.drawable.border_gray)
             slotTitle.addChipText(getString(stats_item_fees) format LNParams.denomination.directedWithSign(0L.sat, summary.fees, cardOut, cardIn, cardZero, isPlus = false), R.drawable.border_gray)
@@ -63,7 +63,7 @@ class StatActivity extends BaseActivity { me =>
 
           for (summary <- paymentSummary) {
             val slotTitle = new TitleView(me getString stats_title_ln)
-            slotTitle.addChipText(getString(stats_item_payments).format(summary.count), R.drawable.border_blue)
+            slotTitle.addChipText(getString(stats_item_payments).format(summary.count), R.drawable.border_gray)
             slotTitle.addChipText(getString(stats_item_received) format LNParams.denomination.directedWithSign(summary.received, 0L.msat, cardOut, cardIn, cardZero, isPlus = true), R.drawable.border_gray)
             slotTitle.addChipText(getString(stats_item_sent) format LNParams.denomination.directedWithSign(0L.msat, summary.sent, cardOut, cardIn, cardZero, isPlus = false), R.drawable.border_gray)
             slotTitle.addChipText(getString(stats_item_fees) format LNParams.denomination.directedWithSign(0L.msat, summary.fees, cardOut, cardIn, cardZero, isPlus = false), R.drawable.border_gray)
@@ -73,7 +73,7 @@ class StatActivity extends BaseActivity { me =>
 
           for (summary <- relaySummary) {
             val slotTitle = new TitleView(me getString stats_title_relays)
-            slotTitle.addChipText(getString(stats_item_relays).format(summary.count), R.drawable.border_blue)
+            slotTitle.addChipText(getString(stats_item_relays).format(summary.count), R.drawable.border_gray)
             slotTitle.addChipText(getString(stats_item_relayed) format LNParams.denomination.parsedWithSign(summary.relayed, cardIn, cardZero), R.drawable.border_gray)
             slotTitle.addChipText(getString(stats_item_earned) format LNParams.denomination.directedWithSign(summary.earned, 0L.msat, cardOut, cardIn, cardZero, isPlus = true), R.drawable.border_gray)
             statList.addView(slotTitle.view)
@@ -81,7 +81,7 @@ class StatActivity extends BaseActivity { me =>
 
           for (summary <- channelTxFeesSummary) {
             val slotTitle = new TitleView(me getString stats_title_chan_loss)
-            slotTitle.addChipText(getString(stats_item_transactions).format(summary.count), R.drawable.border_yellow)
+            slotTitle.addChipText(getString(stats_item_transactions).format(summary.count), R.drawable.border_gray)
             slotTitle.addChipText(getString(stats_item_fees) format LNParams.denomination.directedWithSign(0L.sat, summary.fees, cardOut, cardIn, cardZero, isPlus = false), R.drawable.border_gray)
             statList.addView(slotTitle.view)
           }

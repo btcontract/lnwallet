@@ -1,0 +1,95 @@
+<androidx.cardview.widget.CardView
+    xmlns:card_view="http://schemas.android.com/apk/res-auto"
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    card_view:cardCornerRadius="@dimen/corner_radius"
+    style="@style/Card">
+
+    <LinearLayout
+        android:background="@drawable/border_gray"
+        android:orientation="vertical"
+        style="@style/FillingView">
+
+        <!-- Channel info and status -->
+
+        <RelativeLayout style="@style/FillingView">
+
+            <TextView
+                style="@style/BoundedView"
+                android:layout_centerVertical="true"
+                android:layout_alignParentStart="true"
+                android:id="@+id/peerAddress"/>
+
+            <View
+                android:layout_width="24dp"
+                android:layout_height="8dp"
+                android:layout_centerVertical="true"
+                android:layout_alignParentEnd="true"
+                android:id="@+id/chanState"/>
+
+        </RelativeLayout>
+
+        <!-- Progress bars -->
+
+        <FrameLayout style="@style/FillingView">
+
+            <ProgressBar
+                android:progressDrawable="@drawable/progbar_stacked"
+                style="?android:attr/progressBarStyleHorizontal"
+                android:layout_height="wrap_content"
+                android:layout_width="match_parent"
+                android:id="@+id/baseBar"/>
+
+            <ProgressBar
+                android:progressDrawable="@drawable/progbar_overlay"
+                style="?android:attr/progressBarStyleHorizontal"
+                android:layout_height="wrap_content"
+                android:layout_width="match_parent"
+                android:id="@+id/overBar"/>
+
+        </FrameLayout>
+
+        <!-- Capacity, can send/receive -->
+
+        <RelativeLayout style="@style/FillingView" android:id="@+id/totalCapacity">
+            <TextView style="@style/BoundedView" android:layout_centerVertical="true" android:layout_alignParentStart="true" android:text="@string/chan_capacity"/>
+            <TextView style="@style/BoundedView" android:layout_centerVertical="true" android:layout_alignParentEnd="true" android:id="@+id/totalCapacityText"/>
+        </RelativeLayout>
+
+        <RelativeLayout style="@style/FillingView" android:id="@+id/canSend">
+            <TextView style="@style/BoundedView" android:layout_centerVertical="true" android:layout_alignParentStart="true" android:text="@string/chan_can_send"/>
+            <TextView style="@style/BoundedView" android:layout_centerVertical="true" android:layout_alignParentEnd="true" android:id="@+id/canSendText"/>
+        </RelativeLayout>
+
+        <RelativeLayout style="@style/FillingView" android:id="@+id/canReceive">
+            <TextView style="@style/BoundedView" android:layout_centerVertical="true" android:layout_alignParentStart="true" android:text="@string/chan_can_receive"/>
+            <TextView style="@style/BoundedView" android:layout_centerVertical="true" android:layout_alignParentEnd="true" android:id="@+id/canReceiveText"/>
+        </RelativeLayout>
+
+        <View
+            style="@style/GrayDivider"
+            android:id="@+id/balancesDivider"/>
+
+        <RelativeLayout style="@style/FillingView" android:id="@+id/fundingDepth">
+            <TextView style="@style/BoundedView" android:layout_centerVertical="true" android:layout_alignParentStart="true" android:text="@string/chan_depth"/>
+            <TextView style="@style/BoundedView" android:layout_centerVertical="true" android:layout_alignParentEnd="true" android:id="@+id/fundingDepthText"/>
+        </RelativeLayout>
+
+        <RelativeLayout style="@style/FillingView" android:id="@+id/refundableAmount">
+            <TextView style="@style/BoundedView" android:layout_centerVertical="true" android:layout_alignParentStart="true" android:text="@string/chan_refundable"/>
+            <TextView style="@style/BoundedView" android:layout_centerVertical="true" android:layout_alignParentEnd="true" android:id="@+id/refundableAmountText"/>
+        </RelativeLayout>
+
+        <RelativeLayout style="@style/FillingView" android:id="@+id/paymentsInFlight">
+            <TextView style="@style/BoundedView" android:layout_centerVertical="true" android:layout_alignParentStart="true" android:text="@string/chan_in_flight"/>
+            <TextView style="@style/BoundedView" android:layout_centerVertical="true" android:layout_alignParentEnd="true" android:id="@+id/paymentsInFlightText"/>
+        </RelativeLayout>
+
+        <!-- Extra message -->
+
+        <TextView
+            style="@style/FillingView"
+            android:textStyle="italic"
+            android:id="@+id/extraInfoText"/>
+
+    </LinearLayout>
+</androidx.cardview.widget.CardView>
