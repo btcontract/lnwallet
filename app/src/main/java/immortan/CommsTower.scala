@@ -49,7 +49,7 @@ object CommsTower {
     workers.get(pair).foreach(_.disconnect)
   }
 
-  class Worker(val pair: KeyPairAndPubKey, val info: RemoteNodeInfo, buffer: Bytes, sock: Socket) { me =>
+  class Worker(val pair: KeyPairAndPubKey, val info: RemoteNodeInfo, buffer: Bytes, val sock: Socket) { me =>
     implicit val context: ExecutionContextExecutor = ExecutionContext fromExecutor Executors.newSingleThreadExecutor
 
     var lastMessage: Long = System.currentTimeMillis

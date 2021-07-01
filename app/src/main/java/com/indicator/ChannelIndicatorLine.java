@@ -64,20 +64,23 @@ public class ChannelIndicatorLine extends LinearLayout {
         for (int i = 0; i < count; i++) {
             View indicator = getChildAt(i);
             Channel chan = channels[i];
+            setView(indicator, chan);
+        }
+    }
 
-            if (Channel$.MODULE$.isWaiting(chan)) {
-                indicator.setBackgroundResource(R.drawable.indicator_chan_confirming);
-                indicator.setAlpha(0.6f);
-            } else if (!Channel$.MODULE$.isOperational(chan)) {
-                indicator.setBackgroundResource(R.drawable.indicator_chan_malfunction);
-                indicator.setAlpha(0.6f);
-            } else if (Channel$.MODULE$.isOperationalAndSleeping(chan)) {
-                indicator.setBackgroundResource(R.drawable.indicator_chan_normal);
-                indicator.setAlpha(0.25f);
-            } else {
-                indicator.setBackgroundResource(R.drawable.indicator_chan_normal);
-                indicator.setAlpha(0.8f);
-            }
+    public static void setView(View indicator, Channel chan) {
+        if (Channel$.MODULE$.isWaiting(chan)) {
+            indicator.setBackgroundResource(R.drawable.indicator_chan_confirming);
+            indicator.setAlpha(0.6f);
+        } else if (!Channel$.MODULE$.isOperational(chan)) {
+            indicator.setBackgroundResource(R.drawable.indicator_chan_malfunction);
+            indicator.setAlpha(0.6f);
+        } else if (Channel$.MODULE$.isOperationalAndSleeping(chan)) {
+            indicator.setBackgroundResource(R.drawable.indicator_chan_normal);
+            indicator.setAlpha(0.25f);
+        } else {
+            indicator.setBackgroundResource(R.drawable.indicator_chan_normal);
+            indicator.setAlpha(0.8f);
         }
     }
 

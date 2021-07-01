@@ -264,8 +264,12 @@
     <string name="chan_in_flight">In-flight</string>
     <string name="chan_depth">Funding depth</string>
 
-    <string name="chan_online">online</string>
-    <string name="chan_offline">offline</string>
+    <string name="chan_nothing"><![CDATA[<i>nothing</i>]]></string>
+
+    <string name="ln_info_close_coop">Closed cooperatively</string>
+    <string name="ln_info_close_local">Force-closed by your wallet</string>
+    <string name="ln_info_close_remote">Force-closed by remote peer</string>
+    <string name="ln_info_shutdown">Shutting down&#8230;</string>
 
     <!-- /statistics -->
 

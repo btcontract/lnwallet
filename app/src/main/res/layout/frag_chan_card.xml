@@ -48,7 +48,7 @@
 
         </FrameLayout>
 
-        <!-- Capacity, can send/receive -->
+        <!-- Capacity, can send/receive, other info -->
 
         <RelativeLayout style="@style/FillingView" android:id="@+id/totalCapacity">
             <TextView style="@style/BoundedView" android:layout_centerVertical="true" android:layout_alignParentStart="true" android:text="@string/chan_capacity"/>

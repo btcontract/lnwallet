@@ -6,9 +6,11 @@ import immortan.crypto.Tools._
 import scala.concurrent.duration._
 import com.btcontract.wallettest.Colors._
 import com.btcontract.wallettest.R.string._
-import android.widget.{BaseAdapter, LinearLayout, ListView}
-import immortan.{Channel, ChannelMaster, LNParams}
+
 import android.view.{View, ViewGroup}
+import android.widget.{BaseAdapter, LinearLayout, ListView}
+import immortan.{ChanAndCommits, Channel, ChannelMaster, LNParams}
+import fr.acinq.eclair.channel.DATA_CLOSING
 import rx.lang.scala.Subscription
 import android.os.Bundle
 import immortan.utils.Rx
@@ -17,12 +19,16 @@ import immortan.utils.Rx
 class StatActivity extends BaseActivity { me =>
   private[this] var updateSubscription = Option.empty[Subscription]
   private[this] lazy val chanList = findViewById(R.id.chanList).asInstanceOf[ListView]
+  private[this] lazy val csToDisplay = LNParams.cm.all.values.flatMap(Channel.chanAndCommitsOpt).toList
 
   val chanAdapter: BaseAdapter = new BaseAdapter {
-    override def getView(position: Int, savedView: View, parent: ViewGroup): View = savedView
-    override def getItem(pos: Int): Channel = LNParams.cm.all.values.toList(pos)
+    override def getItem(pos: Int): ChanAndCommits = csToDisplay(pos)
     override def getItemId(position: Int): Long = position
     override def getCount: Int = 0
+
+    override def getView(position: Int, savedView: View, parent: ViewGroup): View = {
+      savedView
+    }
   }
 
   override def onDestroy: Unit = {
@@ -96,4 +102,16 @@ class StatActivity extends BaseActivity { me =>
       WalletApp.freePossiblyUsedResouces
       me exitTo ClassNames.mainActivityClass
     }
+
+  def sumOrNothing(amt: MilliSatoshi): String =
+    if (MilliSatoshi(0L) == amt) getString(chan_nothing)
+    else LNParams.denomination.parsedWithSign(amt, cardIn, cardZero)
+
+  def closedBy(cd: DATA_CLOSING): String = {
+    if (cd.remoteCommitPublished.nonEmpty) getString(ln_info_close_remote)
+    else if (cd.nextRemoteCommitPublished.nonEmpty) getString(ln_info_close_remote)
+    else if (cd.futureRemoteCommitPublished.nonEmpty) getString(ln_info_close_remote)
+    else if (cd.mutualClosePublished.nonEmpty) getString(ln_info_close_coop)
+    else getString(ln_info_close_local)
+  }
 }
