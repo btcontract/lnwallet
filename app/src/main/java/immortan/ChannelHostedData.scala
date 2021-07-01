@@ -15,11 +15,11 @@ case class WaitRemoteHostedReply(remoteInfo: RemoteNodeInfo, refundScriptPubKey:
 case class WaitRemoteHostedStateUpdate(remoteInfo: RemoteNodeInfo, hc: HostedCommits) extends ChannelData
 
 case class HostedCommits(remoteInfo: RemoteNodeInfo, localSpec: CommitmentSpec, lastCrossSignedState: LastCrossSignedState, nextLocalUpdates: List[UpdateMessage],
-                         nextRemoteUpdates: List[UpdateMessage], updateOpt: Option[ChannelUpdate], postErrorOutgoingResolvedIds: Set[Long], localError: Option[Error],
-                         remoteError: Option[Error], resizeProposal: Option[ResizeChannel] = None, overrideProposal: Option[StateOverride] = None,
+                         nextRemoteUpdates: List[UpdateMessage], updateOpt: Option[ChannelUpdate], postErrorOutgoingResolvedIds: Set[Long], localError: Option[Fail],
+                         remoteError: Option[Fail], resizeProposal: Option[ResizeChannel] = None, overrideProposal: Option[StateOverride] = None,
                          startedAt: Long = System.currentTimeMillis) extends PersistentChannelData with Commitments { me =>
 
-  val error: Option[Error] = localError.orElse(remoteError)
+  val error: Option[Fail] = localError.orElse(remoteError)
 
   val nextTotalLocal: Long = lastCrossSignedState.localUpdates + nextLocalUpdates.size
 

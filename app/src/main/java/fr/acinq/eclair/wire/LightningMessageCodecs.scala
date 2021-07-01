@@ -1,19 +1,3 @@
-/*
- * Copyright 2019 ACINQ SAS
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
-
 package fr.acinq.eclair.wire
 
 import scodec.codecs._
@@ -23,9 +7,7 @@ import fr.acinq.eclair.wire.ChannelCodecs._
 import scodec.bits.ByteVector
 import scodec.Codec
 
-/**
- * Created by PM on 15/11/2016.
- */
+
 object LightningMessageCodecs {
 
   val featuresCodec: Codec[Features] = varsizebinarydata.xmap[Features](Features.apply, _.toByteVector)
@@ -42,7 +24,9 @@ object LightningMessageCodecs {
 
   val initCodec = (("features" | combinedFeaturesCodec) :: ("tlvStream" | InitTlvCodecs.initTlvCodec)).as[Init]
 
-  val errorCodec = (("channelId" | bytes32) :: ("data" | varsizebinarydata)).as[Error]
+  val failCodec = (("channelId" | bytes32) :: ("data" | varsizebinarydata)).as[Fail]
+
+  val warningCodec = (("channelId" | bytes32) :: ("data" | varsizebinarydata)).as[Warning]
 
   val pingCodec = (("pongLength" | uint16) :: ("data" | varsizebinarydata)).as[Ping]
 
@@ -506,8 +490,9 @@ object LightningMessageCodecs {
 
   val lightningMessageCodec: DiscriminatorCodec[LightningMessage, Int] =
     discriminated[LightningMessage].by(uint16)
+      .typecase(1, warningCodec)
       .typecase(16, initCodec)
-      .typecase(17, errorCodec)
+      .typecase(17, failCodec)
       .typecase(18, pingCodec)
       .typecase(19, pongCodec)
       .typecase(32, openChannelCodec)
@@ -566,7 +551,7 @@ object LightningMessageCodecs {
       case HC_UPDATE_FULFILL_HTLC_TAG => updateFulfillHtlcCodec
       case HC_UPDATE_FAIL_HTLC_TAG => updateFailHtlcCodec
       case HC_UPDATE_ADD_HTLC_TAG => updateAddHtlcCodec
-      case HC_ERROR_TAG => errorCodec
+      case HC_ERROR_TAG => failCodec
 
       case SWAP_IN_REQUEST_MESSAGE_TAG => provide(SwapInRequest)
       case SWAP_IN_PAYMENT_REQUEST_MESSAGE_TAG => swapInPaymentRequestCodec
@@ -624,7 +609,7 @@ object LightningMessageCodecs {
   // HC uses the following protocol-defined messages, but they still need to be wrapped in UnknownMessage
 
   def prepareNormal(msg: LightningMessage): LightningMessage = msg match {
-    case msg: Error => UnknownMessage(HC_ERROR_TAG, LightningMessageCodecs.errorCodec.encode(msg).require.toByteVector)
+    case msg: Fail => UnknownMessage(HC_ERROR_TAG, LightningMessageCodecs.failCodec.encode(msg).require.toByteVector)
     case msg: ChannelUpdate => UnknownMessage(PHC_UPDATE_SYNC_TAG, LightningMessageCodecs.channelUpdateCodec.encode(msg).require.toByteVector)
     case msg: UpdateAddHtlc => UnknownMessage(HC_UPDATE_ADD_HTLC_TAG, LightningMessageCodecs.updateAddHtlcCodec.encode(msg).require.toByteVector)
     case msg: UpdateFailHtlc => UnknownMessage(HC_UPDATE_FAIL_HTLC_TAG, LightningMessageCodecs.updateFailHtlcCodec.encode(msg).require.toByteVector)

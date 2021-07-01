@@ -433,7 +433,7 @@ abstract class ChannelNormal(bag: ChannelBag) extends Channel { me =>
 
       case (wait: DATA_WAIT_FOR_REMOTE_PUBLISH_FUTURE_COMMITMENT, CMD_SOCKET_ONLINE, SLEEPING) =>
         // There isn't much to do except asking them again to publish their current commitment
-        val error = Error(wait.channelId, "please publish your local commitment")
+        val error = Fail(wait.channelId, "please publish your local commitment")
         BECOME(wait, CLOSING)
         SEND(error)
 
@@ -460,7 +460,7 @@ abstract class ChannelNormal(bag: ChannelBag) extends Channel { me =>
 
 
       case (norm: DATA_NORMAL, reestablish: ChannelReestablish, SLEEPING) =>
-        val pleasePublishError = Error(norm.channelId, "please publish your local commitment")
+        val pleasePublishError = Fail(norm.channelId, "please publish your local commitment")
 
         reestablish match {
           case rs if !Helpers.checkLocalCommit(norm, rs.nextRemoteRevocationNumber) =>
@@ -526,7 +526,7 @@ abstract class ChannelNormal(bag: ChannelBag) extends Channel { me =>
       // Closing phase
 
       case (data1: DATA_CLOSING, _: ChannelReestablish, CLOSING) =>
-        val error = Error(data1.channelId, s"funding tx has been spent")
+        val error = Fail(data1.channelId, s"funding tx has been spent")
         SEND(error)
 
 
@@ -638,7 +638,7 @@ abstract class ChannelNormal(bag: ChannelBag) extends Channel { me =>
         BECOME(data1, SLEEPING)
 
 
-      case (_, remote: Error, _) =>
+      case (_, remote: Fail, _) =>
         // Convert remote error to local exception, it will be dealt with upstream
         throw RemoteErrorException(ErrorExt extractDescription remote)
 

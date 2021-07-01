@@ -132,7 +132,7 @@ class ChannelMaster(val payBag: PaymentBag, val chanBag: ChannelBag, val dataBag
     fromNode(worker.info.nodeId).foreach(_.chan process CMD_SOCKET_ONLINE)
 
   override def onMessage(worker: CommsTower.Worker, message: LightningMessage): Unit = message match {
-    case msg: Error if msg.channelId == ByteVector32.Zeroes => fromNode(worker.info.nodeId).foreach(_.chan process msg)
+    case msg: Fail if msg.channelId == ByteVector32.Zeroes => fromNode(worker.info.nodeId).foreach(_.chan process msg)
     case msg: ChannelReestablish if !all.contains(msg.channelId) => unknownReestablishStream onNext UnknownReestablish(worker, msg)
     case msg: ChannelUpdate => fromNode(worker.info.nodeId).foreach(_.chan process msg)
     case msg: HasChannelId => sendTo(msg, msg.channelId)

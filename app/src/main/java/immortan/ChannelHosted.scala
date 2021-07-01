@@ -244,12 +244,12 @@ abstract class ChannelHosted extends Channel { me =>
       events.notifyResolvers
 
 
-    case (hc: HostedCommits, remote: Error, WAIT_FOR_ACCEPT | OPEN) if hc.remoteError.isEmpty =>
+    case (hc: HostedCommits, remote: Fail, WAIT_FOR_ACCEPT | OPEN) if hc.remoteError.isEmpty =>
       StoreBecomeSend(data1 = hc.copy(remoteError = remote.asSome), OPEN)
       throw RemoteErrorException(ErrorExt extractDescription remote)
 
 
-    case (_, remote: Error, _) =>
+    case (_, remote: Fail, _) =>
       // Convert remote error to local exception, it will be dealt with upstream
       throw RemoteErrorException(ErrorExt extractDescription remote)
 
@@ -269,7 +269,7 @@ abstract class ChannelHosted extends Channel { me =>
   }
 
   def localSuspend(hc: HostedCommits, errCode: String): Unit = {
-    val localError = Error(data = ByteVector.fromValidHex(errCode), channelId = hc.channelId)
+    val localError = Fail(data = ByteVector.fromValidHex(errCode), channelId = hc.channelId)
     if (hc.localError.isEmpty) StoreBecomeSend(hc.copy(localError = localError.asSome), state, localError)
   }
 

@@ -506,7 +506,7 @@ trait HasTypicalChainFee {
     val target = LNParams.feeRates.info.onChainFeeConf.feeTargets.mutualCloseBlockTarget
     val feerate = LNParams.feeRates.info.onChainFeeConf.feeEstimator.getFeeratePerKw(target)
     // Should not be used by long-lived instances since this info is getting outdated
-    Transactions.weight2fee(feerate, weight = 600).toMilliSatoshi
+    Transactions.weight2fee(feerate, weight = 500).toMilliSatoshi
   }
 
   def replaceOutgoingPayment(ext: PaymentRequestExt, description: PaymentDescription, action: Option[PaymentAction], sentAmount: MilliSatoshi): Unit =

@@ -296,8 +296,8 @@ object ChannelCodecs {
       (listOfN(uint16, updateMessageCodec) withContext "nextRemoteUpdates") ::
       (optional(bool8, lengthDelimited(channelUpdateCodec)) withContext "updateOpt") ::
       (setCodec(uint64overflow) withContext "postErrorOutgoingResolvedIds") ::
-      (optional(bool8, lengthDelimited(errorCodec)) withContext "localError") ::
-      (optional(bool8, lengthDelimited(errorCodec)) withContext "remoteError") ::
+      (optional(bool8, lengthDelimited(failCodec)) withContext "localError") ::
+      (optional(bool8, lengthDelimited(failCodec)) withContext "remoteError") ::
       (optional(bool8, lengthDelimited(resizeChannelCodec)) withContext "resizeProposal") ::
       (optional(bool8, lengthDelimited(stateOverrideCodec)) withContext "overrideProposal") ::
       (int64 withContext "startedAt")

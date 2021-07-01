@@ -1,6 +1,6 @@
 package immortan
 
-import fr.acinq.eclair.wire.Error
+import fr.acinq.eclair.wire.Fail
 
 
 object ErrorCodes {
@@ -30,7 +30,7 @@ object ErrorCodes {
 }
 
 object ErrorExt {
-  def extractDescription(error: Error): String = {
+  def extractDescription(error: Fail): String = {
     val postTagData = error.data.drop(2)
     val tag = error.data.take(2)
 
@@ -42,4 +42,4 @@ object ErrorExt {
   }
 }
 
-case class ErrorExt(error: Error, stamp: String, description: String)
+case class ErrorExt(error: Fail, stamp: String, description: String)
