@@ -9,7 +9,7 @@
         <clip>
             <shape>
                 <corners android:radius="@dimen/corner_radius"/>
-                <solid android:color="@color/colorAccent"/>
+                <solid android:color="@color/buttonGrayRipple"/>
             </shape>
         </clip>
     </item>

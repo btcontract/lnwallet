@@ -1,5 +1,6 @@
 package com.btcontract.wallettest
 
+import immortan._
 import fr.acinq.eclair._
 import fr.acinq.bitcoin._
 import immortan.crypto.Tools._
@@ -8,26 +9,139 @@ import com.btcontract.wallettest.Colors._
 import com.btcontract.wallettest.R.string._
 
 import android.view.{View, ViewGroup}
-import android.widget.{BaseAdapter, LinearLayout, ListView}
-import immortan.{ChanAndCommits, Channel, ChannelMaster, LNParams}
-import fr.acinq.eclair.channel.DATA_CLOSING
+import fr.acinq.eclair.channel.{DATA_CLOSING, NormalCommits}
+import android.widget.{BaseAdapter, LinearLayout, ListView, ProgressBar, TextView}
+import com.btcontract.wallettest.BaseActivity.StringOps
+import androidx.recyclerview.widget.RecyclerView
+import com.indicator.ChannelIndicatorLine
 import rx.lang.scala.Subscription
+import java.util.TimerTask
 import android.os.Bundle
 import immortan.utils.Rx
 
 
 class StatActivity extends BaseActivity { me =>
+  private[this] var csToDisplay = Seq.empty[ChanAndCommits]
   private[this] var updateSubscription = Option.empty[Subscription]
   private[this] lazy val chanList = findViewById(R.id.chanList).asInstanceOf[ListView]
-  private[this] lazy val csToDisplay = LNParams.cm.all.values.flatMap(Channel.chanAndCommitsOpt).toList
 
   val chanAdapter: BaseAdapter = new BaseAdapter {
     override def getItem(pos: Int): ChanAndCommits = csToDisplay(pos)
     override def getItemId(position: Int): Long = position
-    override def getCount: Int = 0
+    override def getCount: Int = csToDisplay.size
 
-    override def getView(position: Int, savedView: View, parent: ViewGroup): View = {
-      savedView
+    def getView(position: Int, savedView: View, parent: ViewGroup): View = {
+      val card = if (null == savedView) getLayoutInflater.inflate(R.layout.frag_chan_card, null) else savedView
+
+      val cardView = (getItem(position), card.getTag) match {
+        case (ChanAndCommits(chan: ChannelHosted, hc: HostedCommits), view: HostedViewHolder) => view.fill(chan, hc)
+        case (ChanAndCommits(chan: ChannelHosted, hc: HostedCommits), _) => new HostedViewHolder(card).fill(chan, hc)
+        case (ChanAndCommits(chan: ChannelNormal, commits: NormalCommits), view: NormalViewHolder) => view.fill(chan, commits)
+        case (ChanAndCommits(chan: ChannelNormal, commits: NormalCommits), _) => new NormalViewHolder(card).fill(chan, commits)
+        case _ => throw new RuntimeException
+      }
+
+      card.setTag(cardView)
+      card
+    }
+  }
+
+  abstract class ChanCardViewHolder(view: View) extends RecyclerView.ViewHolder(view) {
+    val baseBar: ProgressBar = view.findViewById(R.id.baseBar).asInstanceOf[ProgressBar]
+    val overBar: ProgressBar = view.findViewById(R.id.overBar).asInstanceOf[ProgressBar]
+    val peerAddress: TextView = view.findViewById(R.id.peerAddress).asInstanceOf[TextView]
+    val chanState: View = view.findViewById(R.id.chanState).asInstanceOf[View]
+
+    val canSendText: TextView = view.findViewById(R.id.canSendText).asInstanceOf[TextView]
+    val canReceiveText: TextView = view.findViewById(R.id.canReceiveText).asInstanceOf[TextView]
+    val refundableAmountText: TextView = view.findViewById(R.id.refundableAmountText).asInstanceOf[TextView]
+    val paymentsInFlightText: TextView = view.findViewById(R.id.paymentsInFlightText).asInstanceOf[TextView]
+    val totalCapacityText: TextView = view.findViewById(R.id.totalCapacityText).asInstanceOf[TextView]
+    val extraInfoText: TextView = view.findViewById(R.id.extraInfoText).asInstanceOf[TextView]
+
+    val wrappers: Seq[View] =
+      view.findViewById(R.id.progressBars).asInstanceOf[View] ::
+        view.findViewById(R.id.totalCapacity).asInstanceOf[View] ::
+        view.findViewById(R.id.balancesDivider).asInstanceOf[View] ::
+        view.findViewById(R.id.refundableAmount).asInstanceOf[View] ::
+        view.findViewById(R.id.paymentsInFlight).asInstanceOf[View] ::
+        view.findViewById(R.id.canReceive).asInstanceOf[View] ::
+        view.findViewById(R.id.canSend).asInstanceOf[View] ::
+        Nil
+
+    def visibleExcept(goneRes: Int*): Unit = for (wrap <- wrappers) setVis(!goneRes.contains(wrap.getId), wrap)
+
+    baseBar.setMax(1000)
+    overBar.setMax(1000)
+  }
+
+  class NormalViewHolder(view: View) extends ChanCardViewHolder(view) {
+    def fill(chan: ChannelNormal, cs: NormalCommits): NormalViewHolder = {
+
+      val capacity: Satoshi = cs.commitInput.txOut.amount
+      val barCanReceive = (cs.availableForReceive.toLong / capacity.toLong).toInt
+      val barCanSend = (cs.latestReducedRemoteSpec.toRemote.toLong / capacity.toLong).toInt
+      val barLocalReserve = (cs.latestReducedRemoteSpec.toRemote - cs.availableForSend).toLong / capacity.toLong
+      val inFlight: MilliSatoshi = cs.latestReducedRemoteSpec.htlcs.foldLeft(0L.msat)(_ + _.add.amountMsat)
+      val refundable: MilliSatoshi = cs.latestReducedRemoteSpec.toRemote + inFlight
+
+      if (Channel isWaiting chan) {
+        setVis(isVisible = false, extraInfoText)
+        visibleExcept(R.id.progressBars, R.id.paymentsInFlight, R.id.canReceive, R.id.canSend)
+      } else if (Channel isOperational chan) {
+        setVis(isVisible = false, extraInfoText)
+        visibleExcept(goneRes = -1)
+      } else {
+        visibleExcept(R.id.progressBars, R.id.paymentsInFlight, R.id.canReceive, R.id.canSend)
+        val closeInfoRes = chan.data match { case c: DATA_CLOSING => closedBy(c) case _ => ln_info_shutdown }
+        extraInfoText.setText(getString(closeInfoRes).html)
+        setVis(isVisible = true, extraInfoText)
+      }
+
+      ChannelIndicatorLine.setView(chanState, chan)
+      peerAddress.setText(cs.remoteInfo.address.toString)
+      overBar.setProgress(barCanSend min barLocalReserve.toInt)
+      baseBar.setSecondaryProgress(barCanSend + barCanReceive)
+      baseBar.setProgress(barCanSend)
+
+      totalCapacityText.setText(sumOrNothing(capacity, cardIn).html)
+      canReceiveText.setText(sumOrNothing(cs.availableForReceive.truncateToSatoshi, cardOut).html)
+      canSendText.setText(sumOrNothing(cs.availableForSend.truncateToSatoshi, cardIn).html)
+
+      refundableAmountText.setText(sumOrNothing(refundable.truncateToSatoshi, cardIn).html)
+      paymentsInFlightText.setText(sumOrNothing(inFlight.truncateToSatoshi, cardIn).html)
+      this
+    }
+  }
+
+  class HostedViewHolder(view: View) extends ChanCardViewHolder(view) {
+    def fill(chan: ChannelHosted, hc: HostedCommits): HostedViewHolder = {
+
+      val capacity: Satoshi = hc.lastCrossSignedState.initHostedChannel.channelCapacityMsat.truncateToSatoshi
+      val inFlight: MilliSatoshi = hc.nextLocalSpec.htlcs.foldLeft(0L.msat)(_ + _.add.amountMsat)
+      val barCanReceive = (hc.availableForReceive.toLong / capacity.toLong).toInt
+      val barCanSend = (hc.availableForSend.toLong / capacity.toLong).toInt
+
+      val errorText = (hc.localError, hc.remoteError) match {
+        case Some(error) ~ _ => s"LOCAL: ${ErrorExt extractDescription error}"
+        case _ ~ Some(error) => s"REMOTE: ${ErrorExt extractDescription error}"
+        case _ => new String
+      }
+
+      visibleExcept(R.id.refundableAmount)
+      ChannelIndicatorLine.setView(chanState, chan)
+      peerAddress.setText(hc.remoteInfo.address.toString)
+      baseBar.setSecondaryProgress(barCanSend + barCanReceive)
+      baseBar.setProgress(barCanSend)
+
+      totalCapacityText.setText(sumOrNothing(capacity, cardIn).html)
+      canReceiveText.setText(sumOrNothing(hc.availableForReceive.truncateToSatoshi, cardOut).html)
+      canSendText.setText(sumOrNothing(hc.availableForSend.truncateToSatoshi, cardIn).html)
+
+      paymentsInFlightText.setText(sumOrNothing(inFlight.truncateToSatoshi, cardIn).html)
+      setVis(isVisible = hc.error.isDefined, extraInfoText)
+      extraInfoText.setText(errorText)
+      this
     }
   }
 
@@ -39,6 +153,7 @@ class StatActivity extends BaseActivity { me =>
   def INIT(state: Bundle): Unit =
     if (WalletApp.isAlive && LNParams.isOperational) {
       setContentView(R.layout.activity_stat)
+      updateChanData.run
 
       val title = new TitleView(me getString menu_chans_stats)
       title.view.setOnClickListener(me onButtonTap finish)
@@ -97,21 +212,26 @@ class StatActivity extends BaseActivity { me =>
       val window = 500.millis
       val stateEvents = Rx.uniqueFirstAndLastWithinWindow(ChannelMaster.stateUpdateStream, window)
       val statusEvents = Rx.uniqueFirstAndLastWithinWindow(ChannelMaster.statusUpdateStream, window)
-      updateSubscription = stateEvents.merge(statusEvents).subscribe(_ => UITask(chanAdapter.notifyDataSetChanged).run).asSome
+      updateSubscription = stateEvents.merge(statusEvents).subscribe(_ => updateChanData.run).asSome
     } else {
       WalletApp.freePossiblyUsedResouces
       me exitTo ClassNames.mainActivityClass
     }
 
-  def sumOrNothing(amt: MilliSatoshi): String =
-    if (MilliSatoshi(0L) == amt) getString(chan_nothing)
-    else LNParams.denomination.parsedWithSign(amt, cardIn, cardZero)
+  private def sumOrNothing(amt: Satoshi, mainColor: String): String =
+    if (0L.sat != amt) LNParams.denomination.parsedWithSign(amt.toMilliSatoshi, mainColor, cardZero)
+    else getString(chan_nothing)
 
-  def closedBy(cd: DATA_CLOSING): String = {
-    if (cd.remoteCommitPublished.nonEmpty) getString(ln_info_close_remote)
-    else if (cd.nextRemoteCommitPublished.nonEmpty) getString(ln_info_close_remote)
-    else if (cd.futureRemoteCommitPublished.nonEmpty) getString(ln_info_close_remote)
-    else if (cd.mutualClosePublished.nonEmpty) getString(ln_info_close_coop)
-    else getString(ln_info_close_local)
+  private def closedBy(cd: DATA_CLOSING): Int = {
+    if (cd.remoteCommitPublished.nonEmpty) ln_info_close_remote
+    else if (cd.nextRemoteCommitPublished.nonEmpty) ln_info_close_remote
+    else if (cd.futureRemoteCommitPublished.nonEmpty) ln_info_close_remote
+    else if (cd.mutualClosePublished.nonEmpty) ln_info_close_coop
+    else ln_info_close_local
+  }
+
+  private def updateChanData: TimerTask = UITask {
+    csToDisplay = LNParams.cm.all.values.flatMap(Channel.chanAndCommitsOpt).toList
+    chanAdapter.notifyDataSetChanged
   }
 }

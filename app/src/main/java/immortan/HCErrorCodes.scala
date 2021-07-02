@@ -41,5 +41,3 @@ object ErrorExt {
     }
   }
 }
-
-case class ErrorExt(error: Fail, stamp: String, description: String)

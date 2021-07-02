@@ -306,8 +306,12 @@ trait BaseActivity extends AppCompatActivity { me =>
       button.setAlpha(alpha)
     }
 
-    def updateText(value: MilliSatoshi): Unit = runAnd(inputAmount.requestFocus)(inputAmount setText value.truncateToSatoshi.toLong.toString)
-    def bigDecimalFrom(input: CurrencyEditText, times: Long = 1L): BigDecimal = (input.getNumericValueBigDecimal: BigDecimal) * times
+    def updateText(value: MilliSatoshi): Unit = {
+      val decimalString = new java.math.BigDecimal(value.toLong / 1000D).stripTrailingZeros
+      runAnd(inputAmount.requestFocus)(inputAmount setText decimalString.toString)
+    }
+
+    def bigDecimalFrom(input: CurrencyEditText, times: Long = 1L): BigDecimal = BigDecimal(input.getNumericValueBigDecimal) * times
     def resultExtraInput: Option[String] = Option(extraInput.getText.toString).filterNot(_.trim.isEmpty)
     def resultMsat: MilliSatoshi = MilliSatoshi(bigDecimalFrom(inputAmount, times = 1000L).toLong)
     def resultSat: Satoshi = resultMsat.truncateToSatoshi
@@ -466,7 +470,7 @@ trait BaseActivity extends AppCompatActivity { me =>
     val manager: RateManager = getManager
 
     val finalMaxReceivable: MilliSatoshi = initMaxReceivable.min(maxReceivable)
-    val finalMinReceivable: MilliSatoshi = initMinReceivable.max(LNParams.minPayment)
+    val finalMinReceivable: MilliSatoshi = initMinReceivable.min(finalMaxReceivable).max(LNParams.minPayment)
     val canReceiveHuman: String = LNParams.denomination.parsedWithSign(finalMaxReceivable, cardIn, cardZero)
     val canReceiveFiatHuman: String = WalletApp.currentMsatInFiatHuman(finalMaxReceivable)
 
@@ -490,6 +494,9 @@ trait BaseActivity extends AppCompatActivity { me =>
     manager.updateButton(getPositiveButton(alert), isEnabled = false)
 
     manager.inputAmount addTextChangedListener onTextChange { _ =>
+
+      println(s"-- manager.resultMsat: ${manager.resultMsat}, finalMinReceivable: $finalMinReceivable, finalMaxReceivable: $finalMaxReceivable")
+
       val withinBounds = finalMinReceivable <= manager.resultMsat && finalMaxReceivable >= manager.resultMsat
       manager.updateButton(button = getPositiveButton(alert), isEnabled = withinBounds)
     }

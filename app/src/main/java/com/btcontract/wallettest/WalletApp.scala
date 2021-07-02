@@ -292,8 +292,8 @@ class WalletApp extends Application { me =>
   lazy val maxDialog: Double = metrics.densityDpi * 2.3
 
   import android.provider.Settings.System.{getFloat, FONT_SCALE}
-  // Special handling for cases when user has chosen large font and screen size is constrained
-  lazy val tooFewSpace: Boolean = getFloat(getContentResolver, FONT_SCALE, 1) > 1 && scrWidth < 2.4
+  // Special handling for cases when user has chosen large font OR full BTC denomination and screen size is constrained
+  lazy val tooFewSpace: Boolean = getFloat(getContentResolver, FONT_SCALE, 1) > 1 && scrWidth < 2.4 || !WalletApp.useSatDenom
 
   lazy val dateFormat: SimpleDateFormat = {
     val format = (DateFormat.is24HourFormat(me), tooFewSpace) match {

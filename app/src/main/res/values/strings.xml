@@ -260,8 +260,8 @@
     <string name="chan_capacity">Capacity</string>
     <string name="chan_can_send">Can send</string>
     <string name="chan_can_receive">Can receive</string>
+    <string name="chan_in_flight">Value in-flight</string>
     <string name="chan_refundable">Refundable</string>
-    <string name="chan_in_flight">In-flight</string>
     <string name="chan_depth">Funding depth</string>
 
     <string name="chan_nothing"><![CDATA[<i>nothing</i>]]></string>
