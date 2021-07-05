@@ -3,6 +3,7 @@
     xmlns:android="http://schemas.android.com/apk/res/android">
 
     <ListView
+        android:scrollbars="none"
         android:id="@+id/chanList"
         android:clipToPadding="false"
         android:footerDividersEnabled="false"

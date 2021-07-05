@@ -44,7 +44,7 @@ object SatDenomination extends Denomination {
   val factor = 1000L
   val sign = "sat"
 
-  fmt setDecimalFormatSymbols Denomination.symbols
+  fmt.setDecimalFormatSymbols(Denomination.symbols)
   def parsed(msat: MilliSatoshi, mainColor: String, zeroColor: String): String = {
     // Zero color is not used in SAT denomination since it has no decimal parts
 
@@ -61,8 +61,7 @@ object BtcDenomination extends Denomination {
   val factor = 100000000000L
   val sign = "sat"
 
-  fmt setDecimalFormatSymbols Denomination.symbols
-
+  fmt.setDecimalFormatSymbols(Denomination.symbols)
   def parsed(msat: MilliSatoshi, mainColor: String, zeroColor: String): String = {
     // Alpha channel does not work on Android when set as HTML attribute
     // hence zero color is supplied to match different backgrounds well

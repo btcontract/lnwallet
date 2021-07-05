@@ -380,11 +380,13 @@ class OutgoingPaymentSender(val fullTag: FullPaymentTag, val listener: OutgoingP
               me abortMaybeNotify data.withoutPartId(wait.partId).withRemoteFailure(route, pkt)
 
             case pkt @ Sphinx.DecryptedFailurePacket(originNodeId, failure: Update) =>
+              println("-- 1")
               // Pathfinder channels must be fully loaded from db at this point since we have already used them to construct a route earlier
               val originalNodeIdOpt = opm.cm.pf.data.channels.get(failure.update.shortChannelId).map(_.ann getNodeIdSameSideAs failure.update)
               val isSignatureFine = originalNodeIdOpt.contains(originNodeId) && Announcements.checkSig(failure.update)(originNodeId)
 
               if (isSignatureFine) {
+                println("-- 2")
                 opm.cm.pf process failure.update
                 val isEnabled = Announcements.isEnabled(failure.update.channelFlags)
                 // If channel is disabled we exclude it for current MPP session, but may reuse in next one
@@ -392,6 +394,7 @@ class OutgoingPaymentSender(val fullTag: FullPaymentTag, val listener: OutgoingP
 
                 route.getEdgeForNode(originNodeId) match {
                   case Some(edge) if edge.updExt.update.shortChannelId != failure.update.shortChannelId =>
+                    println("-- 3")
                     // This is fine: remote node has used a different channel than the one we have initially requested
                     // But remote node may send such errors infinitely so increment this specific type of failure
                     // Still fail an originally selected channel since it has most likely been tried too
@@ -399,15 +402,18 @@ class OutgoingPaymentSender(val fullTag: FullPaymentTag, val listener: OutgoingP
                     opm doProcess NodeFailed(originNodeId, increment = 1)
 
                   case Some(edge) if edge.updExt.update.core == failure.update.core =>
+                    println("-- 4")
                     // Remote node returned EXACTLY same update, this channel is likely imbalanced
                     opm doProcess ChannelFailed(edge.toDescAndCapacity, channelFailIncrement)
 
                   case _ =>
+                    println("-- 5")
                     // Something like higher feerates or CLTV, channel is updated in graph and may be chosen once again
                     // But remote node may send oscillating updates infinitely so increment this specific type of failure
                     opm doProcess NodeFailed(originNodeId, channelFailIncrement)
                 }
               } else {
+                println("-- 6")
                 // Invalid sig is a severe violation, ban sender node for 6 subsequent MPP sessions
                 opm doProcess NodeFailed(originNodeId, data.cmd.routerConf.maxStrangeNodeFailures * 32)
               }

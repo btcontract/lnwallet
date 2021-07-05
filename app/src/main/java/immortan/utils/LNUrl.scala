@@ -173,9 +173,11 @@ case class PayRequest(callback: String, maxSendable: Long, minSendable: Long, me
   val decodedMetadata: PayMetaData = to[PayMetaData](metadata)
 
   val metaDataTexts: List[String] = decodedMetadata.collect { case List("text/plain", txt) => txt }
+  val metaDataEmails: List[String] = decodedMetadata.collect { case List("text/email", txt) => txt }
+  val metaDataIdentities: List[String] = decodedMetadata.collect { case List("text/identity", txt) => txt }
 
+  require(1 >= (metaDataTexts ++ metaDataIdentities).size, "There can be at most one text/email or text/identity entry in metadata")
   require(metaDataTexts.size == 1, "There must be exactly one text/plain entry in metadata")
-
   require(minSendable <= maxSendable, s"max=$maxSendable while min=$minSendable")
 
   val metaDataTextPlain: String = trimmed(metaDataTexts.head)

@@ -72,7 +72,7 @@ object Colors {
 }
 
 trait ExternalDataChecker {
-  val noneRunnable: Runnable = new Runnable {override def run: Unit = none }
+  val noneRunnable: Runnable = new Runnable { def run: Unit = none }
   def checkExternalData(onNothing: Runnable): Unit
 }
 
@@ -251,10 +251,10 @@ trait BaseActivity extends AppCompatActivity { me =>
 
   final val scannerRequestCode = 101
 
-  def callScanner(checker: ExternalDataChecker): Unit = {
+  def callScanner(sheet: sheets.ScannerBottomSheet): Unit = {
     val allowed = ContextCompat.checkSelfPermission(me, android.Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
-    if (allowed) new sheets.ScannerBottomSheet(me, checker).show(getSupportFragmentManager, "scanner-bottom-sheet-fragment")
-    else ActivityCompat.requestPermissions(me, Array(android.Manifest.permission.CAMERA), scannerRequestCode)
+    if (!allowed) ActivityCompat.requestPermissions(me, Array(android.Manifest.permission.CAMERA), scannerRequestCode)
+    else sheet.show(getSupportFragmentManager, "scanner-bottom-sheet-fragment")
   }
 
   // Rich popup title
@@ -307,8 +307,8 @@ trait BaseActivity extends AppCompatActivity { me =>
     }
 
     def updateText(value: MilliSatoshi): Unit = {
-      val decimalString = new java.math.BigDecimal(value.toLong / 1000D).stripTrailingZeros
-      runAnd(inputAmount.requestFocus)(inputAmount setText decimalString.toString)
+      val decimalString = LNParams.denomination.fmt.format(value.toLong / 1000D)
+      runAnd(inputAmount.requestFocus)(inputAmount setText decimalString)
     }
 
     def bigDecimalFrom(input: CurrencyEditText, times: Long = 1L): BigDecimal = BigDecimal(input.getNumericValueBigDecimal) * times
@@ -494,9 +494,6 @@ trait BaseActivity extends AppCompatActivity { me =>
     manager.updateButton(getPositiveButton(alert), isEnabled = false)
 
     manager.inputAmount addTextChangedListener onTextChange { _ =>
-
-      println(s"-- manager.resultMsat: ${manager.resultMsat}, finalMinReceivable: $finalMinReceivable, finalMaxReceivable: $finalMaxReceivable")
-
       val withinBounds = finalMinReceivable <= manager.resultMsat && finalMaxReceivable >= manager.resultMsat
       manager.updateButton(button = getPositiveButton(alert), isEnabled = withinBounds)
     }

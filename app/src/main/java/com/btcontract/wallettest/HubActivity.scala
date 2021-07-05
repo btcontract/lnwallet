@@ -62,6 +62,11 @@ object HubActivity {
   var lastHashToReveals: Map[ByteVector32, RevealedLocalFulfills] = Map.empty
   // Run clear up method once on app start, do not re-run it every time this activity gets restarted
   lazy val markAsFailedOnce: Unit = LNParams.cm.markAsFailed(paymentInfos, LNParams.cm.allInChannelOutgoing)
+
+  def updateLnCaches: Unit = {
+    lastInChannelOutgoing = LNParams.cm.allInChannelOutgoing
+    lastHashToReveals = LNParams.cm.allIncomingRevealed
+  }
 }
 
 class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataChecker with ChoiceReceiver with ChannelListener { me =>
@@ -502,7 +507,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
   type GrantResults = Array[Int]
   override def onRequestPermissionsResult(reqCode: Int, permissions: Array[String], grantResults: GrantResults): Unit =
     if (reqCode == scannerRequestCode && grantResults.nonEmpty && grantResults.head == PackageManager.PERMISSION_GRANTED)
-      callScanner(me)
+      bringScanner(null)
 
   override def checkExternalData(whenNone: Runnable): Unit = InputParser.checkAndMaybeErase {
     case bitcoinUri: BitcoinUri if bitcoinUri.isValid => bringSendBitcoinPopup(bitcoinUri)
@@ -667,8 +672,8 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
       runInFutureProcessOnUI(loadRecent, none) { _ =>
         // We suggest user to rate us if: no rate attempt has been made before, LN payments were successful, user has been using an app for certain period
         setVis(WalletApp.showRateUs && paymentInfos.forall(_.status == PaymentStatus.SUCCEEDED) && allInfos.size > 4 && allInfos.size < 8, walletCards.rateTeaser)
-        walletCards.searchField addTextChangedListener onTextChange(searchWorker.addWork)
-        paymentAdapterDataChanged.run
+        walletCards.searchField.addTextChangedListener(me onTextChange searchWorker.addWork)
+        runAnd(updateLnCaches)(paymentAdapterDataChanged.run)
       }
 
       val window = 500.millis
@@ -677,12 +682,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
       val relayEvents = Rx.uniqueFirstAndLastWithinWindow(ChannelMaster.relayDbStream, window).doOnNext(_ => reloadRelayedPreimageInfos)
       val marketEvents = Rx.uniqueFirstAndLastWithinWindow(ChannelMaster.payMarketDbStream, window).doOnNext(_ => reloadPayMarketInfos)
       val paymentEvents = Rx.uniqueFirstAndLastWithinWindow(ChannelMaster.paymentDbStream, window).doOnNext(_ => reloadPaymentInfos)
-
-      val stateEvents = Rx.uniqueFirstAndLastWithinWindow(ChannelMaster.stateUpdateStream, window).doOnNext { _ =>
-        // We need this data to show active and dangerous payments, but it's costly to recalculate it for each card
-        lastInChannelOutgoing = LNParams.cm.allInChannelOutgoing
-        lastHashToReveals = LNParams.cm.allIncomingRevealed
-      }
+      val stateEvents = Rx.uniqueFirstAndLastWithinWindow(ChannelMaster.stateUpdateStream, window).doOnNext(_ => updateLnCaches)
 
       stateSubscription = txEvents.merge(paymentEvents).merge(relayEvents).merge(marketEvents).doOnNext(_ => updAllInfos).merge(stateEvents).subscribe(_ => paymentAdapterDataChanged.run).asSome
       statusSubscription = Rx.uniqueFirstAndLastWithinWindow(ChannelMaster.statusUpdateStream, window).merge(stateEvents).subscribe(_ => UITask(walletCards.updateView).run).asSome
@@ -700,7 +700,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
 
   def bringRateDialog(view: View): Unit = {
     val marketUri = Uri.parse(s"market://details?id=$getPackageName")
-    WalletApp.app.prefs.edit.putBoolean(WalletApp.SHOW_RATE_US, false)
+    WalletApp.app.prefs.edit.putBoolean(WalletApp.SHOW_RATE_US, false).commit
     me startActivity new Intent(Intent.ACTION_VIEW, marketUri)
     view.setVisibility(View.GONE)
   }
@@ -738,17 +738,17 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
     walletCards.searchField.setVisibility(View.GONE)
   }
 
-  def bringSendFromClipboard(view: View): Unit = {
-    def explainClipboardFailure: TimerTask = UITask {
+  def bringScanner(view: View): Unit = {
+    def explainClipboardFailure = UITask {
       val message = getString(error_nothing_in_clipboard)
       snack(contentWindow, message.html, dialog_ok, _.dismiss)
     }
 
-    runInFutureProcessOnUI(InputParser.recordValue(WalletApp.app.getBufferUnsafe),
-      _ => explainClipboardFailure.run)(_ => me checkExternalData explainClipboardFailure)
+    val onScan = UITask(me checkExternalData noneRunnable)
+    val onPaste = UITask(me checkExternalData explainClipboardFailure)
+    val sheet = new sheets.ScannerBottomSheet(me, onScan, onPaste)
+    callScanner(sheet)
   }
-
-  def bringScanner(view: View): Unit = callScanner(me)
 
   def bringReceiveOptions(view: View): Unit = {
     val options = Array(dialog_receive_btc, dialog_receive_ln).map(res => getString(res).html)

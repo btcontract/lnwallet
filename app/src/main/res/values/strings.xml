@@ -8,6 +8,7 @@
     <string name="delayed_pending">pending</string>
     <string name="lightning_wallet">Lightning</string>
     <string name="total_balance">Total balance</string>
+    <string name="paste_from_clipboard">Paste from clipboard</string>
     <string name="copied_to_clipboard">Copied to clipboard</string>
     <string name="delayed_refund">Delayed channel refund</string>
     <string name="add_address">More fresh addresses</string>
@@ -49,13 +50,13 @@
     <string name="menu_chans_stats">Channels and stats</string>
 
     <string name="dialog_ok">OK</string>
-    <string name="dialog_cancel">Cancel</string>
+    <string name="dialog_send">Send</string>
     <string name="dialog_receive">Receive</string>
+    <string name="dialog_cancel">Cancel</string>
     <string name="dialog_split">Split</string>
     <string name="dialog_share">Share</string>
     <string name="dialog_break">Break</string>
     <string name="dialog_open">Open</string>
-    <string name="dialog_send">Send</string>
     <string name="dialog_copy">Copy</string>
     <string name="dialog_info">Info</string>
     <string name="dialog_max">Max</string>
