@@ -15,6 +15,46 @@
             android:orientation="vertical"
             style="@style/FillingView">
 
+            <!-- Branding info for HCs -->
+
+            <RelativeLayout
+                android:layout_marginTop="10dp"
+                android:id="@+id/hcBranding"
+                style="@style/FillingView">
+
+                <LinearLayout
+                    android:orientation="vertical"
+                    android:layout_centerVertical="true"
+                    android:layout_alignParentStart="true"
+                    style="@style/BoundedView">
+
+                    <TextView
+                        style="@style/BoundedView"
+                        android:text="@string/hosted_channel"/>
+
+                    <TextView
+                        style="@style/BoundedView"
+                        android:textColor="@color/colorAccent"
+                        android:id="@+id/hcSupportInfo"/>
+
+                </LinearLayout>
+
+                <androidx.cardview.widget.CardView
+                    card_view:cardCornerRadius="@dimen/corner_radius"
+                    android:layout_centerVertical="true"
+                    android:layout_alignParentEnd="true"
+                    android:id="@+id/unusedAnchorId1"
+                    android:layout_height="36dp"
+                    android:layout_width="36dp">
+
+                    <ImageView
+                        android:id="@+id/hcImage"
+                        android:layout_height="36dp"
+                        android:layout_width="36dp"/>
+
+                </androidx.cardview.widget.CardView>
+            </RelativeLayout>
+
             <!-- Channel info and status -->
 
             <RelativeLayout

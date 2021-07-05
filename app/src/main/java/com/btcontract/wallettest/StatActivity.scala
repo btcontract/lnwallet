@@ -1,6 +1,7 @@
 package com.btcontract.wallettest
 
 import immortan._
+import android.widget._
 import fr.acinq.eclair._
 import fr.acinq.bitcoin._
 import immortan.crypto.Tools._
@@ -9,11 +10,14 @@ import com.btcontract.wallettest.Colors._
 import com.btcontract.wallettest.R.string._
 
 import android.view.{View, ViewGroup}
+import android.graphics.{Bitmap, BitmapFactory}
 import fr.acinq.eclair.channel.{DATA_CLOSING, NormalCommits}
-import android.widget.{BaseAdapter, LinearLayout, ListView, ProgressBar, TextView}
 import com.btcontract.wallettest.BaseActivity.StringOps
+import fr.acinq.eclair.wire.HostedChannelBranding
 import androidx.recyclerview.widget.RecyclerView
+import com.google.common.cache.LoadingCache
 import com.indicator.ChannelIndicatorLine
+import fr.acinq.bitcoin.Crypto.PublicKey
 import rx.lang.scala.Subscription
 import java.util.TimerTask
 import android.os.Bundle
@@ -24,6 +28,11 @@ class StatActivity extends BaseActivity { me =>
   private[this] var csToDisplay = Seq.empty[ChanAndCommits]
   private[this] var updateSubscription = Option.empty[Subscription]
   private[this] lazy val chanList = findViewById(R.id.chanList).asInstanceOf[ListView]
+  private[this] lazy val brandingInfos: Map[PublicKey, HostedChannelBranding] = getBrandingInfos.toMap
+
+  val hcImageMemo: LoadingCache[Bytes, Bitmap] = memoize {
+    bytes => BitmapFactory.decodeByteArray(bytes, 0, bytes.length)
+  }
 
   val chanAdapter: BaseAdapter = new BaseAdapter {
     override def getItem(pos: Int): ChanAndCommits = csToDisplay(pos)
@@ -46,7 +55,11 @@ class StatActivity extends BaseActivity { me =>
     }
   }
 
-  abstract class ChanCardViewHolder(view: View) extends RecyclerView.ViewHolder(view) {
+  abstract class ChanCardViewHolder(val view: View) extends RecyclerView.ViewHolder(view) {
+    val hcBranding: RelativeLayout = view.findViewById(R.id.hcBranding).asInstanceOf[RelativeLayout]
+    val hcSupportInfo: TextView = view.findViewById(R.id.hcSupportInfo).asInstanceOf[TextView]
+    val hcImage: ImageView = view.findViewById(R.id.hcImage).asInstanceOf[ImageView]
+
     val baseBar: ProgressBar = view.findViewById(R.id.baseBar).asInstanceOf[ProgressBar]
     val overBar: ProgressBar = view.findViewById(R.id.overBar).asInstanceOf[ProgressBar]
     val peerAddress: TextView = view.findViewById(R.id.peerAddress).asInstanceOf[TextView]
@@ -92,11 +105,13 @@ class StatActivity extends BaseActivity { me =>
         setVis(isVisible = false, extraInfoText)
         visibleExcept(goneRes = -1)
       } else {
+        setVis(isVisible = true, extraInfoText)
         visibleExcept(R.id.progressBars, R.id.paymentsInFlight, R.id.canReceive, R.id.canSend)
         val closeInfoRes = chan.data match { case c: DATA_CLOSING => closedBy(c) case _ => ln_info_shutdown }
         extraInfoText.setText(getString(closeInfoRes).html)
-        setVis(isVisible = true, extraInfoText)
       }
+
+      setVis(isVisible = false, hcBranding)
 
       ChannelIndicatorLine.setView(chanState, chan)
       peerAddress.setText(cs.remoteInfo.address.toString)
@@ -126,6 +141,14 @@ class StatActivity extends BaseActivity { me =>
         case Some(error) ~ _ => s"LOCAL: ${ErrorExt extractDescription error}"
         case _ ~ Some(error) => s"REMOTE: ${ErrorExt extractDescription error}"
         case _ => new String
+      }
+
+      val brandOpt = brandingInfos.get(hc.remoteInfo.nodeId)
+      setVis(isVisible = brandOpt.isDefined, hcBranding)
+
+      for (HostedChannelBranding(_, pngIcon, contactInfo) <- brandOpt) {
+        pngIcon.map(_.toArray).map(hcImageMemo.get).foreach(hcImage.setImageBitmap)
+        hcSupportInfo.setText(contactInfo)
       }
 
       visibleExcept(R.id.refundableAmount)
@@ -217,6 +240,11 @@ class StatActivity extends BaseActivity { me =>
       WalletApp.freePossiblyUsedResouces
       me exitTo ClassNames.mainActivityClass
     }
+
+  private def getBrandingInfos = for {
+    ChanAndCommits(_: ChannelHosted, commits) <- csToDisplay
+    brand <- WalletApp.extDataBag.tryGetBranding(commits.remoteInfo.nodeId).toOption
+  } yield commits.remoteInfo.nodeId -> brand
 
   private def sumOrNothing(amt: Satoshi, mainColor: String): String =
     if (0L.sat != amt) LNParams.denomination.parsedWithSign(amt.toMilliSatoshi, mainColor, cardZero)

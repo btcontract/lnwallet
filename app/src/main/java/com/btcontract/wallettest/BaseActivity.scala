@@ -11,7 +11,6 @@ import scala.util.{Failure, Success}
 import android.view.{View, ViewGroup}
 import java.io.{File, FileOutputStream}
 import android.graphics.{Bitmap, Color}
-import android.graphics.Color.{BLACK, WHITE}
 import fr.acinq.bitcoin.{ByteVector32, Satoshi}
 import android.content.{DialogInterface, Intent}
 import android.text.{Editable, Spanned, TextWatcher}
@@ -41,7 +40,6 @@ import org.apmem.tools.layouts.FlowLayout
 import scala.language.implicitConversions
 import android.content.pm.PackageManager
 import android.view.View.OnClickListener
-import androidx.core.graphics.ColorUtils
 import androidx.core.app.ActivityCompat
 import rx.lang.scala.Subscription
 import scala.concurrent.Future
@@ -107,12 +105,6 @@ trait BaseActivity extends AppCompatActivity { me =>
   def INIT(state: Bundle): Unit
 
   // Helpers
-
-  def contrastedTextColor(color: Int): Int = {
-    val whiteContrast = ColorUtils.calculateContrast(WHITE, color)
-    val blackContrast = ColorUtils.calculateContrast(BLACK, color)
-    if (whiteContrast > blackContrast * 3.75) BLACK else WHITE
-  }
 
   def browse(url: String): Unit = startActivity {
     new Intent(Intent.ACTION_VIEW, Uri parse url)
