@@ -8,15 +8,16 @@ import immortan.utils.{Rx, Statistics}
 import java.util.concurrent.{Executors, TimeUnit}
 import immortan.crypto.{CanBeRepliedTo, StateMachine}
 import fr.acinq.eclair.router.{ChannelUpdateExt, Router}
-import fr.acinq.eclair.{CltvExpiryDelta, MilliSatoshi, nodeFee}
-import fr.acinq.eclair.wire.{ChannelUpdate, ShortIdAndPosition}
 import scala.concurrent.{ExecutionContext, ExecutionContextExecutor}
 import fr.acinq.eclair.router.Router.{Data, PublicChannel, RouteRequest}
 import fr.acinq.eclair.router.Graph.GraphStructure.{DirectedGraph, GraphEdge}
+import fr.acinq.eclair.{CltvExpiryDelta, MilliSatoshi, ShortChannelId, nodeFee}
 import fr.acinq.eclair.router.RouteCalculation.handleRouteRequest
 import com.google.common.cache.CacheBuilder
+import fr.acinq.eclair.wire.ChannelUpdate
 import rx.lang.scala.Subscription
 import scala.collection.mutable
+import fr.acinq.bitcoin.Crypto
 
 
 object PathFinder {
@@ -35,8 +36,8 @@ object PathFinder {
 }
 
 abstract class PathFinder(val normalBag: NetworkBag, val hostedBag: NetworkBag) extends StateMachine[Data] { me =>
-  private val extraEdges = CacheBuilder.newBuilder.expireAfterWrite(1, TimeUnit.DAYS).maximumSize(5000).build[ShortIdAndPosition, GraphEdge]
-  val extraEdgesMap: mutable.Map[ShortIdAndPosition, GraphEdge] = extraEdges.asMap.asScala
+  private val extraEdges = CacheBuilder.newBuilder.expireAfterWrite(1, TimeUnit.DAYS).maximumSize(5000).build[ShortChannelId, GraphEdge]
+  val extraEdgesMap: mutable.Map[ShortChannelId, GraphEdge] = extraEdges.asMap.asScala
   var lastAvgHopParams: Option[AvgHopParams] = None
   var listeners: Set[CanBeRepliedTo] = Set.empty
   var debugMode: Boolean = false
@@ -164,8 +165,8 @@ abstract class PathFinder(val normalBag: NetworkBag, val hostedBag: NetworkBag) 
 
     case (cu: ChannelUpdate, OPERATIONAL) =>
       // Last chance: if it's not a known public update then maybe it's a private one
-      Option(extraEdges getIfPresent cu.toShortIdAndPosition).foreach { extraEdge =>
-        val edge1 = extraEdge.copy(updExt = extraEdge.updExt withNewUpdate cu)
+      Option(extraEdges getIfPresent cu.shortChannelId).foreach { extEdge =>
+        val edge1 = extEdge.copy(updExt = extEdge.updExt withNewUpdate cu)
         val data1 = resolveKnownDesc(storeOpt = None, edge1)
         become(data1, OPERATIONAL)
       }
@@ -173,8 +174,8 @@ abstract class PathFinder(val normalBag: NetworkBag, val hostedBag: NetworkBag) 
     case (edge: GraphEdge, WAITING | OPERATIONAL) if !data.channels.contains(edge.desc.shortChannelId) =>
       // We add assisted routes to graph as if they are normal channels, also rememeber them to refill later if graph gets reloaded
       // these edges will be private most of the time, but they also may be public yet not visible to us for some reason
-      extraEdges.put(edge.updExt.update.toShortIdAndPosition, edge)
       val data1 = data.copy(graph = data.graph replaceEdge edge)
+      extraEdges.put(edge.updExt.update.shortChannelId, edge)
       become(data1, state)
 
     case _ =>
@@ -217,16 +218,22 @@ abstract class PathFinder(val normalBag: NetworkBag, val hostedBag: NetworkBag) 
 
     case None =>
       // This is a legitimate private/unknown-public update
-      extraEdges.put(edge.updExt.update.toShortIdAndPosition, edge)
+      extraEdges.put(edge.updExt.update.shortChannelId, edge)
       // Don't save this in DB but update runtime graph
       data.copy(graph = data.graph replaceEdge edge)
   }
 
-  def attemptPHCSync: Unit =
+  def nodeIdFromUpdate(cu: ChannelUpdate): Option[Crypto.PublicKey] =
+    data.channels.get(cu.shortChannelId).map(_.ann getNodeIdSameSideAs cu) orElse
+      data.hostedChannels.get(cu.shortChannelId).map(_.ann getNodeIdSameSideAs cu) orElse
+      extraEdgesMap.get(cu.shortChannelId).map(_.desc.from)
+
+  def attemptPHCSync: Unit = {
     if (LNParams.syncParams.phcSyncNodes.nonEmpty) {
       val master = new PHCSyncMaster(data) { def onSyncComplete(pure: CompleteHostedRoutingData): Unit = me process pure }
       master process SyncMasterPHCData(LNParams.syncParams.phcSyncNodes, getPHCExtraNodes, Set.empty)
     } else updateLastTotalResyncStamp(System.currentTimeMillis)
+  }
 
   def getAvgHopParams: AvgHopParams = {
     val sample = data.channels.values.toVector.flatMap(pc => pc.update1Opt ++ pc.update2Opt)
