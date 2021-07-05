@@ -330,9 +330,9 @@ object ElectrumHeadersTable extends Table {
 }
 
 object PayMarketTable extends Table {
-  val (table, search, lnurl, text, lastMsat, lastDate, hash, image) = ("paymarket", "search", "lnurl", "text", "lastmsat", "lastdate", "hash", "image")
+  val (table, search, lnurl, meta, lastMsat, lastDate, hash) = ("paymarket", "search", "lnurl", "meta", "lastmsat", "lastdate", "hash")
 
-  val newSql = s"INSERT OR IGNORE INTO $table ($lnurl, $text, $lastMsat, $lastDate, $hash, $image) VALUES (?, ?, ?, ?, ?, ?)"
+  val newSql = s"INSERT OR IGNORE INTO $table ($lnurl, $meta, $lastMsat, $lastDate, $hash) VALUES (?, ?, ?, ?, ?)"
 
   val newVirtualSql = s"INSERT INTO $fts$table ($search, $lnurl) VALUES (?, ?)"
 
@@ -340,15 +340,14 @@ object PayMarketTable extends Table {
 
   val searchSql = s"SELECT * FROM $table WHERE $lnurl IN (SELECT $lnurl FROM $fts$table WHERE $search MATCH ?) LIMIT 50"
 
-  val updInfoSql = s"UPDATE $table SET $text = ?, $lastMsat = ?, $lastDate = ?, $hash = ?, $image = ? WHERE $lnurl = ?"
+  val updInfoSql = s"UPDATE $table SET $meta = ?, $lastMsat = ?, $lastDate = ?, $hash = ?, WHERE $lnurl = ?"
 
   val killSql = s"DELETE FROM $table WHERE $lnurl = ?"
 
   def createStatements: Seq[String] = {
     val createTable = s"""CREATE TABLE IF NOT EXISTS $table(
-      $IDAUTOINC, $lnurl STRING NOT NULL $UNIQUE, $text STRING NOT NULL,
-      $lastMsat INTEGER NOT NULL, $lastDate INTEGER NOT NULL,
-      $hash STRING NOT NULL, $image STRING NOT NULL
+      $IDAUTOINC, $lnurl STRING NOT NULL $UNIQUE, $meta STRING NOT NULL,
+      $lastMsat INTEGER NOT NULL, $lastDate INTEGER NOT NULL, $hash STRING NOT NULL
     )"""
 
     // Payment links are searchable by their text descriptions (text metadata + domain name)

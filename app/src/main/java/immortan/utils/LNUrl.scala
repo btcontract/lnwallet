@@ -4,7 +4,7 @@ import spray.json._
 import fr.acinq.eclair._
 import immortan.crypto.Tools._
 import immortan.utils.ImplicitJsonFormats._
-import immortan.utils.PayRequest.{AdditionalRoute, PayMetaData}
+import immortan.utils.PayRequest.{AdditionalRoute, TagAndContent}
 import fr.acinq.eclair.router.{Announcements, RouteCalculation}
 import immortan.{LNParams, PaymentAction, RemoteNodeInfo}
 import fr.acinq.eclair.wire.{ChannelUpdate, NodeAddress}
@@ -146,7 +146,6 @@ case class WithdrawRequest(callback: String, k1: String, maxWithdrawable: Long, 
 
 object PayRequest {
   type TagAndContent = List[String]
-  type PayMetaData = List[TagAndContent]
   type KeyAndUpdate = (PublicKey, ChannelUpdate)
   type AdditionalRoute = List[KeyAndUpdate]
 
@@ -155,6 +154,20 @@ object PayRequest {
     signatureOk = Announcements.checkSig(channelUpdate)(startNodeId)
     _ = require(signatureOk, "Route contains an invalid update")
   } yield channelUpdate extraHop startNodeId
+}
+
+case class PayRequestMeta(records: List[TagAndContent] = Nil) {
+  val texts: List[String] = records.collect { case List("text/plain", txt) => txt }
+  val emails: List[String] = records.collect { case List("text/email", txt) => txt }
+  val identities: List[String] = records.collect { case List("text/identity", txt) => txt }
+  val textPlain: String = trimmed(texts.head)
+
+  val queryText = s"${emails.headOption orElse identities.headOption getOrElse new String} $textPlain"
+
+  val imageBase64s: Seq[String] = for {
+    List("image/png;base64" | "image/jpeg;base64", content) <- records
+    _ = require(content.length <= 136536, s"Image is too big, length=${content.length}")
+  } yield content
 }
 
 case class PayRequest(callback: String, maxSendable: Long, minSendable: Long, metadata: String, commentAllowed: Option[Int] = None) extends LNUrlData { me =>
@@ -170,22 +183,11 @@ case class PayRequest(callback: String, maxSendable: Long, minSendable: Long, me
 
   val callbackUri: Uri = LNUrl.checkHost(callback)
 
-  val decodedMetadata: PayMetaData = to[PayMetaData](metadata)
+  val meta: PayRequestMeta = to[PayRequestMeta](metadata)
 
-  val metaDataTexts: List[String] = decodedMetadata.collect { case List("text/plain", txt) => txt }
-  val metaDataEmails: List[String] = decodedMetadata.collect { case List("text/email", txt) => txt }
-  val metaDataIdentities: List[String] = decodedMetadata.collect { case List("text/identity", txt) => txt }
-
-  require(1 >= (metaDataTexts ++ metaDataIdentities).size, "There can be at most one text/email or text/identity entry in metadata")
-  require(metaDataTexts.size == 1, "There must be exactly one text/plain entry in metadata")
+  require(1 >= (meta.emails ++ meta.identities).size, "There can be at most one text/email or text/identity entry in metadata")
+  require(meta.texts.size == 1, "There must be exactly one text/plain entry in metadata")
   require(minSendable <= maxSendable, s"max=$maxSendable while min=$minSendable")
-
-  val metaDataTextPlain: String = trimmed(metaDataTexts.head)
-
-  val metaDataImageBase64s: Seq[String] = for {
-    List("image/png;base64" | "image/jpeg;base64", content) <- decodedMetadata
-    _ = require(content.length <= 136536, s"Image is too heavy, base64 length=${content.length}")
-  } yield content
 }
 
 case class PayRequestFinal(successAction: Option[PaymentAction], disposable: Option[Boolean], routes: List[AdditionalRoute], pr: String) extends LNUrlData {

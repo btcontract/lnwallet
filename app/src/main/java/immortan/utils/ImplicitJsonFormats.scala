@@ -8,10 +8,10 @@ import fr.acinq.eclair.wire.CommonCodecs._
 import fr.acinq.eclair.wire.LightningMessageCodecs._
 
 import fr.acinq.bitcoin.{ByteVector32, Satoshi}
+import immortan.utils.PayRequest.{AdditionalRoute, TagAndContent}
 import immortan.utils.FiatRates.{BitpayItemList, CoinGeckoItemMap}
 import fr.acinq.eclair.blockchain.electrum.db.{ChainWalletInfo, SigningWallet, WatchingWallet}
 import fr.acinq.bitcoin.DeterministicWallet.ExtendedPublicKey
-import immortan.utils.PayRequest.AdditionalRoute
 import fr.acinq.eclair.wire.ChannelUpdate
 import fr.acinq.bitcoin.Crypto.PublicKey
 import immortan.crypto.Tools.Fiat2Btc
@@ -196,6 +196,8 @@ object ImplicitJsonFormats extends DefaultJsonProtocol {
   implicit val payRequestFinalFmt: JsonFormat[PayRequestFinal] =
     jsonFormat[Option[PaymentAction], Option[Boolean], List[AdditionalRoute], String,
       PayRequestFinal](PayRequestFinal.apply, "successAction", "disposable", "routes", "pr")
+
+  implicit val payRequestMetaFmt: JsonFormat[PayRequestMeta] = jsonFormat[List[TagAndContent], PayRequestMeta](PayRequestMeta.apply, "records")
 
   // Fiat feerates
 

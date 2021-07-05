@@ -4,9 +4,10 @@ import immortan.utils.ImplicitJsonFormats._
 import immortan.crypto.Tools.{Any2Some, Bytes, Fiat2Btc, SEPARATOR, ratio}
 import immortan.fsm.{IncomingPaymentProcessor, SendMultiPart, SplitInfo}
 import fr.acinq.eclair.channel.{DATA_CLOSING, HasNormalCommitments}
+import immortan.utils.{LNUrl, PayRequestMeta, PaymentRequestExt}
 import fr.acinq.bitcoin.{ByteVector32, Satoshi, Transaction}
 import fr.acinq.eclair.wire.{FullPaymentTag, PaymentTagTlv}
-import immortan.utils.{LNUrl, PaymentRequestExt}
+import org.bouncycastle.util.encoders.Base64
 import fr.acinq.bitcoin.Crypto.PublicKey
 import fr.acinq.eclair.MilliSatoshi
 import scodec.bits.ByteVector
@@ -32,12 +33,12 @@ sealed trait TransactionDetails {
   def seenAt: Long
 }
 
-case class PayLinkInfo(image64: String, lnurlString: String, text: String, lastMsat: MilliSatoshi, hash: String, lastDate: Long) extends TransactionDetails {
+case class PayLinkInfo(lnurlString: String, metaString: String, lastMsat: MilliSatoshi, hash: String, lastDate: Long) extends TransactionDetails {
   override val seenAt: Long = System.currentTimeMillis + lastDate / 10000L // To make it always appear on top in timestamp-sorted lists on UI
   override val date: Date = new Date(lastDate) // To display real date of last usage in lists on UI
 
-  lazy val imageBytesTry: Try[Bytes] = Try(org.bouncycastle.util.encoders.Base64 decode image64)
-  lazy val paymentHash: ByteVector = ByteVector.fromValidHex(hash)
+  lazy val meta: PayRequestMeta = to[PayRequestMeta](metaString)
+  lazy val imageBytesTry: Try[Bytes] = Try(Base64 decode meta.imageBase64s.head)
   lazy val lnurl: LNUrl = LNUrl(lnurlString)
 }
 

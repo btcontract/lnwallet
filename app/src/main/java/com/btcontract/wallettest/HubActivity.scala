@@ -230,7 +230,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
           lastAttempt setText getString(lnurl_pay_last_paid).format(WalletApp.app.when(info.date, WalletApp.app.dateFormat), amount).html
           info.imageBytesTry.map(payLinkImageMemo.get).foreach(linkImage.setImageBitmap)
           domainName setText info.lnurl.uri.getHost
-          textMetadata setText info.text
+          textMetadata setText info.meta.textPlain
       }
 
     // TX helpers
@@ -875,7 +875,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
         def proceed(pf: PayRequestFinal): TimerTask = UITask {
           lnSendGuard(pf.prExt, container = contentWindow) { _ =>
             val cmd = LNParams.cm.makeSendCmd(pf.prExt, manager.resultMsat, LNParams.cm.all.values.toList, typicalChainTxFee, WalletApp.capLNFeeToChain).modify(_.split.totalSum).setTo(minSendable)
-            InputParser.value = SplitParams(pf.prExt, pf.successAction, PlainMetaDescription(cmd.split.asSome, label = None, invoiceText = new String, meta = data.metaDataTextPlain), cmd, typicalChainTxFee)
+            InputParser.value = SplitParams(pf.prExt, pf.successAction, PlainMetaDescription(cmd.split.asSome, label = None, invoiceText = new String, meta = data.meta.textPlain), cmd, typicalChainTxFee)
             me goTo ClassNames.qrSplitActivityClass
             alert.dismiss
           }
@@ -891,7 +891,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
           lnSendGuard(pf.prExt, container = contentWindow) { _ =>
             if (!pf.isThrowAway) WalletApp.payMarketBag.saveLink(lnUrl, data, manager.resultMsat, pf.prExt.pr.paymentHash.toHex)
             val cmd = LNParams.cm.makeSendCmd(pf.prExt, manager.resultMsat, LNParams.cm.all.values.toList, typicalChainTxFee, WalletApp.capLNFeeToChain).modify(_.split.totalSum).setTo(manager.resultMsat)
-            replaceOutgoingPayment(pf.prExt, PlainMetaDescription(split = None, label = None, invoiceText = new String, meta = data.metaDataTextPlain), pf.successAction, sentAmount = cmd.split.myPart)
+            replaceOutgoingPayment(pf.prExt, PlainMetaDescription(split = None, label = None, invoiceText = new String, meta = data.meta.textPlain), pf.successAction, sentAmount = cmd.split.myPart)
             LNParams.cm.localSend(cmd)
             alert.dismiss
           }
@@ -904,7 +904,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
       }
 
       override val alert: AlertDialog = {
-        val text = getString(dialog_lnurl_pay).format(data.callbackUri.getHost, s"<br><br>${data.metaDataTextPlain}")
+        val text = getString(dialog_lnurl_pay).format(data.callbackUri.getHost, s"<br><br>${data.meta.textPlain}")
         val title = titleBodyAsViewBuilder(text.asColoredView(R.color.cardLightning), manager.content)
         mkCheckFormNeutral(send, none, neutral, title, dialog_pay, dialog_cancel, dialog_split)
       }
