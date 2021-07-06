@@ -43,7 +43,6 @@
                     card_view:cardCornerRadius="@dimen/corner_radius"
                     android:layout_centerVertical="true"
                     android:layout_alignParentEnd="true"
-                    android:id="@+id/unusedAnchorId1"
                     android:layout_height="36dp"
                     android:layout_width="36dp">
 

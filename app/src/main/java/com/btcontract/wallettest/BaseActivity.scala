@@ -75,7 +75,7 @@ trait ExternalDataChecker {
 }
 
 trait ChoiceReceiver {
-  def onChoiceMade(tag: String, pos: Int): Unit
+  def onChoiceMade(tag: AnyRef, pos: Int): Unit
 }
 
 trait BaseActivity extends AppCompatActivity { me =>
@@ -146,9 +146,7 @@ trait BaseActivity extends AppCompatActivity { me =>
 
   // Listener helpers
 
-  def onButtonTap(fun: => Unit): OnClickListener = new OnClickListener {
-    def onClick(view: View): Unit = fun
-  }
+  def onButtonTap(fun: => Unit): OnClickListener = new OnClickListener { def onClick(view: View): Unit = fun }
 
   def onTextChange(fun: String => Unit): TextWatcher = new TextWatcher {
     override def onTextChanged(c: CharSequence, x: Int, y: Int, z: Int): Unit = fun(c.toString)
@@ -156,8 +154,7 @@ trait BaseActivity extends AppCompatActivity { me =>
     override def afterTextChanged(e: Editable): Unit = none
   }
 
-  def runInFutureProcessOnUI[T](fun: => T, no: Throwable => Unit)(ok: T => Unit): Unit =
-    runFutureProcessOnUI[T](Future(fun), no)(ok)
+  def runInFutureProcessOnUI[T](fun: => T, no: Throwable => Unit)(ok: T => Unit): Unit = runFutureProcessOnUI[T](Future(fun), no)(ok)
 
   def runFutureProcessOnUI[T](fun: Future[T], no: Throwable => Unit)(ok: T => Unit): Unit = fun onComplete {
     case Success(result) => UITask(ok apply result).run case Failure(error) => UITask(no apply error).run
@@ -242,7 +239,6 @@ trait BaseActivity extends AppCompatActivity { me =>
   // Scanner
 
   final val scannerRequestCode = 101
-
   def callScanner(sheet: sheets.ScannerBottomSheet): Unit = {
     val allowed = ContextCompat.checkSelfPermission(me, android.Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
     if (!allowed) ActivityCompat.requestPermissions(me, Array(android.Manifest.permission.CAMERA), scannerRequestCode)

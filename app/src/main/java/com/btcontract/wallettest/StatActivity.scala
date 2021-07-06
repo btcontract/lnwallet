@@ -28,7 +28,7 @@ class StatActivity extends BaseActivity { me =>
   private[this] var csToDisplay = Seq.empty[ChanAndCommits]
   private[this] var updateSubscription = Option.empty[Subscription]
   private[this] lazy val chanList = findViewById(R.id.chanList).asInstanceOf[ListView]
-  private[this] lazy val brandingInfos: Map[PublicKey, HostedChannelBranding] = getBrandingInfos.toMap
+  private[this] lazy val brandingInfos = WalletApp.txDataBag.db.txWrap(getBrandingInfos.toMap)
 
   val hcImageMemo: LoadingCache[Bytes, Bitmap] = memoize {
     bytes => BitmapFactory.decodeByteArray(bytes, 0, bytes.length)

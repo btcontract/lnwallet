@@ -12,7 +12,7 @@ import android.os.Bundle
 import scala.util.Try
 
 
-class ScannerBottomSheet(host: BaseActivity, onScan: Runnable, onPaste: Runnable) extends BottomSheetDialogFragment with BarcodeCallback { me =>
+class ScannerBottomSheet(host: BaseActivity, instructionOpt: Option[String], onScan: Runnable, onPaste: Runnable) extends BottomSheetDialogFragment with BarcodeCallback { me =>
   var lastAttempt: Long = System.currentTimeMillis
   var barcodeReader: BarcodeView = _
   var flashlight: ImageButton = _
@@ -42,6 +42,13 @@ class ScannerBottomSheet(host: BaseActivity, onScan: Runnable, onPaste: Runnable
     view.findViewById(R.id.pasteFromClipbard).asInstanceOf[NoboButton] setOnClickListener host.onButtonTap {
       host.runInFutureProcessOnUI(InputParser recordValue WalletApp.app.getBufferUnsafe, failedPaste)(_ => onPaste.run)
       dismiss
+    }
+
+    // Set an optional instruction
+    instructionOpt foreach { instruction =>
+      val instructionView = view.findViewById(R.id.instruction).asInstanceOf[TextView]
+      host.setVis(isVisible = true, instructionView)
+      instructionView.setText(instruction)
     }
   }
 

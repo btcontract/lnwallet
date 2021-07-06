@@ -267,7 +267,7 @@
                 card_view:cardCornerRadius="@dimen/corner_radius"
                 android:layout_centerVertical="true"
                 android:layout_alignParentEnd="true"
-                android:id="@+id/unusedAnchorId3"
+                android:id="@+id/unusedAnchorId1"
                 android:layout_height="64dp"
                 android:layout_width="64dp">
 
@@ -283,14 +283,14 @@
                 android:id="@+id/domainName"
                 android:layout_marginBottom="4dp"
                 android:textColor="@color/colorAccent"
-                android:layout_toStartOf="@+id/unusedAnchorId3"
+                android:layout_toStartOf="@+id/unusedAnchorId1"
                 android:textStyle="bold"/>
 
             <TextView
                 style="@style/FillingView"
                 android:id="@+id/textMetadata"
                 android:layout_marginBottom="10dp"
-                android:layout_toStartOf="@+id/unusedAnchorId3"
+                android:layout_toStartOf="@+id/unusedAnchorId1"
                 android:layout_below="@+id/domainName"
                 android:maxLines="4"/>
 

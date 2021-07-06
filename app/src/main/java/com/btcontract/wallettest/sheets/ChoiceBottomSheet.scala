@@ -8,7 +8,7 @@ import android.widget.ListView
 import android.os.Bundle
 
 
-class ChoiceBottomSheet(list: ListView, tag: String, host: ChoiceReceiver) extends BottomSheetDialogFragment { me =>
+class ChoiceBottomSheet(list: ListView, tag: AnyRef, host: ChoiceReceiver) extends BottomSheetDialogFragment { me =>
   override def onCreateView(inflater: LayoutInflater, container: ViewGroup, state: Bundle): View = list
 
   override def onViewCreated(view: View, state: Bundle): Unit =

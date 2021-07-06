@@ -97,7 +97,6 @@
                     android:textColor="@color/colorAccent"
                     android:text="@string/bitcoin_wallet"
                     android:layout_centerVertical="true"
-                    android:id="@+id/unusedAnchorId1"
                     style="@style/BoundedView"/>
 
                 <TextView
@@ -140,7 +139,6 @@
                         android:textColor="@color/colorAccent"
                         android:text="@string/lightning_wallet"
                         android:layout_centerVertical="true"
-                        android:id="@+id/unusedAnchorId2"
                         style="@style/BoundedView"/>
 
                     <TextView

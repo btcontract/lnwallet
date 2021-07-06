@@ -236,7 +236,6 @@ abstract class ChannelNormal(bag: ChannelBag) extends Channel { me =>
       // We may schedule shutdown while channel is offline
       case (norm: DATA_NORMAL, cmd: CMD_CLOSE, OPEN | SLEEPING) =>
         val localScriptPubKey = cmd.scriptPubKey.getOrElse(norm.commitments.localParams.defaultFinalScriptPubKey)
-        val hasLocalHasUnsignedOutgoingHtlcs = norm.commitments.localHasUnsignedOutgoingHtlcs
         val isValidFinalScriptPubkey = Closing.isValidFinalScriptPubkey(localScriptPubKey)
         val shutdown = Shutdown(norm.channelId, localScriptPubKey)
         val norm1 = norm.copy(localShutdown = shutdown.asSome)
@@ -244,12 +243,12 @@ abstract class ChannelNormal(bag: ChannelBag) extends Channel { me =>
         if (cmd.force) {
           if (!isValidFinalScriptPubkey) spendLocalCurrent(norm1)
           else if (norm.localShutdown.isDefined) spendLocalCurrent(norm1)
-          else if (hasLocalHasUnsignedOutgoingHtlcs) spendLocalCurrent(norm1)
+          else if (norm.commitments.localHasUnsignedOutgoingHtlcs) spendLocalCurrent(norm1)
           else StoreBecomeSend(norm1, state, shutdown)
         } else {
           if (!isValidFinalScriptPubkey) throw CMDException(CMD_CLOSE.INVALID_CLOSING_PUBKEY, cmd)
           else if (norm.localShutdown.isDefined) throw CMDException(CMD_CLOSE.ALREADY_IN_PROGRESS, cmd)
-          else if (hasLocalHasUnsignedOutgoingHtlcs) throw CMDException(CMD_CLOSE.CHANNEL_BUSY, cmd)
+          else if (norm.commitments.localHasUnsignedOutgoingHtlcs) throw CMDException(CMD_CLOSE.CHANNEL_BUSY, cmd)
           else StoreBecomeSend(norm1, state, shutdown)
         }
 

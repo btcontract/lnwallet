@@ -449,7 +449,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
   private val channelErrors = CacheBuilder.newBuilder.expireAfterAccess(30, TimeUnit.SECONDS).maximumSize(500).build[ByteVector32, JInt]
 
   def chanUnknown(unknown: UnknownReestablish): Unit = UITask {
-    def closeAndBreak(alert: AlertDialog): Unit = runAnd(alert.dismiss)(unknown.requestClose)
+    def closeAndBreak(alert: AlertDialog): Unit = runAnd(alert.dismiss)(unknown.sendFailExpectClose)
     val errorCount = Option(channelErrors getIfPresent unknown.reestablish.channelId).getOrElse(default = 0: JInt)
     val msg = getString(error_channel_unknown).format(unknown.reestablish.channelId.toHex, unknown.worker.info.nodeId.toString)
     val builder = new AlertDialog.Builder(me).setCustomTitle(getString(error_channel).asDefView).setCancelable(true).setMessage(msg.html)
@@ -465,12 +465,12 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
   }.run
 
   override def onException: PartialFunction[Malfunction, Unit] = {
+    case (CMDException(_, _: CMD_CLOSE), _, _: HasNormalCommitments) => // Swallow this specific error here, it will be displayed on StatActivity
+    case (CMDException(_, _: CMD_HOSTED_STATE_OVERRIDE), _, _: HostedCommits) => // Swallow this specific error here, it will be displayed on StatActivity
     case (error: ChannelTransitionFail, _, data: HasNormalCommitments) => chanError(data.channelId, getString(error_channel_closed).format(error.stackTraceAsString), data.commitments.remoteInfo)
     case (error: ChannelTransitionFail, _, hc: HostedCommits) if hc.error.isEmpty => chanError(hc.channelId, getString(error_channel_suspended).format(error.stackTraceAsString), hc.remoteInfo)
     case (RemoteErrorException(details), _, data: HasNormalCommitments) => chanError(data.channelId, getString(error_channel_remote).format(details), data.commitments.remoteInfo)
     case (RemoteErrorException(details), _, hc: HostedCommits) if hc.error.isEmpty => chanError(hc.channelId, getString(error_channel_remote).format(details), hc.remoteInfo)
-    case (CMDException(reason, _: CMD_CLOSE), _, data: HasNormalCommitments) => chanError(data.channelId, reason, data.commitments.remoteInfo)
-    case (CMDException(reason, _: CMD_HOSTED_STATE_OVERRIDE), _, hc: HostedCommits) => chanError(hc.channelId, reason, hc.remoteInfo)
     case (error, _, data: HasNormalCommitments) => chanError(data.channelId, error.stackTraceAsString, data.commitments.remoteInfo)
     case (error, _, hc: HostedCommits) => chanError(hc.channelId, error.stackTraceAsString, hc.remoteInfo)
   }
@@ -634,9 +634,10 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
     }
   }
 
-  override def onChoiceMade(tag: String, pos: Int): Unit = (tag, pos) match {
+  override def onChoiceMade(tag: AnyRef, pos: Int): Unit = (tag, pos) match {
     case (CHOICE_RECEIVE_TAG, 0) => me goTo ClassNames.qrChainActivityClass
     case (CHOICE_RECEIVE_TAG, 1) => bringReceivePopup
+    case _ =>
   }
 
   def INIT(state: Bundle): Unit =
@@ -746,7 +747,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
 
     val onScan = UITask(me checkExternalData noneRunnable)
     val onPaste = UITask(me checkExternalData explainClipboardFailure)
-    val sheet = new sheets.ScannerBottomSheet(me, onScan, onPaste)
+    val sheet = new sheets.ScannerBottomSheet(me, None, onScan, onPaste)
     callScanner(sheet)
   }
 
