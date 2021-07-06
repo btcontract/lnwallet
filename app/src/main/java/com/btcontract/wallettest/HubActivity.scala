@@ -752,10 +752,9 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
   }
 
   def bringReceiveOptions(view: View): Unit = {
-    val options = Array(dialog_receive_btc, dialog_receive_ln).map(res => getString(res).html)
-    val list = makeChoiceList(options, android.R.layout.simple_expandable_list_item_1)
-    val sheet = new sheets.ChoiceBottomSheet(list, CHOICE_RECEIVE_TAG, me)
-    sheet.show(getSupportFragmentManager, CHOICE_RECEIVE_TAG)
+    val options = Array(dialog_receive_btc, dialog_receive_ln).map(getString).map(_.html)
+    val list = makeChoiceList(options, itemId = android.R.layout.simple_expandable_list_item_1)
+    new sheets.ChoiceBottomSheet(list, CHOICE_RECEIVE_TAG, me).show(getSupportFragmentManager, "unused-tag")
   }
 
   def goToReceiveBitcoinPage(view: View): Unit = onChoiceMade(CHOICE_RECEIVE_TAG, 0)

@@ -11,9 +11,9 @@ import scala.util.{Failure, Success}
 import android.view.{View, ViewGroup}
 import java.io.{File, FileOutputStream}
 import android.graphics.{Bitmap, Color}
-import fr.acinq.bitcoin.{ByteVector32, Satoshi}
 import android.content.{DialogInterface, Intent}
 import android.text.{Editable, Spanned, TextWatcher}
+import fr.acinq.bitcoin.{Block, ByteVector32, Satoshi}
 import com.google.zxing.{BarcodeFormat, EncodeHintType}
 import androidx.core.content.{ContextCompat, FileProvider}
 import immortan.crypto.Tools.{Any2Some, Fiat2Btc, none, runAnd}
@@ -106,8 +106,12 @@ trait BaseActivity extends AppCompatActivity { me =>
 
   // Helpers
 
-  def browse(url: String): Unit = startActivity {
-    new Intent(Intent.ACTION_VIEW, Uri parse url)
+  def browse(url: String): Unit = me startActivity new Intent(Intent.ACTION_VIEW, Uri parse url)
+
+  def browseTxid(txid: ByteVector32): Unit = LNParams.chainHash match {
+    case Block.TestnetGenesisBlock.hash => browse(s"https://mempool.space/testnet/tx/${txid.toHex}")
+    case Block.LivenetGenesisBlock.hash => browse(s"https://mempool.space/tx/${txid.toHex}")
+    case _ =>
   }
 
   def share(text: String): Unit = startActivity {

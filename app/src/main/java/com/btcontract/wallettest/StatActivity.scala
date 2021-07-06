@@ -9,26 +9,29 @@ import scala.concurrent.duration._
 import com.btcontract.wallettest.Colors._
 import com.btcontract.wallettest.R.string._
 
+import java.util.{Date, TimerTask}
 import android.view.{View, ViewGroup}
 import android.graphics.{Bitmap, BitmapFactory}
-import fr.acinq.eclair.channel.{DATA_CLOSING, NormalCommits}
+import fr.acinq.eclair.channel.{DATA_CLOSING, Commitments, NormalCommits}
 import com.btcontract.wallettest.BaseActivity.StringOps
 import fr.acinq.eclair.wire.HostedChannelBranding
 import androidx.recyclerview.widget.RecyclerView
 import com.google.common.cache.LoadingCache
 import com.indicator.ChannelIndicatorLine
-import fr.acinq.bitcoin.Crypto.PublicKey
+import androidx.cardview.widget.CardView
 import rx.lang.scala.Subscription
-import java.util.TimerTask
-import android.os.Bundle
+import immortan.wire.HostedState
 import immortan.utils.Rx
+import android.os.Bundle
 
 
-class StatActivity extends BaseActivity { me =>
-  private[this] var csToDisplay = Seq.empty[ChanAndCommits]
-  private[this] var updateSubscription = Option.empty[Subscription]
+class StatActivity extends BaseActivity with ChoiceReceiver { me =>
   private[this] lazy val chanList = findViewById(R.id.chanList).asInstanceOf[ListView]
   private[this] lazy val brandingInfos = WalletApp.txDataBag.db.txWrap(getBrandingInfos.toMap)
+  private[this] lazy val normalChanActions = getResources.getStringArray(R.array.ln_normal_chan_actions)
+  private[this] lazy val hostedChanActions = getResources.getStringArray(R.array.ln_hosted_chan_actions)
+  private[this] var updateSubscription = Option.empty[Subscription]
+  private[this] var csToDisplay = Seq.empty[ChanAndCommits]
 
   val hcImageMemo: LoadingCache[Bytes, Bitmap] = memoize {
     bytes => BitmapFactory.decodeByteArray(bytes, 0, bytes.length)
@@ -55,7 +58,9 @@ class StatActivity extends BaseActivity { me =>
     }
   }
 
-  abstract class ChanCardViewHolder(val view: View) extends RecyclerView.ViewHolder(view) {
+  abstract class ChanCardViewHolder(view: View) extends RecyclerView.ViewHolder(view) {
+    def visibleExcept(goneRes: Int*): Unit = for (wrap <- wrappers) setVis(!goneRes.contains(wrap.getId), wrap)
+    val channelCard: CardView = view.findViewById(R.id.channelCard).asInstanceOf[CardView]
     val hcBranding: RelativeLayout = view.findViewById(R.id.hcBranding).asInstanceOf[RelativeLayout]
     val hcSupportInfo: TextView = view.findViewById(R.id.hcSupportInfo).asInstanceOf[TextView]
     val hcImage: ImageView = view.findViewById(R.id.hcImage).asInstanceOf[ImageView]
@@ -82,8 +87,6 @@ class StatActivity extends BaseActivity { me =>
         view.findViewById(R.id.canSend).asInstanceOf[View] ::
         Nil
 
-    def visibleExcept(goneRes: Int*): Unit = for (wrap <- wrappers) setVis(!goneRes.contains(wrap.getId), wrap)
-
     baseBar.setMax(1000)
     overBar.setMax(1000)
   }
@@ -100,12 +103,15 @@ class StatActivity extends BaseActivity { me =>
 
       if (Channel isWaiting chan) {
         setVis(isVisible = false, extraInfoText)
+        channelCard setOnClickListener bringChanOptions(normalChanActions, cs)
         visibleExcept(R.id.progressBars, R.id.paymentsInFlight, R.id.canReceive, R.id.canSend)
       } else if (Channel isOperational chan) {
         setVis(isVisible = false, extraInfoText)
+        channelCard setOnClickListener bringChanOptions(normalChanActions, cs)
         visibleExcept(goneRes = -1)
       } else {
         setVis(isVisible = true, extraInfoText)
+        channelCard setOnClickListener bringChanOptions(normalChanActions.take(2), cs)
         visibleExcept(R.id.progressBars, R.id.paymentsInFlight, R.id.canReceive, R.id.canSend)
         val closeInfoRes = chan.data match { case c: DATA_CLOSING => closedBy(c) case _ => ln_info_shutdown }
         extraInfoText.setText(getString(closeInfoRes).html)
@@ -131,7 +137,7 @@ class StatActivity extends BaseActivity { me =>
 
   class HostedViewHolder(view: View) extends ChanCardViewHolder(view) {
     def fill(chan: ChannelHosted, hc: HostedCommits): HostedViewHolder = {
-
+      channelCard setOnClickListener bringChanOptions(hostedChanActions, hc)
       val capacity: Satoshi = hc.lastCrossSignedState.initHostedChannel.channelCapacityMsat.truncateToSatoshi
       val inFlight: MilliSatoshi = hc.nextLocalSpec.htlcs.foldLeft(0L.msat)(_ + _.add.amountMsat)
       val barCanReceive = (hc.availableForReceive.toLong / capacity.toLong).toInt
@@ -171,6 +177,28 @@ class StatActivity extends BaseActivity { me =>
   override def onDestroy: Unit = {
     updateSubscription.foreach(_.unsubscribe)
     super.onDestroy
+  }
+
+  override def onChoiceMade(tag: AnyRef, pos: Int): Unit = (tag, pos) match {
+    case (cs: NormalCommits, 1) => browseTxid(cs.commitInput.outPoint.txid)
+    case (hc: HostedCommits, 1) => share(me getHcState hc)
+    case (cs: Commitments, 0) => share(me getDetails cs)
+    case _ =>
+  }
+
+  def getHcState(hc: HostedCommits): String = {
+    val state = HostedState(hc.remoteInfo.nodeId, hc.remoteInfo.nodeSpecificPubKey, hc.lastCrossSignedState)
+    val data = immortan.wire.ExtCodecs.hostedStateCodec.encode(state).require.toHex
+    val preimages = hc.revealedFulfills.map(_.ourPreimage.toHex).mkString("\n")
+    getString(ln_hosted_chan_state).format(getDetails(hc), data, preimages)
+  }
+
+  def getDetails(cs: Commitments): String = {
+    val remoteId = cs.remoteInfo.nodeId.toString
+    val localId = cs.remoteInfo.nodeSpecificPubKey.toString
+    val shortId = cs.updateOpt.map(_.shortChannelId.toString).getOrElse("unknown")
+    val stamp = WalletApp.app.when(new Date(cs.startedAt), WalletApp.app.dateFormat)
+    getString(ln_chan_details).format(remoteId, localId, shortId, stamp)
   }
 
   def INIT(state: Bundle): Unit =
@@ -261,5 +289,13 @@ class StatActivity extends BaseActivity { me =>
   private def updateChanData: TimerTask = UITask {
     csToDisplay = LNParams.cm.all.values.flatMap(Channel.chanAndCommitsOpt).toList
     chanAdapter.notifyDataSetChanged
+  }
+
+  def bringChanOptions(options: Array[String], cs: Commitments): View.OnClickListener = onButtonTap {
+    val title = getLayoutInflater.inflate(R.layout.simple_expandable_list_title, null, false).asInstanceOf[TextView]
+    title.setText(s"<b>${cs.remoteInfo.address.toString}</b><small><br></small><br>${me getString ln_share_details}".html)
+    val channelOptionsList = makeChoiceList(options, itemId = android.R.layout.simple_expandable_list_item_1)
+    new sheets.ChoiceBottomSheet(channelOptionsList, cs, me).show(getSupportFragmentManager, "unused-tag")
+    channelOptionsList.addHeaderView(title)
   }
 }

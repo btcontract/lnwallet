@@ -5,6 +5,7 @@
 
     <androidx.cardview.widget.CardView
         card_view:cardCornerRadius="@dimen/corner_radius"
+        android:id="@+id/channelCard"
         android:layout_margin="15dp"
         style="@style/Card">
 

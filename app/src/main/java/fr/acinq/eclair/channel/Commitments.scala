@@ -40,6 +40,7 @@ trait Commitments {
   def channelId: ByteVector32
   def remoteInfo: RemoteNodeInfo
   def updateOpt: Option[ChannelUpdate]
+  def startedAt: Long
 
   def minSendable: MilliSatoshi
   def maxSendInFlight: MilliSatoshi
