@@ -38,6 +38,6 @@
         android:layout_alignParentBottom="true"
         android:layout_centerHorizontal="true"
         android:id="@+id/splitQrPay"
-        style="@style/BlueButton"/>
+        style="@style/GrayButton"/>
 
 </RelativeLayout>

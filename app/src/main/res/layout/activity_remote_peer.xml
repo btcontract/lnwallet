@@ -83,7 +83,7 @@
                     android:layout_marginTop="@dimen/chip_default_padding_edge"
                     android:onClick="sharePeerSpecificNodeId"
                     app:nb_text="@string/rpa_share_node_id"
-                    style="@style/BlueButton"/>
+                    style="@style/GrayButton"/>
 
                 <com.ornach.nobobutton.NoboButton
                     app:nb_text="@string/rpa_request_hc"

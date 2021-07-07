@@ -129,12 +129,12 @@ class ChannelMaster(val payBag: PaymentBag, val chanBag: ChannelBag, val dataBag
 
   // Note that this may be sent multiple times after chain wallet reconnects
   override def onOperational(worker: CommsTower.Worker, theirInit: Init): Unit =
-    fromNode(worker.info.nodeId).foreach(_.chan process CMD_SOCKET_ONLINE)
+    allFromNode(worker.info.nodeId).foreach(_.chan process CMD_SOCKET_ONLINE)
 
   override def onMessage(worker: CommsTower.Worker, message: LightningMessage): Unit = message match {
-    case msg: Fail if msg.channelId == ByteVector32.Zeroes => fromNode(worker.info.nodeId).foreach(_.chan process msg)
+    case msg: Fail if msg.channelId == ByteVector32.Zeroes => allFromNode(worker.info.nodeId).foreach(_.chan process msg)
     case msg: ChannelReestablish if !all.contains(msg.channelId) => unknownReestablishStream onNext UnknownReestablish(worker, msg)
-    case msg: ChannelUpdate => fromNode(worker.info.nodeId).foreach(_.chan process msg)
+    case msg: ChannelUpdate => allFromNode(worker.info.nodeId).foreach(_.chan process msg)
     case msg: HasChannelId => sendTo(msg, msg.channelId)
     case _ => // Do nothing
   }
@@ -145,7 +145,7 @@ class ChannelMaster(val payBag: PaymentBag, val chanBag: ChannelBag, val dataBag
   }
 
   override def onDisconnect(worker: CommsTower.Worker): Unit = {
-    fromNode(worker.info.nodeId).foreach(_.chan process CMD_SOCKET_OFFLINE)
+    allFromNode(worker.info.nodeId).foreach(_.chan process CMD_SOCKET_OFFLINE)
     Rx.ioQueue.delay(5.seconds).foreach(_ => initConnect)
   }
 
@@ -189,9 +189,11 @@ class ChannelMaster(val payBag: PaymentBag, val chanBag: ChannelBag, val dataBag
 
   def allHosted: Iterable[ChannelHosted] = all.values.collect { case chan: ChannelHosted => chan }
 
-  def hostedFromNode(nodeId: PublicKey): Option[ChannelHosted] = fromNode(nodeId).collectFirst { case ChanAndCommits(chan: ChannelHosted, _) => chan }
+  def allNormal: Iterable[ChannelNormal] = all.values.collect { case chan: ChannelNormal => chan }
 
-  def fromNode(nodeId: PublicKey): Iterable[ChanAndCommits] = all.values.flatMap(Channel.chanAndCommitsOpt).filter(_.commits.remoteInfo.nodeId == nodeId)
+  def hostedFromNode(nodeId: PublicKey): Option[ChannelHosted] = allFromNode(nodeId).collectFirst { case ChanAndCommits(chan: ChannelHosted, _) => chan }
+
+  def allFromNode(nodeId: PublicKey): Iterable[ChanAndCommits] = all.values.flatMap(Channel.chanAndCommitsOpt).filter(_.commits.remoteInfo.nodeId == nodeId)
 
   var sendTo: (Any, ByteVector32) => Unit = (change, channelId) => all.get(channelId).foreach(_ process change)
 
@@ -256,8 +258,8 @@ class ChannelMaster(val payBag: PaymentBag, val chanBag: ChannelBag, val dataBag
     opm process cmd
   }
 
-  def localSendToSelf(sources: List[Channel], destination: ChanAndCommits, preimage: ByteVector32, typicalChainTxFee: MilliSatoshi, capLNFeeToChain: Boolean): Unit = {
-    val prExt = makePrExt(maxSendable(sources).min(destination.commits.availableForReceive), List(destination), PlainDescription(split = None, label = None, new String), preimage)
+  def localSendToSelf(sources: List[Channel], destinations: CommitsAndMax, preimage: ByteVector32, typicalChainTxFee: MilliSatoshi, capLNFeeToChain: Boolean): Unit = {
+    val prExt = makePrExt(maxSendable(sources).min(destinations.maxReceivable), destinations.commits, PlainDescription(split = None, label = None, new String), preimage)
     val keySendCmd = makeSendCmd(prExt, prExt.pr.amount.get, sources, typicalChainTxFee, capLNFeeToChain).copy(userCustomTlvs = GenericTlv(OnionCodecs.keySendNumber, preimage) :: Nil)
     localSend(keySendCmd)
   }
@@ -282,9 +284,9 @@ class ChannelMaster(val payBag: PaymentBag, val chanBag: ChannelBag, val dataBag
   }
 
   override def onBecome: PartialFunction[Transition, Unit] = {
-    case (_, _, _, prev, CLOSING) if prev != CLOSING =>
-      // Previously operational NC got broken
-      next(stateUpdateStream)
+    case (_, _, nextNc: DATA_NORMAL, _, _) if nextNc.localShutdown.nonEmpty => next(stateUpdateStream)
+    case (_, _: DATA_NORMAL, _: DATA_NEGOTIATING, _, _) => next(stateUpdateStream)
+    case (_, _, _, prev, CLOSING) if prev != CLOSING => next(stateUpdateStream)
 
     case (_, prevHc: HostedCommits, nextHc: HostedCommits, _, _)
       if prevHc.error.isEmpty && nextHc.error.nonEmpty =>

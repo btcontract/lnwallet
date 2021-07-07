@@ -268,15 +268,20 @@
 
     <string name="chan_nothing"><![CDATA[<i>nothing</i>]]></string>
 
-    <string name="ln_info_close_coop">Closed cooperatively</string>
+    <string name="ln_info_no_update">Can not receive yet</string>
+    <string name="ln_info_close_coop">Cooperative closing</string>
     <string name="ln_info_close_local">Force-closed locally</string>
     <string name="ln_info_close_remote">Force-closed remotely</string>
     <string name="ln_info_shutdown">Shutting down&#8230;</string>
 
-    <string name="ln_normal_chan_close_scan_address"><![CDATA[Scan a Bitcoin address where the rest of channel balance is going to be sent.]]></string>
-    <string name="ln_normal_chan_confirm_close"><![CDATA[Do you want to close this channel and send a refunding transaction back to chain wallet?]]></string>
-    <string name="ln_hosted_chan_confirm_remove"><![CDATA[Do you want to remove this hosted channel?<br><br>Note that it can always be brought back by scanning a peer node QR.]]></string>
-    <string name="ln_hosted_chan_remove_impossible"><![CDATA[Hosted channel can not be removed right now because it contains an in-flight payments, please wait until they get resolved.]]></string>
+    <string name="ln_normal_chan_close_scan_address">Scan Bitcoin address</string>
+    <string name="ln_normal_chan_confirm_close">Would you like to close this channel and send a refunding transaction back to chain wallet?</string>
+    <string name="ln_hosted_chan_confirm_drain">Would you like to drain funds from this hosted channel into other channels currently present in this wallet?</string>
+    <string name="ln_hosted_chan_confirm_remove">Would you like to remove this hosted channel?\n\nNote that it can always be brought back by connecting to host node.</string>
+    <string name="ln_normal_chan_force_close">Would you like to force-close this channel?\n\nNote that there will be a refunding delay and higher closing fees.</string>
+
+    <string name="ln_hosted_chan_remove_impossible">This hosted channel can not be removed right now because it contains an in-flight payments, please wait until they get resolved.</string>
+    <string name="ln_hosted_chan_drain_impossible">Funds can not be drained from this hosted channel becase no Lightning channel is present in a wallet with capacity large enough for receiving.</string>
     <string name="ln_chan_details">Channel details\n\nRemote peer node ID\n%1$s\n\nLocal wallet node ID\n%2$s\n\nChannel short ID\n%3$s\n\nChannel started\n%4$s</string>
     <string name="ln_hosted_chan_state">%1$s\n\n\nState snapshot\n%2$s\n\nRevealed preimages\n%3$s</string>
     <string name="ln_share_details">Share channel details</string>
@@ -289,8 +294,7 @@
 
     <array name="ln_hosted_chan_actions">
         <item><![CDATA[Export channel state]]></item>
-        <item><![CDATA[Transfer channel balance]]></item>
-        <item><![CDATA[Remove hosted channel]]></item>
+        <item><![CDATA[Drain channel balance]]></item>
     </array>
 
     <!-- /statistics -->

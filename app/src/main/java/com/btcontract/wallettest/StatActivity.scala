@@ -12,21 +12,25 @@ import com.btcontract.wallettest.R.string._
 import java.util.{Date, TimerTask}
 import android.view.{View, ViewGroup}
 import android.graphics.{Bitmap, BitmapFactory}
-import fr.acinq.eclair.channel.{DATA_CLOSING, Commitments, NormalCommits}
+import immortan.utils.{BitcoinUri, InputParser, PaymentRequestExt, Rx}
+import fr.acinq.eclair.channel.{CMD_CLOSE, Commitments, DATA_CLOSING, NormalCommits}
+
 import com.btcontract.wallettest.BaseActivity.StringOps
 import fr.acinq.eclair.wire.HostedChannelBranding
 import androidx.recyclerview.widget.RecyclerView
 import com.google.common.cache.LoadingCache
 import com.indicator.ChannelIndicatorLine
+import androidx.appcompat.app.AlertDialog
 import androidx.cardview.widget.CardView
 import rx.lang.scala.Subscription
 import immortan.wire.HostedState
-import immortan.utils.Rx
 import android.os.Bundle
 
 
-class StatActivity extends BaseActivity with ChoiceReceiver { me =>
+class StatActivity extends BaseActivity with ChoiceReceiver with HasTypicalChainFee with ChannelListener { me =>
+  private[this] lazy val chanContainer = findViewById(R.id.chanContainer).asInstanceOf[LinearLayout]
   private[this] lazy val chanList = findViewById(R.id.chanList).asInstanceOf[ListView]
+
   private[this] lazy val brandingInfos = WalletApp.txDataBag.db.txWrap(getBrandingInfos.toMap)
   private[this] lazy val normalChanActions = getResources.getStringArray(R.array.ln_normal_chan_actions)
   private[this] lazy val hostedChanActions = getResources.getStringArray(R.array.ln_hosted_chan_actions)
@@ -80,7 +84,6 @@ class StatActivity extends BaseActivity with ChoiceReceiver { me =>
     val wrappers: Seq[View] =
       view.findViewById(R.id.progressBars).asInstanceOf[View] ::
         view.findViewById(R.id.totalCapacity).asInstanceOf[View] ::
-        view.findViewById(R.id.balancesDivider).asInstanceOf[View] ::
         view.findViewById(R.id.refundableAmount).asInstanceOf[View] ::
         view.findViewById(R.id.paymentsInFlight).asInstanceOf[View] ::
         view.findViewById(R.id.canReceive).asInstanceOf[View] ::
@@ -103,18 +106,25 @@ class StatActivity extends BaseActivity with ChoiceReceiver { me =>
 
       if (Channel isWaiting chan) {
         setVis(isVisible = false, extraInfoText)
-        channelCard setOnClickListener bringChanOptions(normalChanActions, cs)
+        channelCard setOnClickListener bringChanOptions(normalChanActions.take(1), cs)
         visibleExcept(R.id.progressBars, R.id.paymentsInFlight, R.id.canReceive, R.id.canSend)
       } else if (Channel isOperational chan) {
-        setVis(isVisible = false, extraInfoText)
         channelCard setOnClickListener bringChanOptions(normalChanActions, cs)
+        setVis(isVisible = cs.updateOpt.isEmpty, extraInfoText)
+        extraInfoText.setText(ln_info_no_update)
         visibleExcept(goneRes = -1)
       } else {
-        setVis(isVisible = true, extraInfoText)
-        channelCard setOnClickListener bringChanOptions(normalChanActions.take(2), cs)
-        visibleExcept(R.id.progressBars, R.id.paymentsInFlight, R.id.canReceive, R.id.canSend)
         val closeInfoRes = chan.data match { case c: DATA_CLOSING => closedBy(c) case _ => ln_info_shutdown }
+        channelCard setOnClickListener bringChanOptions(normalChanActions.take(1), cs)
+        visibleExcept(R.id.progressBars, R.id.canReceive, R.id.canSend)
         extraInfoText.setText(getString(closeInfoRes).html)
+        setVis(isVisible = true, extraInfoText)
+      }
+
+      channelCard setOnLongClickListener onLongButtonTap {
+        val builder = confirmationBuilder(cs, ln_normal_chan_force_close)
+        mkCheckForm(forceCloseNc(cs), none, builder, dialog_ok, dialog_cancel)
+        true
       }
 
       setVis(isVisible = false, hcBranding)
@@ -157,6 +167,12 @@ class StatActivity extends BaseActivity with ChoiceReceiver { me =>
         hcSupportInfo.setText(contactInfo)
       }
 
+      channelCard setOnLongClickListener onLongButtonTap {
+        if (hc.localSpec.htlcs.nonEmpty) snack(chanContainer, getString(ln_hosted_chan_remove_impossible), R.string.dialog_ok, _.dismiss)
+        else mkCheckForm(removeHc(hc), none, confirmationBuilder(hc, ln_hosted_chan_confirm_remove), dialog_ok, dialog_cancel)
+        true
+      }
+
       visibleExcept(R.id.refundableAmount)
       ChannelIndicatorLine.setView(chanState, chan)
       peerAddress.setText(hc.remoteInfo.address.toString)
@@ -168,7 +184,9 @@ class StatActivity extends BaseActivity with ChoiceReceiver { me =>
       canSendText.setText(sumOrNothing(hc.availableForSend.truncateToSatoshi, cardIn).html)
 
       paymentsInFlightText.setText(sumOrNothing(inFlight.truncateToSatoshi, cardIn).html)
-      setVis(isVisible = hc.error.isDefined, extraInfoText)
+      setVis(isVisible = hc.error.isDefined || hc.updateOpt.isEmpty, extraInfoText)
+      // Order messages by degree of importance
+      extraInfoText.setText(ln_info_no_update)
       extraInfoText.setText(errorText)
       this
     }
@@ -180,10 +198,63 @@ class StatActivity extends BaseActivity with ChoiceReceiver { me =>
   }
 
   override def onChoiceMade(tag: AnyRef, pos: Int): Unit = (tag, pos) match {
-    case (cs: NormalCommits, 1) => browseTxid(cs.commitInput.outPoint.txid)
+    case (_: HostedCommits, 2) if maxNormalReceivable.forall(_.maxReceivable < LNParams.minPayment) => snack(chanContainer, getString(ln_hosted_chan_drain_impossible), R.string.dialog_ok, _.dismiss)
+    case (hc: HostedCommits, 2) => mkCheckForm(drainHc(hc), none, confirmationBuilder(hc, ln_hosted_chan_confirm_drain), dialog_ok, dialog_cancel)
     case (hc: HostedCommits, 1) => share(me getHcState hc)
+
+    case (cs: NormalCommits, 3) => closeNcToAddress(cs)
+    case (cs: NormalCommits, 2) => mkCheckForm(closeNcToWallet(cs), none, confirmationBuilder(cs, ln_normal_chan_confirm_close), dialog_ok, dialog_cancel)
+    case (cs: NormalCommits, 1) => browseTxid(cs.commitInput.outPoint.txid)
     case (cs: Commitments, 0) => share(me getDetails cs)
     case _ =>
+  }
+
+  def forceCloseNc(cs: NormalCommits)(alert: AlertDialog): Unit = {
+    for (chan <- me getChan cs) chan process CMD_CLOSE(None, force = true)
+    alert.dismiss
+  }
+
+  def closeNcToWallet(cs: NormalCommits)(alert: AlertDialog): Unit = {
+    for (chan <- me getChan cs) chan process CMD_CLOSE(None, force = false)
+    alert.dismiss
+  }
+
+  def closeNcToAddress(cs: NormalCommits): Unit = {
+    def resolveClosingAddress: Unit = InputParser.checkAndMaybeErase {
+      case prExt: PaymentRequestExt if prExt.pr.fallbackAddress.isDefined =>
+        val closingKey = prExt.pr.fallbackAddress.map(BitcoinUri.fromRaw).map(_.pubKeyScript).map(Script.write)
+        for (chan <- me getChan cs) chan process CMD_CLOSE(scriptPubKey = closingKey, force = false)
+
+      case bitcoinUri: BitcoinUri if bitcoinUri.isValid =>
+        val closingKey = bitcoinUri.pubKeyScript.asSome.map(Script.write)
+        for (chan <- me getChan cs) chan process CMD_CLOSE(closingKey, force = false)
+
+      case _ =>
+        // User has scanned something else, cancel and inform
+        UITask(WalletApp.app quickToast error_nothing_useful).run
+    }
+
+    def onData: Runnable = UITask(resolveClosingAddress)
+    val instruction = getString(ln_normal_chan_close_scan_address).asSome
+    val sheet = new sheets.ScannerBottomSheet(me, instruction, onData, onData)
+    callScanner(sheet)
+  }
+
+  def drainHc(hc: HostedCommits)(alert: AlertDialog): Unit = {
+    LNParams.cm.localSendToSelf(getChan(hc).toList, maxNormalReceivable.get, randomBytes32, typicalChainTxFee, WalletApp.capLNFeeToChain)
+    alert.dismiss
+  }
+
+  def removeHc(hc: HostedCommits)(alert: AlertDialog): Unit = {
+    // First, remove this HC from database abd from runtime channel map
+    LNParams.cm.chanBag.delete(hc.channelId)
+    LNParams.cm.all -= hc.channelId
+
+    // Then, update hub activity balance and chan list here
+    ChannelMaster.next(ChannelMaster.stateUpdateStream)
+    CommsTower.disconnectNative(hc.remoteInfo)
+    updateChanData.run
+    alert.dismiss
   }
 
   def getHcState(hc: HostedCommits): String = {
@@ -285,6 +356,10 @@ class StatActivity extends BaseActivity with ChoiceReceiver { me =>
     else if (cd.mutualClosePublished.nonEmpty) ln_info_close_coop
     else ln_info_close_local
   }
+
+  private def confirmationBuilder(commits: Commitments, res: Int) = new AlertDialog.Builder(me).setTitle(commits.remoteInfo.address.toString).setMessage(res)
+  private def getChan(commits: Commitments) = csToDisplay.collectFirst { case cnc if cnc.commits.channelId == commits.channelId => cnc.chan }
+  private def maxNormalReceivable: Option[CommitsAndMax] = LNParams.cm maxReceivable LNParams.cm.sortedReceivable(LNParams.cm.allNormal)
 
   private def updateChanData: TimerTask = UITask {
     csToDisplay = LNParams.cm.all.values.flatMap(Channel.chanAndCommitsOpt).toList

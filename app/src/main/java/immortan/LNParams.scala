@@ -216,8 +216,7 @@ trait NetworkBag {
 trait PaymentBag {
   def getPreimage(hash: ByteVector32): Try[ByteVector32]
   def setPreimage(paymentHash: ByteVector32, preimage: ByteVector32)
-  def addRelayedPreimageInfo(fullTag: FullPaymentTag, preimage: ByteVector32,
-                             relayed: MilliSatoshi, earned: MilliSatoshi)
+  def addRelayedPreimageInfo(fullTag: FullPaymentTag, preimage: ByteVector32, relayed: MilliSatoshi, earned: MilliSatoshi)
 
   def addSearchablePayment(search: String, paymentHash: ByteVector32)
   def searchPayments(rawSearchQuery: String): RichCursor

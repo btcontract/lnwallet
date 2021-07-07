@@ -120,8 +120,7 @@
 
             <View
                 style="@style/GrayDivider"
-                android:layout_marginBottom="10dp"
-                android:id="@+id/balancesDivider"/>
+                android:layout_marginBottom="10dp"/>
 
             <RelativeLayout style="@style/FillingView" android:layout_marginBottom="10dp" android:id="@+id/refundableAmount">
                 <TextView style="@style/BoundedView" android:layout_centerVertical="true" android:layout_alignParentStart="true" android:text="@string/chan_refundable"/>

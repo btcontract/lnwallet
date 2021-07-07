@@ -28,11 +28,12 @@
 
     <!-- item styles -->
 
-    <style name="BlueButton">
-        <item name="nb_focusColor">@color/ln</item>
+    <style name="GreenButton">
+        <item name="nb_focusColor">@color/buttonGreenRipple</item>
+        <item name="nb_borderColor">@color/buttonGreenBorder</item>
+        <item name="nb_backgroundColor">@color/buttonGreen</item>
+
         <item name="nb_textColor">@color/colorAccent</item>
-        <item name="nb_borderColor">@color/buttonBlueBorder</item>
-        <item name="nb_backgroundColor">@color/buttonBlue</item>
         <item name="android:layout_height">wrap_content</item>
         <item name="android:layout_width">wrap_content</item>
         <item name="android:paddingBottom">11dp</item>
@@ -43,19 +44,13 @@
         <item name="nb_radius">6dp</item>
     </style>
 
-    <style name="GreenButton" parent="BlueButton">
-        <item name="nb_focusColor">@color/buttonGreenRipple</item>
-        <item name="nb_borderColor">@color/buttonGreenBorder</item>
-        <item name="nb_backgroundColor">@color/buttonGreen</item>
-    </style>
-
-    <style name="RedButton" parent="BlueButton">
+    <style name="RedButton" parent="GreenButton">
         <item name="nb_focusColor">@color/buttonRedRipple</item>
         <item name="nb_borderColor">@color/buttonRedBorder</item>
         <item name="nb_backgroundColor">@color/buttonRed</item>
     </style>
 
-    <style name="GrayButton" parent="BlueButton">
+    <style name="GrayButton" parent="GreenButton">
         <item name="nb_focusColor">@color/buttonGrayRipple</item>
         <item name="nb_borderColor">@color/buttonGrayBorder</item>
         <item name="nb_backgroundColor">@color/bg</item>

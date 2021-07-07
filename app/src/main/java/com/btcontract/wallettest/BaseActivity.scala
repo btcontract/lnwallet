@@ -17,10 +17,12 @@ import fr.acinq.bitcoin.{Block, ByteVector32, Satoshi}
 import com.google.zxing.{BarcodeFormat, EncodeHintType}
 import androidx.core.content.{ContextCompat, FileProvider}
 import immortan.crypto.Tools.{Any2Some, Fiat2Btc, none, runAnd}
+import android.view.View.{OnClickListener, OnLongClickListener}
 import immortan.utils.{Denomination, InputParser, PaymentRequestExt}
 import fr.acinq.eclair.blockchain.fee.{FeeratePerKw, FeeratePerVByte}
 import com.google.android.material.snackbar.{BaseTransientBottomBar, Snackbar}
 import android.widget.{ArrayAdapter, Button, EditText, ImageView, LinearLayout, ListView, TextView}
+
 import com.cottacush.android.currencyedittext.CurrencyEditText
 import com.google.android.material.textfield.TextInputLayout
 import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
@@ -39,7 +41,6 @@ import androidx.appcompat.app.AlertDialog
 import org.apmem.tools.layouts.FlowLayout
 import scala.language.implicitConversions
 import android.content.pm.PackageManager
-import android.view.View.OnClickListener
 import androidx.core.app.ActivityCompat
 import rx.lang.scala.Subscription
 import scala.concurrent.Future
@@ -134,7 +135,7 @@ trait BaseActivity extends AppCompatActivity { me =>
     val bottomSnackbar: Snackbar = Snackbar.make(parent, msg, BaseTransientBottomBar.LENGTH_INDEFINITE)
     bottomSnackbar.getView.findViewById(com.google.android.material.R.id.snackbar_text).asInstanceOf[TextView].setMaxLines(15)
 
-    val listener = me onButtonTap {
+    val listener = onButtonTap {
       currentSnackbar = None
       fun(bottomSnackbar)
     }
@@ -151,6 +152,7 @@ trait BaseActivity extends AppCompatActivity { me =>
   // Listener helpers
 
   def onButtonTap(fun: => Unit): OnClickListener = new OnClickListener { def onClick(view: View): Unit = fun }
+  def onLongButtonTap(fun: => Boolean): OnLongClickListener = new OnLongClickListener { def onLongClick(view: View): Boolean = fun }
 
   def onTextChange(fun: String => Unit): TextWatcher = new TextWatcher {
     override def onTextChanged(c: CharSequence, x: Int, y: Int, z: Int): Unit = fun(c.toString)
@@ -457,8 +459,9 @@ trait BaseActivity extends AppCompatActivity { me =>
   }
 
   abstract class OffChainReceiver(initMaxReceivable: MilliSatoshi, initMinReceivable: MilliSatoshi, lnBalance: MilliSatoshi) {
-    val CommitsAndMax(cs, maxReceivable) = LNParams.cm.maxReceivable(LNParams.cm sortedReceivable LNParams.cm.all.values).get
     val body: ViewGroup = getLayoutInflater.inflate(R.layout.frag_input_off_chain, null).asInstanceOf[ViewGroup]
+    val candidates: Seq[ChanAndCommits] = LNParams.cm.sortedReceivable(LNParams.cm.all.values)
+    val CommitsAndMax(cs, maxReceivable) = LNParams.cm.maxReceivable(candidates).get
     val manager: RateManager = getManager
 
     val finalMaxReceivable: MilliSatoshi = initMaxReceivable.min(maxReceivable)

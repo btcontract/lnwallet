@@ -254,7 +254,7 @@ abstract class ChannelNormal(bag: ChannelBag) extends Channel { me =>
 
 
       // In all other states except normal we force-close right away
-      case (some: HasNormalCommitments, _: CMD_CLOSE, OPEN | SLEEPING) =>
+      case (some: HasNormalCommitments, _: CMD_CLOSE, OPEN | SLEEPING | WAIT_FUNDING_DONE) =>
         spendLocalCurrent(some)
 
 
