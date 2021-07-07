@@ -1,8 +1,0 @@
-<TextView
-    style="@style/FillingView"
-    xmlns:android="http://schemas.android.com/apk/res/android"
-    android:paddingStart="?android:attr/expandableListPreferredItemPaddingLeft"
-    android:gravity="center_vertical"
-    android:paddingBottom="25dp"
-    android:paddingTop="25dp"
-    android:paddingEnd="0dp"/>

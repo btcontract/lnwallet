@@ -9,9 +9,9 @@
     <string name="lightning_wallet">Lightning</string>
     <string name="total_balance">Total balance</string>
     <string name="hosted_channel">HOSTED CHANNEL</string>
+    <string name="delayed_refund">Delayed channel refunding</string>
     <string name="paste_from_clipboard">Paste from clipboard</string>
     <string name="copied_to_clipboard">Copied to clipboard</string>
-    <string name="delayed_refund">Delayed channel refund</string>
     <string name="add_address">More fresh addresses</string>
 
     <string name="search_recent">Search recent activity</string>
@@ -276,12 +276,12 @@
 
     <string name="ln_normal_chan_close_scan_address">Scan Bitcoin address</string>
     <string name="ln_normal_chan_confirm_close">Would you like to close this channel and send a refunding transaction back to chain wallet?</string>
-    <string name="ln_hosted_chan_confirm_drain">Would you like to drain funds from this hosted channel into other channels currently present in this wallet?</string>
+    <string name="ln_hosted_chan_confirm_drain">Would you like to drain funds from this hosted channel into other Lightning channels in this wallet?</string>
     <string name="ln_hosted_chan_confirm_remove">Would you like to remove this hosted channel?\n\nNote that it can always be brought back by connecting to host node.</string>
     <string name="ln_normal_chan_force_close">Would you like to force-close this channel?\n\nNote that there will be a refunding delay and higher closing fees.</string>
 
-    <string name="ln_hosted_chan_remove_impossible">This hosted channel can not be removed right now because it contains an in-flight payments, please wait until they get resolved.</string>
-    <string name="ln_hosted_chan_drain_impossible">Funds can not be drained from this hosted channel becase no Lightning channel is present in a wallet with capacity large enough for receiving.</string>
+    <string name="ln_hosted_chan_remove_impossible">This hosted channel can not be removed right now because it contains in-flight payments, please wait until they are resolved.</string>
+    <string name="ln_hosted_chan_drain_impossible">Funds can not be drained from this hosted channel becase no Lightning channel able to receive is present in a wallet.</string>
     <string name="ln_chan_details">Channel details\n\nRemote peer node ID\n%1$s\n\nLocal wallet node ID\n%2$s\n\nChannel short ID\n%3$s\n\nChannel started\n%4$s</string>
     <string name="ln_hosted_chan_state">%1$s\n\n\nState snapshot\n%2$s\n\nRevealed preimages\n%3$s</string>
     <string name="ln_share_details">Share channel details</string>
