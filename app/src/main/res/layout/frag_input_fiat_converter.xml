@@ -1,12 +1,14 @@
 <LinearLayout
     style="@style/StandardLinearLayout"
-    xmlns:android="http://schemas.android.com/apk/res/android">
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
 
     <FrameLayout style="@style/FillingView">
         <com.cottacush.android.currencyedittext.CurrencyEditText
             style="@style/XSmallMarginFillingView"
             android:focusableInTouchMode="true"
             android:id="@+id/fiatInputAmount"
+            app:maxNumberOfDecimalDigits="2"
             android:imeOptions="actionDone"
             android:layout_marginTop="15dp"
             android:textStyle="bold"
@@ -28,6 +30,7 @@
     <FrameLayout style="@style/FillingView">
         <com.cottacush.android.currencyedittext.CurrencyEditText
             style="@style/XSmallMarginFillingView"
+            app:maxNumberOfDecimalDigits="3"
             android:imeOptions="actionDone"
             android:id="@+id/inputAmount"
             android:textStyle="bold"
