@@ -12,9 +12,10 @@ import fr.acinq.eclair.blockchain.electrum.db.HeaderDb
 class ElectrumChainSync(client: ActorRef, headerDb: HeaderDb, chainHash: ByteVector32) extends FSM[ElectrumWallet.State, Blockchain] {
 
   def loadChain: Blockchain = if (chainHash != Block.RegtestGenesisBlock.hash) {
+    // In case if anything at all goes wrong we just use an initial blockchain and resync it from checkpoint
     val blockchain = Blockchain.fromCheckpoints(checkpoints = CheckPoint.load(chainHash, headerDb), chainhash = chainHash)
-    val headers = headerDb.getHeaders(blockchain.checkpoints.size * RETARGETING_PERIOD, maxCount = Int.MaxValue)
-    Blockchain.addHeadersChunk(blockchain, height = blockchain.checkpoints.size * RETARGETING_PERIOD, headers)
+    val headers = headerDb.getHeaders(startHeight = blockchain.checkpoints.size * RETARGETING_PERIOD, maxCount = Int.MaxValue)
+    Try apply Blockchain.addHeadersChunk(blockchain, blockchain.checkpoints.size * RETARGETING_PERIOD, headers) getOrElse blockchain
   } else Blockchain.fromGenesisBlock(Block.RegtestGenesisBlock.hash, Block.RegtestGenesisBlock.header)
 
   client ! ElectrumClient.AddStatusListener(self)

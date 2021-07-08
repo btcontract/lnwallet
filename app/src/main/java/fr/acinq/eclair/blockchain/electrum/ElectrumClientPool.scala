@@ -145,7 +145,7 @@ class ElectrumClientPool(blockCount: AtomicLong, chainHash: ByteVector32)(implic
         statusListeners.foreach(_ ! ElectrumClient.ElectrumReady(height, tip, remoteAddress))
         context.system.eventStream.publish(ElectrumClient.ElectrumReady(height, tip, remoteAddress))
         goto(Connected) using ConnectedData(connection, Map(connection -> (height, tip)))
-      case Some(d) if connection != d.master && height >= d.blockHeight + 2L =>
+      case Some(d) if connection != d.master && height > d.blockHeight + 2 =>
         // we only switch to a new master if there is a significant difference with our current master, because
         // we don't want to switch to a new master every time a new block arrives (some servers will be notified before others)
         // we check that the current connection is not our master because on regtest when you generate several blocks at once

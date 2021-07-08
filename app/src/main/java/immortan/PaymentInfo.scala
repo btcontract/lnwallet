@@ -33,11 +33,12 @@ sealed trait TransactionDetails {
   def seenAt: Long
 }
 
-case class PayLinkInfo(lnurlString: String, metaString: String, lastMsat: MilliSatoshi, hash: String, lastDate: Long) extends TransactionDetails {
+case class PayLinkInfo(lnurlString: String, metaString: String, lastMsat: MilliSatoshi, lastDate: Long, labelString: String) extends TransactionDetails {
   override val seenAt: Long = System.currentTimeMillis + lastDate / 10000L // To make it always appear on top in timestamp-sorted lists on UI
   override val date: Date = new Date(lastDate) // To display real date of last usage in lists on UI
 
   lazy val meta: PayRequestMeta = to[PayRequestMeta](metaString)
+  lazy val label: Option[String] = Option(labelString).filter(_.nonEmpty)
   lazy val imageBytesTry: Try[Bytes] = Try(Base64 decode meta.imageBase64s.head)
   lazy val lnurl: LNUrl = LNUrl(lnurlString)
 }
@@ -170,6 +171,7 @@ object TxDescription {
   }
 
   def defineClosingRelation(chans: Iterable[Channel], tx: Transaction): Option[TxDescription] = chans.map(_.data).collectFirst {
+    case closing: DATA_CLOSING if closing.balanceRefunds.exists(_.txid == tx.txid) => ChanRefundingTxDescription(closing.commitments.remoteInfo.nodeId)
     case closing: DATA_CLOSING if closing.paymentLeftoverRefunds.exists(_.txid == tx.txid) => HtlcClaimTxDescription(closing.commitments.remoteInfo.nodeId)
     case closing: DATA_CLOSING if closing.revokedCommitPublished.flatMap(_.penaltyTxs).exists(_.txid == tx.txid) => PenaltyTxDescription(closing.commitments.remoteInfo.nodeId)
     case some: HasNormalCommitments if tx.txIn.exists(_.outPoint.txid == some.commitments.commitInput.outPoint.txid) => ChanRefundingTxDescription(some.commitments.remoteInfo.nodeId)

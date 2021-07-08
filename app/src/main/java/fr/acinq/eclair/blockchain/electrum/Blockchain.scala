@@ -226,7 +226,7 @@ object Blockchain {
         require(headers.head.hashPreviousBlock == blockchain.bestchain.last.hash)
         val blockIndex = BlockIndex(headers.head, height, None, blockchain.bestchain.last.chainwork + Blockchain.chainWork(headers.head))
         val indexes = headers.tail.foldLeft(Vector(blockIndex)) {
-          case (indexes, header) => indexes :+ BlockIndex(header, indexes.last.height + 1, Some(indexes.last), indexes.last.chainwork + Blockchain.chainWork(header))
+          case (indexes1, header) => indexes1 :+ BlockIndex(header, indexes1.last.height + 1, Some(indexes1.last), indexes1.last.chainwork + Blockchain.chainWork(header))
         }
         val bestchain1 = blockchain.bestchain ++ indexes
         val headersMap1 = blockchain.headersMap ++ indexes.map(bi => bi.hash -> bi)

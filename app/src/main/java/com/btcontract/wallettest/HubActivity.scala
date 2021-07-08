@@ -218,7 +218,8 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
           description setText txDescription(info).html
           setVis(isVisible = true, nonLinkContainer)
           setVis(isVisible = false, linkContainer)
-          swipeWrap.setLockDrag(true)
+          setVis(isVisible = false, removeItem)
+          swipeWrap.setLockDrag(false)
           setTxTypeIcon(info)
           setTxMeta(info)
 
@@ -232,6 +233,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
           description setText paymentDescription(info).html
           setVis(isVisible = true, nonLinkContainer)
           setVis(isVisible = false, linkContainer)
+          setVis(isVisible = true, removeItem)
           swipeWrap.setLockDrag(false)
           setPaymentTypeIcon(info)
 
@@ -256,6 +258,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
           info.imageBytesTry.map(payLinkImageMemo.get).foreach(linkImage.setImageBitmap)
           domainName setText info.lnurl.uri.getHost
           textMetadata setText info.meta.textPlain
+          setVis(isVisible = true, removeItem)
           swipeWrap.setLockDrag(false)
       }
 
@@ -711,7 +714,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
       val paymentEvents = Rx.uniqueFirstAndLastWithinWindow(ChannelMaster.paymentDbStream, window).doOnNext(_ => reloadPaymentInfos)
       val stateEvents = Rx.uniqueFirstAndLastWithinWindow(ChannelMaster.stateUpdateStream, window).doOnNext(_ => updateLnCaches)
 
-      stateSubscription = txEvents.merge(paymentEvents).merge(relayEvents).merge(marketEvents).doOnNext(_ => updAllInfos).merge(stateEvents).subscribe(_ => paymentAdapterDataChanged.run).asSome
+      stateSubscription = txEvents.merge(paymentEvents).merge(relayEvents).merge(marketEvents).merge(stateEvents).doOnNext(_ => updAllInfos).subscribe(_ => paymentAdapterDataChanged.run).asSome
       statusSubscription = Rx.uniqueFirstAndLastWithinWindow(ChannelMaster.statusUpdateStream, window).merge(stateEvents).subscribe(_ => UITask(walletCards.updateView).run).asSome
       paymentSubscription = ChannelMaster.hashRevealStream.merge(ChannelMaster.remoteFulfillStream).throttleFirst(window).subscribe(_ => Vibrator.vibrate).asSome
       preimageSubscription = ChannelMaster.remoteFulfillStream.subscribe(fulfill => resolveAction(fulfill).run, none).asSome
