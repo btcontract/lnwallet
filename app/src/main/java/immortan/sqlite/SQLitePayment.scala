@@ -21,6 +21,8 @@ case class PaymentSummary(fees: MilliSatoshi, chainFees: MilliSatoshi, received:
 class SQLitePayment(db: DBInterface, preimageDb: DBInterface) extends PaymentBag {
   def getPaymentInfo(paymentHash: ByteVector32): Try[PaymentInfo] = db.select(PaymentTable.selectByHashSql, paymentHash.toHex).headTry(toPaymentInfo)
 
+  def removePaymentInfo(paymentHash: ByteVector32): Unit = db.change(PaymentTable.killSql, paymentHash.toHex)
+
   def addSearchablePayment(search: String, paymentHash: ByteVector32): Unit = db.change(PaymentTable.newVirtualSql, search, paymentHash.toHex)
 
   def searchPayments(rawSearchQuery: String): RichCursor = db.search(PaymentTable.searchSql, rawSearchQuery)
@@ -53,10 +55,9 @@ class SQLitePayment(db: DBInterface, preimageDb: DBInterface) extends PaymentBag
                              finalAmount: MilliSatoshi, balanceSnap: MilliSatoshi, fiatRateSnap: Fiat2Btc,
                              chainFee: MilliSatoshi): Unit =
     db txWrap {
-      val hashString = prex.pr.paymentHash.toHex
-      db.change(PaymentTable.deleteSql, hashString)
+      removePaymentInfo(prex.pr.paymentHash)
       db.change(PaymentTable.newSql, prex.raw, ChannelMaster.NO_PREIMAGE.toHex, PaymentStatus.PENDING: JInt, System.currentTimeMillis: JLong, description.toJson.compactPrint,
-        action.map(_.toJson.compactPrint).getOrElse(PaymentInfo.NO_ACTION), hashString, prex.pr.paymentSecret.get.toHex, 0L: JLong /* RECEIVED AMOUNT = 0 FOR OUTGOING */,
+        action.map(_.toJson.compactPrint).getOrElse(PaymentInfo.NO_ACTION), prex.pr.paymentHash.toHex, prex.pr.paymentSecret.get.toHex, 0L: JLong /* RECEIVED AMOUNT = 0 FOR OUTGOING */,
         finalAmount.toLong: JLong /* SENT IS KNOWN */, 0L: JLong /* FEE IS UNCERTAIN YET */, balanceSnap.toLong: JLong, fiatRateSnap.toJson.compactPrint,
         chainFee.toLong: JLong, 0: JInt /* INCOMING TYPE = 0 */)
       ChannelMaster.next(ChannelMaster.paymentDbStream)
@@ -66,10 +67,9 @@ class SQLitePayment(db: DBInterface, preimageDb: DBInterface) extends PaymentBag
                              preimage: ByteVector32, description: PaymentDescription,
                              balanceSnap: MilliSatoshi, fiatRateSnap: Fiat2Btc): Unit =
     db txWrap {
-      val hashString = prex.pr.paymentHash.toHex
-      db.change(PaymentTable.deleteSql, hashString)
+      removePaymentInfo(prex.pr.paymentHash)
       db.change(PaymentTable.newSql, prex.raw, preimage.toHex, PaymentStatus.PENDING: JInt, System.currentTimeMillis: JLong, description.toJson.compactPrint,
-        PaymentInfo.NO_ACTION, hashString, prex.pr.paymentSecret.get.toHex, prex.pr.amount.getOrElse(0L.msat).toLong: JLong /* MUST COME FROM PR! 0 WHEN UNDEFINED */,
+        PaymentInfo.NO_ACTION, prex.pr.paymentHash.toHex, prex.pr.paymentSecret.get.toHex, prex.pr.amount.getOrElse(0L.msat).toLong: JLong /* 0 WHEN UNDEFINED */,
         0L: JLong /* SENT = 0 MSAT, NOTHING TO SEND */, 0L: JLong /* NO FEE FOR INCOMING PAYMENT */, balanceSnap.toLong: JLong, fiatRateSnap.toJson.compactPrint,
         0L: JLong /* NO CHAIN FEE FOR INCOMING PAYMENTS */, 1: JInt /* INCOMING TYPE = 1 */)
       ChannelMaster.next(ChannelMaster.paymentDbStream)

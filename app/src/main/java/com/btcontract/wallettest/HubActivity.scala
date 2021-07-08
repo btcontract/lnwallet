@@ -43,6 +43,7 @@ import fr.acinq.eclair.blockchain.TxAndFee
 import com.indicator.ChannelIndicatorLine
 import androidx.appcompat.app.AlertDialog
 import android.content.pm.PackageManager
+import com.ornach.nobobutton.NoboButton
 import java.util.concurrent.TimeUnit
 import android.content.Intent
 import org.ndeftools.Message
@@ -154,6 +155,9 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
   class PaymentLineViewHolder(itemView: View) extends RecyclerView.ViewHolder(itemView) {
     val swipeWrap: SwipeRevealLayout = itemView.asInstanceOf[SwipeRevealLayout]
 
+    val setItemLabel: NoboButton = swipeWrap.findViewById(R.id.setItemLabel).asInstanceOf[NoboButton]
+    val removeItem: NoboButton = swipeWrap.findViewById(R.id.removeItem).asInstanceOf[NoboButton]
+
     val nonLinkContainer: LinearLayout = swipeWrap.findViewById(R.id.nonLinkContainer).asInstanceOf[LinearLayout]
     val detailsAndStatus: RelativeLayout = swipeWrap.findViewById(R.id.detailsAndStatus).asInstanceOf[RelativeLayout]
     val description: TextView = swipeWrap.findViewById(R.id.description).asInstanceOf[TextView]
@@ -174,6 +178,18 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
     var currentDetails: TransactionDetails = _
     var lastVisibleIconId: Int = -1
 
+    removeItem setOnClickListener onButtonTap {
+      val builder = new AlertDialog.Builder(me).setMessage(confirm_remove_item)
+      mkCheckForm(alert => runAnd(alert.dismiss)(doRemoveItem), none, builder, dialog_ok, dialog_cancel)
+      swipeWrap.close(true)
+    }
+
+    def doRemoveItem: Unit = currentDetails match {
+      case info: PayLinkInfo => runAnd(WalletApp.payMarketBag remove info.lnurl)(ChannelMaster next ChannelMaster.payMarketDbStream)
+      case info: PaymentInfo => runAnd(LNParams.cm.payBag removePaymentInfo info.paymentHash)(ChannelMaster next ChannelMaster.paymentDbStream)
+      case _ =>
+    }
+
     def setVisibleIcon(id: Int): Unit = if (lastVisibleIconId != id) {
       iconMap.get(lastVisibleIconId).foreach(_ setVisibility View.GONE)
       iconMap.get(id).foreach(_ setVisibility View.VISIBLE)
@@ -191,6 +207,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
           setVis(isVisible = true, nonLinkContainer)
           setVis(isVisible = false, linkContainer)
           setVisibleIcon(id = R.id.lnRouted)
+          swipeWrap.setLockDrag(true)
 
         case info: TxInfo =>
           setVis(isVisible = true, detailsAndStatus)
@@ -201,6 +218,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
           description setText txDescription(info).html
           setVis(isVisible = true, nonLinkContainer)
           setVis(isVisible = false, linkContainer)
+          swipeWrap.setLockDrag(true)
           setTxTypeIcon(info)
           setTxMeta(info)
 
@@ -214,6 +232,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
           description setText paymentDescription(info).html
           setVis(isVisible = true, nonLinkContainer)
           setVis(isVisible = false, linkContainer)
+          swipeWrap.setLockDrag(false)
           setPaymentTypeIcon(info)
 
         case info: DelayedRefunds =>
@@ -227,6 +246,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
           setVis(isVisible = false, linkContainer)
           description setText delayed_refund
           setVisibleIcon(id = R.id.lnBtc)
+          swipeWrap.setLockDrag(true)
 
         case info: PayLinkInfo =>
           setVis(isVisible = true, linkContainer)
@@ -236,6 +256,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
           info.imageBytesTry.map(payLinkImageMemo.get).foreach(linkImage.setImageBitmap)
           domainName setText info.lnurl.uri.getHost
           textMetadata setText info.meta.textPlain
+          swipeWrap.setLockDrag(false)
       }
 
     // TX helpers

@@ -133,7 +133,7 @@ class StatActivity extends BaseActivity with ChoiceReceiver with HasTypicalChain
       }
 
       removeItem setOnClickListener onButtonTap {
-        val builder = confirmationBuilder(cs, ln_normal_chan_force_close)
+        val builder = confirmationBuilder(cs, confirm_ln_normal_chan_force_close)
         mkCheckForm(alert => runAnd(alert.dismiss)(me forceCloseNc cs), none, builder, dialog_ok, dialog_cancel)
         swipeWrap.close(true)
       }
@@ -179,7 +179,7 @@ class StatActivity extends BaseActivity with ChoiceReceiver with HasTypicalChain
 
       removeItem setOnClickListener onButtonTap {
         if (hc.localSpec.htlcs.nonEmpty) snack(chanContainer, getString(ln_hosted_chan_remove_impossible), R.string.dialog_ok, _.dismiss)
-        else mkCheckForm(alert => runAnd(alert.dismiss)(me removeHc hc), none, confirmationBuilder(hc, ln_hosted_chan_confirm_remove), dialog_ok, dialog_cancel)
+        else mkCheckForm(alert => runAnd(alert.dismiss)(me removeHc hc), none, confirmationBuilder(hc, confirm_ln_hosted_chan_remove), dialog_ok, dialog_cancel)
         swipeWrap.close(true)
       }
 
@@ -210,8 +210,8 @@ class StatActivity extends BaseActivity with ChoiceReceiver with HasTypicalChain
   }
 
   override def onChoiceMade(tag: AnyRef, pos: Int): Unit = (tag, pos) match {
-    case (cs: NormalCommits, 2) => mkCheckForm(alert => runAnd(alert.dismiss)(me closeNcToWallet cs), none, confirmationBuilder(cs, ln_normal_chan_confirm_close), dialog_ok, dialog_cancel)
-    case (hc: HostedCommits, 2) => mkCheckForm(alert => runAnd(alert.dismiss)(me drainHc hc), none, confirmationBuilder(hc, ln_hosted_chan_confirm_drain), dialog_ok, dialog_cancel)
+    case (cs: NormalCommits, 2) => mkCheckForm(alert => runAnd(alert.dismiss)(me closeNcToWallet cs), none, confirmationBuilder(cs, confirm_ln_normal_chan_close), dialog_ok, dialog_cancel)
+    case (hc: HostedCommits, 2) => mkCheckForm(alert => runAnd(alert.dismiss)(me drainHc hc), none, confirmationBuilder(hc, confirm_ln_hosted_chan_drain), dialog_ok, dialog_cancel)
     case (cs: NormalCommits, 1) => browseTxid(cs.commitInput.outPoint.txid)
     case (hc: HostedCommits, 1) => share(me getHcState hc)
     case (cs: NormalCommits, 3) => closeNcToAddress(cs)

@@ -274,11 +274,6 @@
     <string name="ln_info_shutdown">Shutting down&#8230;</string>
 
     <string name="ln_normal_chan_close_scan_address">Scan Bitcoin address</string>
-    <string name="ln_normal_chan_confirm_close">Would you like to close this channel and send a refunding transaction back to chain wallet?</string>
-    <string name="ln_hosted_chan_confirm_drain">Would you like to drain funds from this hosted channel into other Lightning channels in this wallet?</string>
-    <string name="ln_hosted_chan_confirm_remove">Would you like to remove this hosted channel?\n\nNote that it can always be brought back by connecting to host node.</string>
-    <string name="ln_normal_chan_force_close">Would you like to force-close this channel?\n\nNote that there will be a refunding delay and higher closing fees.</string>
-
     <string name="ln_hosted_chan_remove_impossible">This hosted channel can not be removed right now because it contains in-flight payments, please wait until they are resolved.</string>
     <string name="ln_hosted_chan_drain_impossible">Funds can not be drained from this hosted channel becase no Lightning channel able to receive is present in a wallet.</string>
     <string name="ln_chan_details">Channel details\n\nRemote peer node ID\n%1$s\n\nLocal wallet node ID\n%2$s\n\nChannel short ID\n%3$s\n\nChannel started\n%4$s</string>
@@ -297,5 +292,15 @@
     </array>
 
     <!-- /statistics -->
+
+    <!-- action confirmations -->
+
+    <string name="confirm_remove_item">Would you like to remove this item?</string>
+    <string name="confirm_ln_normal_chan_close">Would you like to close this channel and send a refunding transaction back to chain wallet?</string>
+    <string name="confirm_ln_hosted_chan_drain">Would you like to drain funds from this hosted channel into other Lightning channels in this wallet?</string>
+    <string name="confirm_ln_hosted_chan_remove">Would you like to remove this hosted channel?\n\nNote that it can always be brought back by connecting to host node.</string>
+    <string name="confirm_ln_normal_chan_force_close">Would you like to force-close this channel?\n\nNote that there will be a refunding delay and higher closing fees.</string>
+
+    <!-- /action confirmations -->
 
 </resources>

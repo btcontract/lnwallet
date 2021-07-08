@@ -208,7 +208,7 @@ object PaymentTable extends Table {
 
   val newVirtualSql = s"INSERT INTO $fts$table ($search, $hash) VALUES (?, ?)"
 
-  val deleteSql = s"DELETE FROM $table WHERE $hash = ?"
+  val killSql = s"DELETE FROM $table WHERE $hash = ?"
 
   // Selecting
 

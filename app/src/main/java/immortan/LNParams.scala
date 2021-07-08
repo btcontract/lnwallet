@@ -230,6 +230,7 @@ trait PaymentBag {
                              fiatRateSnap: Fiat2Btc)
 
   def getPaymentInfo(paymentHash: ByteVector32): Try[PaymentInfo]
+  def removePaymentInfo(paymentHash: ByteVector32)
 
   // These MUST be the only two methods capable of updating payment state to SUCCEEDED
   def updOkIncoming(receivedAmount: MilliSatoshi, paymentHash: ByteVector32)
