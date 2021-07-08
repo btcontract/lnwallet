@@ -14,14 +14,15 @@ import android.view.{View, ViewGroup}
 import android.graphics.{Bitmap, BitmapFactory}
 import immortan.utils.{BitcoinUri, InputParser, PaymentRequestExt, Rx}
 import fr.acinq.eclair.channel.{CMD_CLOSE, Commitments, DATA_CLOSING, NormalCommits}
-
 import com.btcontract.wallettest.BaseActivity.StringOps
+import com.chauthai.swipereveallayout.SwipeRevealLayout
 import fr.acinq.eclair.wire.HostedChannelBranding
 import androidx.recyclerview.widget.RecyclerView
 import com.google.common.cache.LoadingCache
 import com.indicator.ChannelIndicatorLine
 import androidx.appcompat.app.AlertDialog
 import androidx.cardview.widget.CardView
+import com.ornach.nobobutton.NoboButton
 import rx.lang.scala.Subscription
 import immortan.wire.HostedState
 import android.os.Bundle
@@ -57,36 +58,42 @@ class StatActivity extends BaseActivity with ChoiceReceiver with HasTypicalChain
         case _ => throw new RuntimeException
       }
 
+      // Prevent reused layout to appear in open state as user scrolls down
+      if (cardView.swipeWrap.isOpened) cardView.swipeWrap.close(false)
       card.setTag(cardView)
       card
     }
   }
 
   abstract class ChanCardViewHolder(view: View) extends RecyclerView.ViewHolder(view) {
-    val channelCard: CardView = view.findViewById(R.id.channelCard).asInstanceOf[CardView]
-    val hcBranding: RelativeLayout = view.findViewById(R.id.hcBranding).asInstanceOf[RelativeLayout]
-    val hcSupportInfo: TextView = view.findViewById(R.id.hcSupportInfo).asInstanceOf[TextView]
-    val hcImage: ImageView = view.findViewById(R.id.hcImage).asInstanceOf[ImageView]
+    val swipeWrap: SwipeRevealLayout = itemView.asInstanceOf[SwipeRevealLayout]
 
-    val baseBar: ProgressBar = view.findViewById(R.id.baseBar).asInstanceOf[ProgressBar]
-    val overBar: ProgressBar = view.findViewById(R.id.overBar).asInstanceOf[ProgressBar]
-    val peerAddress: TextView = view.findViewById(R.id.peerAddress).asInstanceOf[TextView]
-    val chanState: View = view.findViewById(R.id.chanState).asInstanceOf[View]
+    val removeItem: NoboButton = swipeWrap.findViewById(R.id.removeItem).asInstanceOf[NoboButton]
+    val channelCard: CardView = swipeWrap.findViewById(R.id.channelCard).asInstanceOf[CardView]
 
-    val canSendText: TextView = view.findViewById(R.id.canSendText).asInstanceOf[TextView]
-    val canReceiveText: TextView = view.findViewById(R.id.canReceiveText).asInstanceOf[TextView]
-    val refundableAmountText: TextView = view.findViewById(R.id.refundableAmountText).asInstanceOf[TextView]
-    val paymentsInFlightText: TextView = view.findViewById(R.id.paymentsInFlightText).asInstanceOf[TextView]
-    val totalCapacityText: TextView = view.findViewById(R.id.totalCapacityText).asInstanceOf[TextView]
-    val extraInfoText: TextView = view.findViewById(R.id.extraInfoText).asInstanceOf[TextView]
+    val hcBranding: RelativeLayout = swipeWrap.findViewById(R.id.hcBranding).asInstanceOf[RelativeLayout]
+    val hcSupportInfo: TextView = swipeWrap.findViewById(R.id.hcSupportInfo).asInstanceOf[TextView]
+    val hcImage: ImageView = swipeWrap.findViewById(R.id.hcImage).asInstanceOf[ImageView]
+
+    val baseBar: ProgressBar = swipeWrap.findViewById(R.id.baseBar).asInstanceOf[ProgressBar]
+    val overBar: ProgressBar = swipeWrap.findViewById(R.id.overBar).asInstanceOf[ProgressBar]
+    val peerAddress: TextView = swipeWrap.findViewById(R.id.peerAddress).asInstanceOf[TextView]
+    val chanState: View = swipeWrap.findViewById(R.id.chanState).asInstanceOf[View]
+
+    val canSendText: TextView = swipeWrap.findViewById(R.id.canSendText).asInstanceOf[TextView]
+    val canReceiveText: TextView = swipeWrap.findViewById(R.id.canReceiveText).asInstanceOf[TextView]
+    val refundableAmountText: TextView = swipeWrap.findViewById(R.id.refundableAmountText).asInstanceOf[TextView]
+    val paymentsInFlightText: TextView = swipeWrap.findViewById(R.id.paymentsInFlightText).asInstanceOf[TextView]
+    val totalCapacityText: TextView = swipeWrap.findViewById(R.id.totalCapacityText).asInstanceOf[TextView]
+    val extraInfoText: TextView = swipeWrap.findViewById(R.id.extraInfoText).asInstanceOf[TextView]
 
     val wrappers: Seq[View] =
-      view.findViewById(R.id.progressBars).asInstanceOf[View] ::
-        view.findViewById(R.id.totalCapacity).asInstanceOf[View] ::
-        view.findViewById(R.id.refundableAmount).asInstanceOf[View] ::
-        view.findViewById(R.id.paymentsInFlight).asInstanceOf[View] ::
-        view.findViewById(R.id.canReceive).asInstanceOf[View] ::
-        view.findViewById(R.id.canSend).asInstanceOf[View] ::
+      swipeWrap.findViewById(R.id.progressBars).asInstanceOf[View] ::
+        swipeWrap.findViewById(R.id.totalCapacity).asInstanceOf[View] ::
+        swipeWrap.findViewById(R.id.refundableAmount).asInstanceOf[View] ::
+        swipeWrap.findViewById(R.id.paymentsInFlight).asInstanceOf[View] ::
+        swipeWrap.findViewById(R.id.canReceive).asInstanceOf[View] ::
+        swipeWrap.findViewById(R.id.canSend).asInstanceOf[View] ::
         Nil
 
     def visibleExcept(goneRes: Int*): Unit = for (wrap <- wrappers) {
@@ -125,10 +132,10 @@ class StatActivity extends BaseActivity with ChoiceReceiver with HasTypicalChain
         setVis(isVisible = true, extraInfoText)
       }
 
-      channelCard setOnLongClickListener onLongButtonTap {
+      removeItem setOnClickListener onButtonTap {
         val builder = confirmationBuilder(cs, ln_normal_chan_force_close)
         mkCheckForm(alert => runAnd(alert.dismiss)(me forceCloseNc cs), none, builder, dialog_ok, dialog_cancel)
-        true
+        swipeWrap.close(true)
       }
 
       setVis(isVisible = false, hcBranding)
@@ -170,13 +177,13 @@ class StatActivity extends BaseActivity with ChoiceReceiver with HasTypicalChain
         hcSupportInfo.setText(contactInfo)
       }
 
-      channelCard setOnClickListener bringChanOptions(hostedChanActions, hc)
-
-      channelCard setOnLongClickListener onLongButtonTap {
+      removeItem setOnClickListener onButtonTap {
         if (hc.localSpec.htlcs.nonEmpty) snack(chanContainer, getString(ln_hosted_chan_remove_impossible), R.string.dialog_ok, _.dismiss)
         else mkCheckForm(alert => runAnd(alert.dismiss)(me removeHc hc), none, confirmationBuilder(hc, ln_hosted_chan_confirm_remove), dialog_ok, dialog_cancel)
-        true
+        swipeWrap.close(true)
       }
+
+      channelCard setOnClickListener bringChanOptions(hostedChanActions, hc)
 
       visibleExcept(R.id.refundableAmount)
       ChannelIndicatorLine.setView(chanState, chan)

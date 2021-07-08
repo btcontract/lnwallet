@@ -17,7 +17,6 @@ import fr.acinq.bitcoin.{Block, ByteVector32, Satoshi}
 import com.google.zxing.{BarcodeFormat, EncodeHintType}
 import androidx.core.content.{ContextCompat, FileProvider}
 import immortan.crypto.Tools.{Any2Some, Fiat2Btc, none, runAnd}
-import android.view.View.{OnClickListener, OnLongClickListener}
 import immortan.utils.{Denomination, InputParser, PaymentRequestExt}
 import fr.acinq.eclair.blockchain.fee.{FeeratePerKw, FeeratePerVByte}
 import com.google.android.material.snackbar.{BaseTransientBottomBar, Snackbar}
@@ -41,6 +40,7 @@ import androidx.appcompat.app.AlertDialog
 import org.apmem.tools.layouts.FlowLayout
 import scala.language.implicitConversions
 import android.content.pm.PackageManager
+import android.view.View.OnClickListener
 import androidx.core.app.ActivityCompat
 import rx.lang.scala.Subscription
 import scala.concurrent.Future
@@ -151,8 +151,9 @@ trait BaseActivity extends AppCompatActivity { me =>
 
   // Listener helpers
 
-  def onButtonTap(fun: => Unit): OnClickListener = new OnClickListener { def onClick(view: View): Unit = fun }
-  def onLongButtonTap(fun: => Boolean): OnLongClickListener = new OnLongClickListener { def onLongClick(view: View): Boolean = fun }
+  def onButtonTap(fun: => Unit): OnClickListener = new OnClickListener {
+    def onClick(view: View): Unit = fun
+  }
 
   def onTextChange(fun: String => Unit): TextWatcher = new TextWatcher {
     override def onTextChanged(c: CharSequence, x: Int, y: Int, z: Int): Unit = fun(c.toString)

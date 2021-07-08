@@ -28,6 +28,7 @@ import fr.acinq.eclair.blockchain.fee.{FeeratePerKw, FeeratePerVByte}
 import fr.acinq.eclair.blockchain.electrum.ElectrumWallet.WalletReady
 import com.google.android.material.button.{MaterialButton, MaterialButtonToggleGroup}
 import com.google.android.material.button.MaterialButtonToggleGroup.OnButtonCheckedListener
+import com.chauthai.swipereveallayout.SwipeRevealLayout
 import com.btcontract.wallettest.BaseActivity.StringOps
 import org.ndeftools.util.activity.NfcReaderActivity
 import concurrent.ExecutionContext.Implicits.global
@@ -142,6 +143,8 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
     override def getView(position: Int, savedView: View, parent: ViewGroup): View = {
       val view = if (null == savedView) getLayoutInflater.inflate(R.layout.frag_payment_line, null) else savedView
       val holder = if (null == view.getTag) new PaymentLineViewHolder(view) else view.getTag.asInstanceOf[PaymentLineViewHolder]
+      // Prevent reused layout to appear in open state as user scrolls down
+      if (holder.swipeWrap.isOpened) holder.swipeWrap.close(false)
       holder.currentDetails = getItem(position)
       holder.updDetails
       view
@@ -149,22 +152,24 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
   }
 
   class PaymentLineViewHolder(itemView: View) extends RecyclerView.ViewHolder(itemView) {
-    val nonLinkContainer: LinearLayout = itemView.findViewById(R.id.nonLinkContainer).asInstanceOf[LinearLayout]
-    val detailsAndStatus: RelativeLayout = itemView.findViewById(R.id.detailsAndStatus).asInstanceOf[RelativeLayout]
-    val description: TextView = itemView.findViewById(R.id.description).asInstanceOf[TextView]
-    val statusIcon: ImageView = itemView.findViewById(R.id.statusIcon).asInstanceOf[ImageView]
-    val labelIcon: ImageView = itemView.findViewById(R.id.labelIcon).asInstanceOf[ImageView]
-    val amount: TextView = itemView.findViewById(R.id.amount).asInstanceOf[TextView]
-    val meta: TextView = itemView.findViewById(R.id.meta).asInstanceOf[TextView]
+    val swipeWrap: SwipeRevealLayout = itemView.asInstanceOf[SwipeRevealLayout]
 
-    val linkContainer: RelativeLayout = itemView.findViewById(R.id.linkContainer).asInstanceOf[RelativeLayout]
-    val textMetadata: TextView = itemView.findViewById(R.id.textMetadata).asInstanceOf[TextView]
-    val lastAttempt: TextView = itemView.findViewById(R.id.lastAttempt).asInstanceOf[TextView]
-    val domainName: TextView = itemView.findViewById(R.id.domainName).asInstanceOf[TextView]
-    val linkImage: ImageView = itemView.findViewById(R.id.linkImage).asInstanceOf[ImageView]
-    itemView.setTag(this)
+    val nonLinkContainer: LinearLayout = swipeWrap.findViewById(R.id.nonLinkContainer).asInstanceOf[LinearLayout]
+    val detailsAndStatus: RelativeLayout = swipeWrap.findViewById(R.id.detailsAndStatus).asInstanceOf[RelativeLayout]
+    val description: TextView = swipeWrap.findViewById(R.id.description).asInstanceOf[TextView]
+    val statusIcon: ImageView = swipeWrap.findViewById(R.id.statusIcon).asInstanceOf[ImageView]
+    val labelIcon: ImageView = swipeWrap.findViewById(R.id.labelIcon).asInstanceOf[ImageView]
+    val amount: TextView = swipeWrap.findViewById(R.id.amount).asInstanceOf[TextView]
+    val meta: TextView = swipeWrap.findViewById(R.id.meta).asInstanceOf[TextView]
 
-    val paymentTypeIconViews: List[View] = paymentTypeIconIds.map(itemView.findViewById)
+    val linkContainer: RelativeLayout = swipeWrap.findViewById(R.id.linkContainer).asInstanceOf[RelativeLayout]
+    val textMetadata: TextView = swipeWrap.findViewById(R.id.textMetadata).asInstanceOf[TextView]
+    val lastAttempt: TextView = swipeWrap.findViewById(R.id.lastAttempt).asInstanceOf[TextView]
+    val domainName: TextView = swipeWrap.findViewById(R.id.domainName).asInstanceOf[TextView]
+    val linkImage: ImageView = swipeWrap.findViewById(R.id.linkImage).asInstanceOf[ImageView]
+    swipeWrap.setTag(this)
+
+    val paymentTypeIconViews: List[View] = paymentTypeIconIds.map(swipeWrap.findViewById)
     val iconMap: Map[Int, View] = paymentTypeIconIds.zip(paymentTypeIconViews).toMap
     var currentDetails: TransactionDetails = _
     var lastVisibleIconId: Int = -1

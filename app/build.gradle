@@ -53,6 +53,7 @@ dependencies {
     implementation 'com.journeyapps:zxing-android-embedded:3.6.0'
     implementation 'info.guardianproject.netcipher:netcipher:2.1.0'
     implementation 'com.google.code.ndef-tools-for-android:ndeftools:1.2.4'
+    implementation 'com.chauthai.swipereveallayout:swipe-reveal-layout:1.4.1'
 
     // Immortan
     implementation 'org.scala-lang:scala-library:2.11.12'
