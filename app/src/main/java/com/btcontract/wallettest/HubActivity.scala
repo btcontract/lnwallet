@@ -832,8 +832,8 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
       worker addWork manager.resultSat
     }
 
-    manager.hintDenom.setText(getString(dialog_can_send).format(canSend).html)
-    manager.hintFiatDenom.setText(getString(dialog_can_send).format(canSendFiat).html)
+    manager.hintDenom.setText(getString(dialog_up_to).format(canSend).html)
+    manager.hintFiatDenom.setText(getString(dialog_up_to).format(canSendFiat).html)
     feeView.update(feeOpt = None, showIssue = false)
 
     uri.amount.foreach { asked =>
@@ -862,7 +862,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
   }
 
   def bringPayPopup(data: PayRequest, lnUrl: LNUrl): TimerTask = UITask {
-    new OffChainSender(maxSendable = LNParams.cm.maxSendable(LNParams.cm.all.values) min data.maxSendable.msat, minSendable = LNParams.minPayment max data.minSendable.msat) {
+    new OffChainSender(maxSendable = LNParams.cm.maxSendable(LNParams.cm.all.values).min(data.maxSendable.msat), minSendable = LNParams.minPayment max data.minSendable.msat) {
       override def isNeutralEnabled: Boolean = manager.resultMsat >= LNParams.minPayment && manager.resultMsat <= minSendable - LNParams.minPayment
       override def isPayEnabled: Boolean = manager.resultMsat >= minSendable && manager.resultMsat <= maxSendable
 

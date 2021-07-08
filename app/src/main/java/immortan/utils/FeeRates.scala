@@ -52,8 +52,7 @@ class FeeRates(bag: DataBag) extends CanBeShutDown {
   }
 
   def updateInfo(newPerKB: FeeratesPerKB): Unit = {
-    val history1 = newPerKB :: info.history diff List(defaultFeerates) take 3
-    // Prepend new item to history, then make sure default is not there, then keep 3 recent items
+    val history1 = (newPerKB :: info.history).diff(defaultFeerates :: Nil).take(2)
     info = FeeRatesInfo(smoothedFeeratesPerKw(history1), history1, System.currentTimeMillis)
     for (lst <- listeners) lst.onFeeRates(info)
   }
@@ -63,7 +62,7 @@ class FeeRates(bag: DataBag) extends CanBeShutDown {
     listeners = Set.empty
   }
 
-  private[this] val periodHours = 12
+  private[this] val periodHours = 6
   var listeners: Set[FeeRatesListener] = Set.empty
   var info: FeeRatesInfo = bag.tryGetFeeRatesInfo getOrElse {
     FeeRatesInfo(FeeratesPerKw(defaultFeerates), history = Nil, stamp = 0L)

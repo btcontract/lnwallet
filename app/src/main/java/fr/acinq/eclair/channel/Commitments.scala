@@ -88,11 +88,11 @@ case class NormalCommits(channelFlags: Byte, channelId: ByteVector32, channelVer
     val balanceNoFees = latestReducedRemoteSpec.toRemote - remoteParams.channelReserve
 
     if (localParams.isFunder) {
-      val doubleFeerate = latestReducedRemoteSpec.copy(feeratePerKw = latestReducedRemoteSpec.feeratePerKw * 2)
-      val doubleFeeBuffer = htlcOutputFee(latestReducedRemoteSpec.feeratePerKw * 2, channelVersion.commitmentFormat)
+      val feerate = latestReducedRemoteSpec.copy(feeratePerKw = latestReducedRemoteSpec.feeratePerKw)
+      val feeBuffer = htlcOutputFee(latestReducedRemoteSpec.feeratePerKw, channelVersion.commitmentFormat)
       val commitFees = commitTxFeeMsat(remoteParams.dustLimit, latestReducedRemoteSpec, channelVersion.commitmentFormat)
       val trimThreshold = offeredHtlcTrimThreshold(remoteParams.dustLimit, latestReducedRemoteSpec, channelVersion.commitmentFormat)
-      val funderFeeBuffer = commitTxFeeMsat(remoteParams.dustLimit, doubleFeerate, channelVersion.commitmentFormat) + doubleFeeBuffer
+      val funderFeeBuffer = commitTxFeeMsat(remoteParams.dustLimit, feerate, channelVersion.commitmentFormat) + feeBuffer
       val amountToReserve = commitFees.max(funderFeeBuffer)
 
       if (balanceNoFees - amountToReserve < trimThreshold) {
@@ -101,8 +101,7 @@ case class NormalCommits(channelFlags: Byte, channelId: ByteVector32, channelVer
       } else {
         // Htlc will have an output in the commitment tx, so there will be additional fees.
         val commitFees1 = commitFees + htlcOutputFee(latestReducedRemoteSpec.feeratePerKw, channelVersion.commitmentFormat)
-        // We take the additional fees for that htlc output into account in the fee buffer at a x2 feerate increase
-        balanceNoFees - commitFees1.max(funderFeeBuffer + doubleFeeBuffer)
+        balanceNoFees - commitFees1.max(funderFeeBuffer + feeBuffer)
       }
     } else {
       balanceNoFees
@@ -117,11 +116,11 @@ case class NormalCommits(channelFlags: Byte, channelId: ByteVector32, channelVer
       // The fundee doesn't pay on-chain fees
       balanceNoFees
     } else {
-      val doubleFeerate = reduced.copy(feeratePerKw = reduced.feeratePerKw * 2)
-      val doubleFeeBuffer = htlcOutputFee(reduced.feeratePerKw * 2, channelVersion.commitmentFormat)
+      val feerate = reduced.copy(feeratePerKw = reduced.feeratePerKw)
+      val feeBuffer = htlcOutputFee(reduced.feeratePerKw, channelVersion.commitmentFormat)
       val commitFees = commitTxFeeMsat(localParams.dustLimit, reduced, channelVersion.commitmentFormat)
       val trimThreshold = receivedHtlcTrimThreshold(localParams.dustLimit, reduced, channelVersion.commitmentFormat)
-      val funderFeeBuffer = commitTxFeeMsat(localParams.dustLimit, doubleFeerate, channelVersion.commitmentFormat) + doubleFeeBuffer
+      val funderFeeBuffer = commitTxFeeMsat(localParams.dustLimit, feerate, channelVersion.commitmentFormat) + feeBuffer
       val amountToReserve = commitFees.max(funderFeeBuffer)
 
       if (balanceNoFees - amountToReserve < trimThreshold) {
@@ -130,8 +129,7 @@ case class NormalCommits(channelFlags: Byte, channelId: ByteVector32, channelVer
       } else {
         // Htlc will have an output in the commitment tx, so there will be additional fees.
         val commitFees1 = commitFees + htlcOutputFee(reduced.feeratePerKw, channelVersion.commitmentFormat)
-        // We take the additional fees for that htlc output into account in the fee buffer at a x2 feerate increase
-        balanceNoFees - commitFees1.max(funderFeeBuffer + doubleFeeBuffer)
+        balanceNoFees - commitFees1.max(funderFeeBuffer + feeBuffer)
       }
     }
   }
@@ -169,10 +167,9 @@ case class NormalCommits(channelFlags: Byte, channelId: ByteVector32, channelVer
     val commitments1 = addLocalProposal(completeAdd).copy(localNextHtlcId = localNextHtlcId + 1)
     val totalOutgoingHtlcs = commitments1.latestReducedRemoteSpec.htlcs.collect(incoming).size
 
-    val doubleFeeBuffer = htlcOutputFee(commitments1.latestReducedRemoteSpec.feeratePerKw * 2, channelVersion.commitmentFormat)
-    val doubleFeerate = commitments1.latestReducedRemoteSpec.copy(feeratePerKw = commitments1.latestReducedRemoteSpec.feeratePerKw * 2)
-    // The funder needs to keep an extra buffer to be able to handle a x2 feerate increase and an additional htlc to avoid getting the channel stuck
-    val funderFeeBuffer = commitTxFeeMsat(commitments1.remoteParams.dustLimit, doubleFeerate, channelVersion.commitmentFormat) + doubleFeeBuffer
+    val feeBuffer = htlcOutputFee(commitments1.latestReducedRemoteSpec.feeratePerKw, channelVersion.commitmentFormat)
+    val feerate = commitments1.latestReducedRemoteSpec.copy(feeratePerKw = commitments1.latestReducedRemoteSpec.feeratePerKw)
+    val funderFeeBuffer = commitTxFeeMsat(commitments1.remoteParams.dustLimit, feerate, channelVersion.commitmentFormat) + feeBuffer
 
     val receiverWithReserve = commitments1.latestReducedRemoteSpec.toLocal - commitments1.localParams.channelReserve
     val senderWithReserve = commitments1.latestReducedRemoteSpec.toRemote - commitments1.remoteParams.channelReserve

@@ -198,8 +198,8 @@ class RemotePeerActivity extends BaseActivity with ExternalDataChecker { me =>
       worker addWork manager.resultSat
     }
 
-    manager.hintDenom.setText(getString(dialog_can_send).format(canSend).html)
-    manager.hintFiatDenom.setText(getString(dialog_can_send).format(canSendFiat).html)
+    manager.hintDenom.setText(getString(dialog_up_to).format(canSend).html)
+    manager.hintFiatDenom.setText(getString(dialog_up_to).format(canSendFiat).html)
     feeView.update(feeOpt = None, showIssue = false)
   }
 

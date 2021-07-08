@@ -427,8 +427,8 @@ trait BaseActivity extends AppCompatActivity { me =>
 
     val canSendFiatHuman: String = WalletApp.currentMsatInFiatHuman(maxSendable)
     val canSendHuman: String = LNParams.denomination.parsedWithSign(maxSendable, cardIn, cardZero)
-    manager.hintFiatDenom.setText(getString(dialog_can_send).format(canSendFiatHuman).html)
-    manager.hintDenom.setText(getString(dialog_can_send).format(canSendHuman).html)
+    manager.hintFiatDenom.setText(getString(dialog_up_to).format(canSendFiatHuman).html)
+    manager.hintDenom.setText(getString(dialog_up_to).format(canSendHuman).html)
 
     manager.inputAmount addTextChangedListener onTextChange { _ =>
       manager.updateButton(getNeutralButton(alert), isNeutralEnabled)
@@ -484,8 +484,8 @@ trait BaseActivity extends AppCompatActivity { me =>
       mkCheckFormNeutral(receive, none, setMax, builder, dialog_ok, dialog_cancel, dialog_max)
     }
 
-    manager.hintFiatDenom.setText(getString(dialog_can_receive).format(canReceiveFiatHuman).html)
-    manager.hintDenom.setText(getString(dialog_can_receive).format(canReceiveHuman).html)
+    manager.hintFiatDenom.setText(getString(dialog_up_to).format(canReceiveFiatHuman).html)
+    manager.hintDenom.setText(getString(dialog_up_to).format(canReceiveHuman).html)
     manager.updateButton(getPositiveButton(alert), isEnabled = false)
 
     manager.inputAmount addTextChangedListener onTextChange { _ =>

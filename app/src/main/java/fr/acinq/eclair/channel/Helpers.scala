@@ -22,6 +22,7 @@ object Helpers {
   def validateParamsFundee(open: OpenChannel, commits: NormalCommits): Unit = {
     val reserveToFundingRatio = open.channelReserveSatoshis.toLong.toDouble / Math.max(open.fundingSatoshis.toLong, 1L)
     if (reserveToFundingRatio > LNParams.maxReserveToFundingRatio) throw ChannelReserveTooHigh(open.temporaryChannelId, reserveToFundingRatio, LNParams.maxReserveToFundingRatio)
+    if (open.maxAcceptedHtlcs < commits.localParams.maxAcceptedHtlcs) throw InvalidMinAcceptedHtlcs(open.temporaryChannelId, open.maxAcceptedHtlcs, commits.localParams.maxAcceptedHtlcs)
     if (open.maxAcceptedHtlcs > LNParams.maxAcceptedHtlcs) throw InvalidMaxAcceptedHtlcs(open.temporaryChannelId, open.maxAcceptedHtlcs, LNParams.maxAcceptedHtlcs)
     if (open.dustLimitSatoshis > open.channelReserveSatoshis) throw DustLimitTooLarge(open.temporaryChannelId, open.dustLimitSatoshis, open.channelReserveSatoshis)
     if (open.dustLimitSatoshis < LNParams.minDustLimit) throw DustLimitTooSmall(open.temporaryChannelId, open.dustLimitSatoshis, LNParams.minDustLimit)
@@ -49,6 +50,7 @@ object Helpers {
     if (open.channelReserveSatoshis < accept.dustLimitSatoshis) throw DustLimitAboveOurChannelReserve(accept.temporaryChannelId, accept.dustLimitSatoshis, open.channelReserveSatoshis)
     if (accept.dustLimitSatoshis > accept.channelReserveSatoshis) throw DustLimitTooLarge(accept.temporaryChannelId, accept.dustLimitSatoshis, accept.channelReserveSatoshis)
     if (accept.maxAcceptedHtlcs > LNParams.maxAcceptedHtlcs) throw InvalidMaxAcceptedHtlcs(accept.temporaryChannelId, accept.maxAcceptedHtlcs, LNParams.maxAcceptedHtlcs)
+    if (accept.maxAcceptedHtlcs < open.maxAcceptedHtlcs) throw InvalidMinAcceptedHtlcs(accept.temporaryChannelId, accept.maxAcceptedHtlcs, open.maxAcceptedHtlcs)
     if (accept.dustLimitSatoshis < LNParams.minDustLimit) throw DustLimitTooSmall(accept.temporaryChannelId, accept.dustLimitSatoshis, LNParams.minDustLimit)
     if (accept.toSelfDelay > LNParams.maxToLocalDelay) throw ToSelfDelayTooHigh(accept.temporaryChannelId, accept.toSelfDelay, LNParams.maxToLocalDelay)
   }

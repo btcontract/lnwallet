@@ -276,6 +276,10 @@ case class InvalidMaxAcceptedHtlcs(channelId: ByteVector32, maxAcceptedHtlcs: In
   override def toString: String = s"InvalidMaxAcceptedHtlcs, maxAcceptedHtlcs=$maxAcceptedHtlcs, max=$max"
 }
 
+case class InvalidMinAcceptedHtlcs(channelId: ByteVector32, minAcceptedHtlcs: Int, min: Int) extends RuntimeException {
+  override def toString: String = s"InvalidMinAcceptedHtlcs, minAcceptedHtlcs=$minAcceptedHtlcs, min=$min"
+}
+
 case class InvalidChainHash(channelId: ByteVector32, local: ByteVector32, remote: ByteVector32) extends RuntimeException {
   override def toString: String = s"InvalidChainHash, local=$local, remote=$remote"
 }
