@@ -232,7 +232,7 @@ trait PaymentBag {
   def getPaymentInfo(paymentHash: ByteVector32): Try[PaymentInfo]
   def removePaymentInfo(paymentHash: ByteVector32)
 
-  // These MUST be the only two methods capable of updating payment state to SUCCEEDED
+  def updDescription(description: PaymentDescription, paymentHash: ByteVector32)
   def updOkIncoming(receivedAmount: MilliSatoshi, paymentHash: ByteVector32)
   def updOkOutgoing(fulfill: RemoteFulfill, fee: MilliSatoshi)
   def updAbortedOutgoing(paymentHash: ByteVector32)

@@ -6,11 +6,15 @@ import fr.acinq.eclair.MilliSatoshi
 
 
 class SQLitePayMarket(db: DBInterface) {
-  def remove(lnUrl: LNUrl): Unit = db.change(PayMarketTable.killSql, lnUrl.request)
-
-  def updateLabel(lnUrl: LNUrl, newLabel: String): Unit = {
+  def updateLabel(newLabel: String, lnUrl: LNUrl): Unit = {
     db.change(PayMarketTable.newVirtualSql, newLabel, lnUrl.request)
-    db.change(PayMarketTable.updLabelSql, newLabel)
+    db.change(PayMarketTable.updLabelSql, params = newLabel)
+    ChannelMaster.next(ChannelMaster.payMarketDbStream)
+  }
+
+  def remove(lnUrl: LNUrl): Unit = {
+    db.change(PayMarketTable.killSql, lnUrl.request)
+    ChannelMaster.next(ChannelMaster.payMarketDbStream)
   }
 
   def saveLink(lnUrl: LNUrl, payReq: PayRequest, msat: MilliSatoshi, hash: String): Unit = db txWrap {

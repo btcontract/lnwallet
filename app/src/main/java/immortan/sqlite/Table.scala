@@ -234,6 +234,8 @@ object PaymentTable extends Table {
 
   val updStatusSql = s"UPDATE $table SET $status = ? WHERE $hash = ? AND ($seenAt > 0 AND status <> $SUCCEEDED)"
 
+  val updateDescriptionSql = s"UPDATE $table SET $description = ? WHERE $hash = ?"
+
   def createStatements: Seq[String] = {
     val createTable = s"""CREATE TABLE IF NOT EXISTS $table(
       $IDAUTOINC, $pr TEXT NOT NULL, $preimage TEXT NOT NULL, $status INTEGER NOT NULL, $seenAt INTEGER NOT NULL, $description TEXT NOT NULL,
@@ -258,7 +260,7 @@ object TxTable extends Table {
 
   val newVirtualSql = s"INSERT INTO $fts$table ($search, $txid) VALUES (?, ?)"
 
-  // Selecting, updating
+  // Selecting
 
   val selectRecentSql = s"SELECT * FROM $table ORDER BY $id DESC LIMIT ?"
 
@@ -266,7 +268,11 @@ object TxTable extends Table {
 
   val searchSql = s"SELECT * FROM $table WHERE $txid IN (SELECT $txid FROM $fts$table WHERE $search MATCH ? LIMIT 50)"
 
+  // Updating
+
   val updStatusSql = s"UPDATE $table SET $depth = ?, $doubleSpent = ? WHERE $txid = ?"
+
+  val updateDescriptionSql = s"UPDATE $table SET $description = ? WHERE $txid = ?"
 
   def createStatements: Seq[String] = {
     val createTable = s"""CREATE TABLE IF NOT EXISTS $table(

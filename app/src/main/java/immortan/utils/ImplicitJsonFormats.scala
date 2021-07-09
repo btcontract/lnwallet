@@ -102,20 +102,20 @@ object ImplicitJsonFormats extends DefaultJsonProtocol {
   implicit val plainTxDescriptionFmt: JsonFormat[PlainTxDescription] = taggedJsonFmt(jsonFormat[List[String], Option[String],
     PlainTxDescription](PlainTxDescription.apply, "addresses", "label"), tag = "PlainTxDescription")
 
-  implicit val opReturnTxDescriptionFmt: JsonFormat[OpReturnTxDescription] = taggedJsonFmt(jsonFormat[PublicKey, ByteVector32,
-    OpReturnTxDescription](OpReturnTxDescription.apply, "nodeId", "preimage"), tag = "OpReturnTxDescription")
+  implicit val opReturnTxDescriptionFmt: JsonFormat[OpReturnTxDescription] = taggedJsonFmt(jsonFormat[PublicKey, ByteVector32, Option[String],
+    OpReturnTxDescription](OpReturnTxDescription.apply, "nodeId", "preimage", "label"), tag = "OpReturnTxDescription")
 
-  implicit val chanFundingTxDescriptionFmt: JsonFormat[ChanFundingTxDescription] = taggedJsonFmt(jsonFormat[PublicKey,
-    ChanFundingTxDescription](ChanFundingTxDescription.apply, "nodeId"), tag = "ChanFundingTxDescription")
+  implicit val chanFundingTxDescriptionFmt: JsonFormat[ChanFundingTxDescription] = taggedJsonFmt(jsonFormat[PublicKey, Option[String],
+    ChanFundingTxDescription](ChanFundingTxDescription.apply, "nodeId", "label"), tag = "ChanFundingTxDescription")
 
-  implicit val chanRefundingTxDescriptionFmt: JsonFormat[ChanRefundingTxDescription] = taggedJsonFmt(jsonFormat[PublicKey,
-    ChanRefundingTxDescription](ChanRefundingTxDescription.apply, "nodeId"), tag = "ChanRefundingTxDescription")
+  implicit val chanRefundingTxDescriptionFmt: JsonFormat[ChanRefundingTxDescription] = taggedJsonFmt(jsonFormat[PublicKey, Option[String],
+    ChanRefundingTxDescription](ChanRefundingTxDescription.apply, "nodeId", "label"), tag = "ChanRefundingTxDescription")
 
-  implicit val htlcClaimTxDescriptionFmt: JsonFormat[HtlcClaimTxDescription] = taggedJsonFmt(jsonFormat[PublicKey,
-    HtlcClaimTxDescription](HtlcClaimTxDescription.apply, "nodeId"), tag = "HtlcClaimTxDescription")
+  implicit val htlcClaimTxDescriptionFmt: JsonFormat[HtlcClaimTxDescription] = taggedJsonFmt(jsonFormat[PublicKey, Option[String],
+    HtlcClaimTxDescription](HtlcClaimTxDescription.apply, "nodeId", "label"), tag = "HtlcClaimTxDescription")
 
-  implicit val penaltyTxDescriptionFmt: JsonFormat[PenaltyTxDescription] = taggedJsonFmt(jsonFormat[PublicKey,
-    PenaltyTxDescription](PenaltyTxDescription.apply, "nodeId"), tag = "PenaltyTxDescription")
+  implicit val penaltyTxDescriptionFmt: JsonFormat[PenaltyTxDescription] = taggedJsonFmt(jsonFormat[PublicKey, Option[String],
+    PenaltyTxDescription](PenaltyTxDescription.apply, "nodeId", "label"), tag = "PenaltyTxDescription")
 
   // Payment description
 

@@ -16,9 +16,9 @@ import android.text.{Editable, Spanned, TextWatcher}
 import fr.acinq.bitcoin.{Block, ByteVector32, Satoshi}
 import com.google.zxing.{BarcodeFormat, EncodeHintType}
 import androidx.core.content.{ContextCompat, FileProvider}
-import immortan.crypto.Tools.{Any2Some, Fiat2Btc, none, runAnd}
 import immortan.utils.{Denomination, InputParser, PaymentRequestExt}
 import fr.acinq.eclair.blockchain.fee.{FeeratePerKw, FeeratePerVByte}
+import immortan.crypto.Tools.{Any2Some, Fiat2Btc, none, runAnd, trimmed}
 import com.google.android.material.snackbar.{BaseTransientBottomBar, Snackbar}
 import android.widget.{ArrayAdapter, Button, EditText, ImageView, LinearLayout, ListView, TextView}
 
@@ -307,7 +307,7 @@ trait BaseActivity extends AppCompatActivity { me =>
     }
 
     def bigDecimalFrom(input: CurrencyEditText, times: Long = 1L): BigDecimal = BigDecimal(input.getNumericValueBigDecimal) * times
-    def resultExtraInput: Option[String] = Option(extraInput.getText.toString).filterNot(_.trim.isEmpty)
+    def resultExtraInput: Option[String] = Option(extraInput.getText.toString).map(trimmed).filter(_.nonEmpty)
     def resultMsat: MilliSatoshi = MilliSatoshi(bigDecimalFrom(inputAmount, times = 1000L).toLong)
     def resultSat: Satoshi = resultMsat.truncateToSatoshi
 

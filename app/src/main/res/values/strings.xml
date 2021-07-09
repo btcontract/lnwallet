@@ -66,6 +66,7 @@
     <string name="dialog_visibility_public">visible to sender</string>
     <string name="dialog_visibility_private">visible to you only</string>
     <string name="dialog_add_description">Add description&#8230;</string>
+    <string name="dialog_set_record_label">Set item label&#8230;</string>
     <string name="dialog_add_btc_memo">Add transaction memo&#8230;</string>
     <string name="dialog_add_ln_memo">Add payment memo&#8230;</string>
     <string name="dialog_add_comment">Add comment&#8230;</string>
@@ -278,15 +279,16 @@
     <string name="ln_hosted_chan_drain_impossible">Funds can not be drained from this hosted channel becase no Lightning channel able to receive is present in a wallet.</string>
     <string name="ln_chan_details">Channel details\n\nRemote peer node ID\n%1$s\n\nLocal wallet node ID\n%2$s\n\nChannel short ID\n%3$s\n\nChannel started\n%4$s</string>
     <string name="ln_hosted_chan_state">%1$s\n\n\nState snapshot\n%2$s\n\nRevealed preimages\n%3$s</string>
-    <string name="ln_share_details">Share channel details</string>
 
     <array name="ln_normal_chan_actions">
+        <item><![CDATA[Share <b>Lightnig Channel</b> details]]></item>
         <item><![CDATA[View funding transaction]]></item>
         <item><![CDATA[Close channel to wallet]]></item>
         <item><![CDATA[Close channel to address]]></item>
     </array>
 
     <array name="ln_hosted_chan_actions">
+        <item><![CDATA[Share <b>Hosted Channel</b> details]]></item>
         <item><![CDATA[Export channel state]]></item>
         <item><![CDATA[Drain channel balance]]></item>
     </array>
@@ -295,11 +297,11 @@
 
     <!-- action confirmations -->
 
-    <string name="confirm_remove_item">&#9888; Would you like to remove this item?</string>
-    <string name="confirm_ln_normal_chan_close">&#9888; Would you like to close this channel and send a refunding transaction back to chain wallet?</string>
-    <string name="confirm_ln_hosted_chan_drain">&#9888; Would you like to drain funds from this hosted channel into other Lightning channels in this wallet?</string>
-    <string name="confirm_ln_hosted_chan_remove">&#9888; Would you like to remove this hosted channel?\n\nNote that it can always be brought back by connecting to host node.</string>
-    <string name="confirm_ln_normal_chan_force_close">&#9888; Would you like to force-close this channel?\n\nNote that there will be a refunding delay and higher closing fees.</string>
+    <string name="confirm_remove_item">&#9888; Do you want to remove this item?</string>
+    <string name="confirm_ln_normal_chan_close">&#9888; Do you want to close this channel and send a refunding transaction back to chain wallet?</string>
+    <string name="confirm_ln_hosted_chan_drain">&#9888; Do you want to drain funds from this hosted channel into other Lightning channels in this wallet?</string>
+    <string name="confirm_ln_hosted_chan_remove">&#9888; Do you want to remove this hosted channel?\n\nNote that it can always be brought back by connecting to host node.</string>
+    <string name="confirm_ln_normal_chan_force_close">&#9888; Do you want to force-close this channel?\n\nNote that there will be a refunding delay and higher closing fees.</string>
 
     <!-- /action confirmations -->
 

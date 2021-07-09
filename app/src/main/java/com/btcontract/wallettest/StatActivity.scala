@@ -373,8 +373,7 @@ class StatActivity extends BaseActivity with ChoiceReceiver with HasTypicalChain
   }
 
   def bringChanOptions(options: Array[String], cs: Commitments): View.OnClickListener = onButtonTap {
-    val shareOption = s"<small>${cs.remoteInfo.address.toString}</small><br>${me getString ln_share_details}".html
-    val allOptions = makeChoiceList(shareOption +: options, itemId = android.R.layout.simple_expandable_list_item_1)
+    val allOptions = makeChoiceList(options.map(_.html), android.R.layout.simple_expandable_list_item_1)
     new sheets.ChoiceBottomSheet(allOptions, cs, me).show(getSupportFragmentManager, "unused-tag")
   }
 }

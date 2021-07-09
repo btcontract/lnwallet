@@ -21,6 +21,12 @@ class SQLiteTx(val db: DBInterface) {
 
   def searchTransactions(rawSearchQuery: String): RichCursor = db.search(TxTable.searchSql, rawSearchQuery)
 
+  def updDescription(description: TxDescription, txid: ByteVector32): Unit = {
+    db.change(TxTable.updateDescriptionSql, description.toJson.compactPrint, txid.toHex)
+    for (label <- description.label) addSearchableTransaction(label, txid)
+    ChannelMaster.next(ChannelMaster.txDbStream)
+  }
+
   def updStatus(txid: ByteVector32, depth: Long, doubleSpent: Boolean): Unit = {
     db.change(TxTable.updStatusSql, depth: JLong, if (doubleSpent) 1L: JLong else 0L: JLong, txid.toHex)
     ChannelMaster.next(ChannelMaster.txDbStream)

@@ -6,15 +6,17 @@ import android.widget._
 import fr.acinq.eclair._
 import immortan.crypto.Tools._
 import fr.acinq.eclair.channel._
+
 import scala.concurrent.duration._
 import com.softwaremill.quicklens._
+
 import scala.collection.JavaConverters._
 import com.btcontract.wallettest.Colors._
 import com.btcontract.wallettest.R.string._
 import immortan.utils.ImplicitJsonFormats._
 import com.btcontract.wallettest.HubActivity._
-
 import java.lang.{Integer => JInt}
+
 import immortan.sqlite.{SQLiteData, Table}
 import android.view.{MenuItem, View, ViewGroup}
 import rx.lang.scala.{Observable, Subscription}
@@ -31,6 +33,7 @@ import com.google.android.material.button.MaterialButtonToggleGroup.OnButtonChec
 import com.chauthai.swipereveallayout.SwipeRevealLayout
 import com.btcontract.wallettest.BaseActivity.StringOps
 import org.ndeftools.util.activity.NfcReaderActivity
+
 import concurrent.ExecutionContext.Implicits.global
 import com.btcontract.wallettest.utils.LocalBackup
 import fr.acinq.eclair.transactions.RemoteFulfill
@@ -45,11 +48,15 @@ import androidx.appcompat.app.AlertDialog
 import android.content.pm.PackageManager
 import com.ornach.nobobutton.NoboButton
 import java.util.concurrent.TimeUnit
+
 import android.content.Intent
 import org.ndeftools.Message
 import java.util.TimerTask
+
 import android.os.Bundle
 import android.net.Uri
+import com.google.android.material.textfield.TextInputLayout
+
 import scala.util.Try
 
 
@@ -178,6 +185,30 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
     var currentDetails: TransactionDetails = _
     var lastVisibleIconId: Int = -1
 
+    setItemLabel setOnClickListener onButtonTap {
+      val container = getLayoutInflater.inflate(R.layout.frag_hint_input, null, false)
+      val extraInput: EditText = container.findViewById(R.id.extraInput).asInstanceOf[EditText]
+      val extraInputLayout: TextInputLayout = container.findViewById(R.id.extraInputLayout).asInstanceOf[TextInputLayout]
+
+      def doSetItemLabel(alert: AlertDialog): Unit = {
+        val rawLabel = Option(extraInput.getText.toString)
+        val trimmedLabel = rawLabel.map(trimmed).filter(_.nonEmpty)
+        alert.dismiss
+
+        currentDetails match {
+          case info: PayLinkInfo => WalletApp.payMarketBag.updateLabel(trimmedLabel.getOrElse(new String), info.lnurl)
+          case info: PaymentInfo => LNParams.cm.payBag.updDescription(info.description.modify(_.label).setTo(trimmedLabel), info.paymentHash)
+          case info: TxInfo => WalletApp.txDataBag.updDescription(info.description.modify(_.label).setTo(trimmedLabel), info.txid)
+          case _ =>
+        }
+      }
+
+      extraInputLayout.setHint(dialog_set_record_label)
+      val builder = new AlertDialog.Builder(me).setView(container)
+      mkCheckForm(doSetItemLabel, none, builder, dialog_ok, dialog_cancel)
+      swipeWrap.close(true)
+    }
+
     removeItem setOnClickListener onButtonTap {
       val builder = new AlertDialog.Builder(me).setMessage(confirm_remove_item)
       mkCheckForm(alert => runAnd(alert.dismiss)(doRemoveItem), none, builder, dialog_ok, dialog_cancel)
@@ -185,8 +216,8 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
     }
 
     def doRemoveItem: Unit = currentDetails match {
-      case info: PayLinkInfo => runAnd(WalletApp.payMarketBag remove info.lnurl)(ChannelMaster next ChannelMaster.payMarketDbStream)
-      case info: PaymentInfo => runAnd(LNParams.cm.payBag removePaymentInfo info.paymentHash)(ChannelMaster next ChannelMaster.paymentDbStream)
+      case info: PayLinkInfo => WalletApp.payMarketBag.remove(info.lnurl)
+      case info: PaymentInfo => LNParams.cm.payBag.removePaymentInfo(info.paymentHash)
       case _ =>
     }
 
@@ -266,11 +297,11 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
 
     private def txDescription(transactionInfo: TxInfo): String = transactionInfo.description match {
       case plain: PlainTxDescription => plain.label orElse plain.addresses.headOption.map(_.shortAddress) getOrElse getString(tx_btc)
-      case _: ChanRefundingTxDescription => getString(tx_description_refunding)
-      case _: HtlcClaimTxDescription => getString(tx_description_htlc_claiming)
-      case _: ChanFundingTxDescription => getString(tx_description_funding)
-      case _: OpReturnTxDescription => getString(tx_description_op_return)
-      case _: PenaltyTxDescription => getString(tx_description_penalty)
+      case _: ChanRefundingTxDescription => transactionInfo.description.label getOrElse getString(tx_description_refunding)
+      case _: HtlcClaimTxDescription => transactionInfo.description.label getOrElse getString(tx_description_htlc_claiming)
+      case _: ChanFundingTxDescription => transactionInfo.description.label getOrElse getString(tx_description_funding)
+      case _: OpReturnTxDescription => transactionInfo.description.label getOrElse getString(tx_description_op_return)
+      case _: PenaltyTxDescription => transactionInfo.description.label getOrElse getString(tx_description_penalty)
     }
 
     private def chainTxBackground(info: TxInfo): Int = info.description match {
@@ -320,11 +351,9 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
       else meta setText valueHuman.getOrElse(pctCollected.head).html // Show either value collected so far or that we are still waiting
     }
 
-    private def setOutgoingPaymentMeta(info: PaymentInfo): Unit = {
-      val currentInChannel = lastInChannelOutgoing.getOrElse(info.fullTag, Nil)
-      val isActive = PaymentStatus.PENDING == info.status || currentInChannel.nonEmpty
-      if (isActive) meta setText WalletApp.app.plurOrZero(partsInFlight)(currentInChannel.size).html // Show either number of parts or that we are still preparing
-      else meta setText WalletApp.app.when(info.date, WalletApp.app.dateFormat).html // Payment has either succeeded or failed AND no leftovers are present in FSM
+    private def setOutgoingPaymentMeta(info: PaymentInfo): Unit = lastInChannelOutgoing.getOrElse(info.fullTag, Nil).size match {
+      case partsInChans if PaymentStatus.PENDING == info.status || partsInChans > 0 => meta setText WalletApp.app.plurOrZero(partsInFlight)(partsInChans).html
+      case _ => meta setText WalletApp.app.when(info.date, WalletApp.app.dateFormat).html // Payment has either succeeded or failed AND no leftovers are present
     }
 
     private def setPaymentTypeIcon(info: PaymentInfo): Unit = {
@@ -787,7 +816,6 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
   }
 
   def goToReceiveBitcoinPage(view: View): Unit = onChoiceMade(CHOICE_RECEIVE_TAG, 0)
-
   def bringLnReceivePopup(view: View): Unit = onChoiceMade(CHOICE_RECEIVE_TAG, 1)
 
   def bringSendBitcoinPopup(uri: BitcoinUri): Unit = {

@@ -21,7 +21,10 @@ case class PaymentSummary(fees: MilliSatoshi, chainFees: MilliSatoshi, received:
 class SQLitePayment(db: DBInterface, preimageDb: DBInterface) extends PaymentBag {
   def getPaymentInfo(paymentHash: ByteVector32): Try[PaymentInfo] = db.select(PaymentTable.selectByHashSql, paymentHash.toHex).headTry(toPaymentInfo)
 
-  def removePaymentInfo(paymentHash: ByteVector32): Unit = db.change(PaymentTable.killSql, paymentHash.toHex)
+  def removePaymentInfo(paymentHash: ByteVector32): Unit = {
+    db.change(PaymentTable.killSql, params = paymentHash.toHex)
+    ChannelMaster.next(ChannelMaster.paymentDbStream)
+  }
 
   def addSearchablePayment(search: String, paymentHash: ByteVector32): Unit = db.change(PaymentTable.newVirtualSql, search, paymentHash.toHex)
 
@@ -31,6 +34,12 @@ class SQLitePayment(db: DBInterface, preimageDb: DBInterface) extends PaymentBag
     val failedHidingThreshold = System.currentTimeMillis - 60 * 60 * 24 * 1000L
     val expiryHidingThreshold = System.currentTimeMillis - PaymentRequest.OUR_EXPIRY_SECONDS * 1000L
     db.select(PaymentTable.selectRecentSql, expiryHidingThreshold.toString, failedHidingThreshold.toString, limit.toString)
+  }
+
+  def updDescription(description: PaymentDescription, paymentHash: ByteVector32): Unit = {
+    db.change(PaymentTable.updateDescriptionSql, description.toJson.compactPrint, paymentHash.toHex)
+    for (label <- description.label) addSearchablePayment(label, paymentHash)
+    ChannelMaster.next(ChannelMaster.paymentDbStream)
   }
 
   def updAbortedOutgoing(paymentHash: ByteVector32): Unit = {

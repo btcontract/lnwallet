@@ -131,10 +131,10 @@ case class TxInfo(txString: String, txidString: String, depth: Long, receivedSat
 
 sealed trait TxDescription {
   def queryText(txid: ByteVector32): String
-  def label: Option[String] = None
+  val label: Option[String]
 }
 
-case class PlainTxDescription(addresses: List[String], override val label: Option[String] = None) extends TxDescription {
+case class PlainTxDescription(addresses: List[String], label: Option[String] = None) extends TxDescription {
   def queryText(txid: ByteVector32): String = txid.toHex + SEPARATOR + addresses.mkString(SEPARATOR) + SEPARATOR + label.getOrElse(new String)
 }
 
@@ -142,23 +142,23 @@ sealed trait ChanTxDescription extends TxDescription {
   def nodeId: PublicKey
 }
 
-case class OpReturnTxDescription(nodeId: PublicKey, preimage: ByteVector32) extends ChanTxDescription {
+case class OpReturnTxDescription(nodeId: PublicKey, preimage: ByteVector32, label: Option[String] = None) extends ChanTxDescription {
   def queryText(txid: ByteVector32): String = txid.toHex + SEPARATOR + nodeId.toString + SEPARATOR + preimage.toHex
 }
 
-case class ChanFundingTxDescription(nodeId: PublicKey) extends ChanTxDescription {
+case class ChanFundingTxDescription(nodeId: PublicKey, label: Option[String] = None) extends ChanTxDescription {
   def queryText(txid: ByteVector32): String = txid.toHex + SEPARATOR + nodeId.toString
 }
 
-case class ChanRefundingTxDescription(nodeId: PublicKey) extends ChanTxDescription {
+case class ChanRefundingTxDescription(nodeId: PublicKey, label: Option[String] = None) extends ChanTxDescription {
   def queryText(txid: ByteVector32): String = txid.toHex + SEPARATOR + nodeId.toString
 }
 
-case class HtlcClaimTxDescription(nodeId: PublicKey) extends ChanTxDescription {
+case class HtlcClaimTxDescription(nodeId: PublicKey, label: Option[String] = None) extends ChanTxDescription {
   def queryText(txid: ByteVector32): String = txid.toHex + SEPARATOR + nodeId.toString
 }
 
-case class PenaltyTxDescription(nodeId: PublicKey) extends ChanTxDescription {
+case class PenaltyTxDescription(nodeId: PublicKey, label: Option[String] = None) extends ChanTxDescription {
   def queryText(txid: ByteVector32): String = txid.toHex + SEPARATOR + nodeId.toString
 }
 
