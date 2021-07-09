@@ -4,7 +4,7 @@ import spray.json._
 import fr.acinq.eclair._
 import immortan.crypto.Tools._
 import immortan.utils.ImplicitJsonFormats._
-import immortan.utils.PayRequest.{AdditionalRoute, TagAndContent}
+import immortan.utils.PayRequest.{AdditionalRoute, MetaDataRecords}
 import fr.acinq.eclair.router.{Announcements, RouteCalculation}
 import immortan.{LNParams, PaymentAction, RemoteNodeInfo}
 import fr.acinq.eclair.wire.{ChannelUpdate, NodeAddress}
@@ -146,6 +146,7 @@ case class WithdrawRequest(callback: String, k1: String, maxWithdrawable: Long, 
 
 object PayRequest {
   type TagAndContent = List[String]
+  type MetaDataRecords = List[TagAndContent]
   type KeyAndUpdate = (PublicKey, ChannelUpdate)
   type AdditionalRoute = List[KeyAndUpdate]
 
@@ -156,7 +157,7 @@ object PayRequest {
   } yield channelUpdate extraHop startNodeId
 }
 
-case class PayRequestMeta(records: List[TagAndContent] = Nil) {
+case class PayRequestMeta(records: MetaDataRecords) {
   val texts: List[String] = records.collect { case List("text/plain", txt) => txt }
   val emails: List[String] = records.collect { case List("text/email", txt) => txt }
   val identities: List[String] = records.collect { case List("text/identity", txt) => txt }
@@ -183,7 +184,10 @@ case class PayRequest(callback: String, maxSendable: Long, minSendable: Long, me
 
   val callbackUri: Uri = LNUrl.checkHost(callback)
 
-  val meta: PayRequestMeta = to[PayRequestMeta](metadata)
+  val meta: PayRequestMeta = {
+    val records = to[MetaDataRecords](metadata)
+    PayRequestMeta(records)
+  }
 
   require(1 >= (meta.emails ++ meta.identities).size, "There can be at most one text/email or text/identity entry in metadata")
   require(meta.texts.size == 1, "There must be exactly one text/plain entry in metadata")

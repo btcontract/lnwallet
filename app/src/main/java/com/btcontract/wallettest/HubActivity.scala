@@ -6,17 +6,15 @@ import android.widget._
 import fr.acinq.eclair._
 import immortan.crypto.Tools._
 import fr.acinq.eclair.channel._
-
 import scala.concurrent.duration._
 import com.softwaremill.quicklens._
-
 import scala.collection.JavaConverters._
 import com.btcontract.wallettest.Colors._
 import com.btcontract.wallettest.R.string._
 import immortan.utils.ImplicitJsonFormats._
 import com.btcontract.wallettest.HubActivity._
-import java.lang.{Integer => JInt}
 
+import java.lang.{Integer => JInt}
 import immortan.sqlite.{SQLiteData, Table}
 import android.view.{MenuItem, View, ViewGroup}
 import rx.lang.scala.{Observable, Subscription}
@@ -30,10 +28,10 @@ import fr.acinq.eclair.blockchain.fee.{FeeratePerKw, FeeratePerVByte}
 import fr.acinq.eclair.blockchain.electrum.ElectrumWallet.WalletReady
 import com.google.android.material.button.{MaterialButton, MaterialButtonToggleGroup}
 import com.google.android.material.button.MaterialButtonToggleGroup.OnButtonCheckedListener
+import com.google.android.material.textfield.TextInputLayout
 import com.chauthai.swipereveallayout.SwipeRevealLayout
 import com.btcontract.wallettest.BaseActivity.StringOps
 import org.ndeftools.util.activity.NfcReaderActivity
-
 import concurrent.ExecutionContext.Implicits.global
 import com.btcontract.wallettest.utils.LocalBackup
 import fr.acinq.eclair.transactions.RemoteFulfill
@@ -48,15 +46,11 @@ import androidx.appcompat.app.AlertDialog
 import android.content.pm.PackageManager
 import com.ornach.nobobutton.NoboButton
 import java.util.concurrent.TimeUnit
-
 import android.content.Intent
 import org.ndeftools.Message
 import java.util.TimerTask
-
 import android.os.Bundle
 import android.net.Uri
-import com.google.android.material.textfield.TextInputLayout
-
 import scala.util.Try
 
 
@@ -920,13 +914,9 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
 
   def bringPayPopup(data: PayRequest, lnUrl: LNUrl): TimerTask = UITask {
     new OffChainSender(maxSendable = LNParams.cm.maxSendable(LNParams.cm.all.values).min(data.maxSendable.msat), minSendable = LNParams.minPayment max data.minSendable.msat) {
+      override lazy val manager: RateManager = new RateManager(body, getString(dialog_add_comment).asSome, dialog_visibility_public, LNParams.fiatRates.info.rates, WalletApp.fiatCode)
       override def isNeutralEnabled: Boolean = manager.resultMsat >= LNParams.minPayment && manager.resultMsat <= minSendable - LNParams.minPayment
       override def isPayEnabled: Boolean = manager.resultMsat >= minSendable && manager.resultMsat <= maxSendable
-
-      override val manager: RateManager = {
-        val commentStringOpt = if (data.commentAllowed.isDefined) getString(dialog_add_comment).asSome else None
-        new RateManager(body, commentStringOpt, dialog_visibility_public, LNParams.fiatRates.info.rates, WalletApp.fiatCode)
-      }
 
       override def neutral(alert: AlertDialog): Unit = {
         def proceed(pf: PayRequestFinal): TimerTask = UITask {

@@ -1,10 +1,10 @@
 package immortan
 
 import immortan.utils.ImplicitJsonFormats._
+import immortan.utils.{LNUrl, PayRequest, PayRequestMeta, PaymentRequestExt}
 import immortan.crypto.Tools.{Any2Some, Bytes, Fiat2Btc, SEPARATOR, ratio}
 import immortan.fsm.{IncomingPaymentProcessor, SendMultiPart, SplitInfo}
 import fr.acinq.eclair.channel.{DATA_CLOSING, HasNormalCommitments}
-import immortan.utils.{LNUrl, PayRequestMeta, PaymentRequestExt}
 import fr.acinq.bitcoin.{ByteVector32, Satoshi, Transaction}
 import fr.acinq.eclair.wire.{FullPaymentTag, PaymentTagTlv}
 import org.bouncycastle.util.encoders.Base64
@@ -37,7 +37,11 @@ case class PayLinkInfo(lnurlString: String, metaString: String, lastMsat: MilliS
   override val seenAt: Long = System.currentTimeMillis + lastDate / 10000L // To make it always appear on top in timestamp-sorted lists on UI
   override val date: Date = new Date(lastDate) // To display real date of last usage in lists on UI
 
-  lazy val meta: PayRequestMeta = to[PayRequestMeta](metaString)
+  lazy val meta: PayRequestMeta = {
+    val records = to[PayRequest.MetaDataRecords](metaString)
+    PayRequestMeta(records)
+  }
+
   lazy val label: Option[String] = Option(labelString).filter(_.nonEmpty)
   lazy val imageBytesTry: Try[Bytes] = Try(Base64 decode meta.imageBase64s.head)
   lazy val lnurl: LNUrl = LNUrl(lnurlString)
