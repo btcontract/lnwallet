@@ -423,7 +423,7 @@ trait BaseActivity extends AppCompatActivity { me =>
 
   abstract class OffChainSender(val maxSendable: MilliSatoshi, val minSendable: MilliSatoshi) extends HasTypicalChainFee {
     val body: android.view.ViewGroup = getLayoutInflater.inflate(R.layout.frag_input_off_chain, null).asInstanceOf[android.view.ViewGroup]
-    lazy val manager = new RateManager(body, getString(dialog_add_ln_memo).asSome, dialog_visibility_private, LNParams.fiatRates.info.rates, WalletApp.fiatCode)
+    lazy val manager = new RateManager(body, getString(dialog_add_ln_label).asSome, dialog_visibility_private, LNParams.fiatRates.info.rates, WalletApp.fiatCode)
     val alert: AlertDialog
 
     val canSendFiatHuman: String = WalletApp.currentMsatInFiatHuman(maxSendable)
@@ -460,9 +460,8 @@ trait BaseActivity extends AppCompatActivity { me =>
   }
 
   abstract class OffChainReceiver(initMaxReceivable: MilliSatoshi, initMinReceivable: MilliSatoshi, lnBalance: MilliSatoshi) {
+    val CommitsAndMax(cs, maxReceivable) = LNParams.cm.maxReceivable(LNParams.cm sortedReceivable LNParams.cm.all.values).get
     val body: ViewGroup = getLayoutInflater.inflate(R.layout.frag_input_off_chain, null).asInstanceOf[ViewGroup]
-    val candidates: Seq[ChanAndCommits] = LNParams.cm.sortedReceivable(LNParams.cm.all.values)
-    val CommitsAndMax(cs, maxReceivable) = LNParams.cm.maxReceivable(candidates).get
     val manager: RateManager = getManager
 
     val finalMaxReceivable: MilliSatoshi = initMaxReceivable.min(maxReceivable)
@@ -480,8 +479,8 @@ trait BaseActivity extends AppCompatActivity { me =>
     }
 
     val alert: AlertDialog = {
-      val builder = titleBodyAsViewBuilder(getTitleText.asDefView, manager.content)
       def setMax(alert1: AlertDialog): Unit = manager.updateText(finalMaxReceivable)
+      val builder = titleBodyAsViewBuilder(getTitleText.asColoredView(R.color.cardLightning), manager.content)
       mkCheckFormNeutral(receive, none, setMax, builder, dialog_ok, dialog_cancel, dialog_max)
     }
 

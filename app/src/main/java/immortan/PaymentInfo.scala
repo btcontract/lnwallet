@@ -33,8 +33,8 @@ sealed trait TransactionDetails {
   def seenAt: Long
 }
 
-case class PayLinkInfo(lnurlString: String, metaString: String, lastMsat: MilliSatoshi, lastDate: Long, labelString: String) extends TransactionDetails {
-  override val seenAt: Long = System.currentTimeMillis + lastDate / 10000L // To make it always appear on top in timestamp-sorted lists on UI
+case class PayLinkInfo(lnurlString: String, metaString: String, lastMsat: MilliSatoshi, lastDate: Long, lastCommentString: String, labelString: String) extends TransactionDetails {
+  override val seenAt: Long = System.currentTimeMillis + lastDate // To make it always appear on top in timestamp-sorted lists on UI
   override val date: Date = new Date(lastDate) // To display real date of last usage in lists on UI
 
   lazy val meta: PayRequestMeta = {
@@ -43,6 +43,7 @@ case class PayLinkInfo(lnurlString: String, metaString: String, lastMsat: MilliS
   }
 
   lazy val label: Option[String] = Option(labelString).filter(_.nonEmpty)
+  lazy val lastComment: Option[String] = Option(lastCommentString).filter(_.nonEmpty)
   lazy val imageBytesTry: Try[Bytes] = Try(Base64 decode meta.imageBase64s.head)
   lazy val lnurl: LNUrl = LNUrl(lnurlString)
 }

@@ -17,12 +17,12 @@ class SQLitePayMarket(db: DBInterface) {
     ChannelMaster.next(ChannelMaster.payMarketDbStream)
   }
 
-  def saveLink(lnUrl: LNUrl, payReq: PayRequest, msat: MilliSatoshi, hash: String): Unit = db txWrap {
+  def saveLink(lnUrl: LNUrl, payReq: PayRequest, msat: MilliSatoshi, comment: String, hash: String): Unit = db txWrap {
     val stamp = System.currentTimeMillis: java.lang.Long
     val lastMsat = msat.toLong: java.lang.Long
 
-    db.change(PayMarketTable.updInfoSql, payReq.metadata, lastMsat, stamp, hash, lnUrl.request)
-    db.change(PayMarketTable.newSql, lnUrl.request, payReq.metadata, lastMsat, stamp, hash, new String)
+    db.change(PayMarketTable.updInfoSql, payReq.metadata, lastMsat, stamp, hash, comment, lnUrl.request)
+    db.change(PayMarketTable.newSql, lnUrl.request, payReq.metadata, lastMsat, stamp, hash, comment, new String)
     db.change(PayMarketTable.newVirtualSql, payReq.meta.queryText, lnUrl.request)
     ChannelMaster.next(ChannelMaster.payMarketDbStream)
   }
@@ -34,5 +34,5 @@ class SQLitePayMarket(db: DBInterface) {
   def toLinkInfo(rc: RichCursor): PayLinkInfo =
     PayLinkInfo(lnurlString = rc string PayMarketTable.lnurl, metaString = rc string PayMarketTable.meta,
       lastMsat = MilliSatoshi(rc long PayMarketTable.lastMsat), lastDate = rc long PayMarketTable.lastDate,
-      labelString = rc string PayMarketTable.label)
+      lastCommentString = rc string PayMarketTable.lastComment, labelString = rc string PayMarketTable.label)
 }

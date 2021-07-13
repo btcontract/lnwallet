@@ -59,8 +59,9 @@
 
     <TextView
         style="@style/XMarginFillingView"
-        android:id="@+id/extraInputVisibility"
-        android:layout_marginBottom="25dp"/>
+        android:id="@+id/extraInputVisibility"/>
 
-    <View style="@style/GrayDivider"/>
+    <View
+        android:layout_marginTop="25dp"
+        style="@style/GrayDivider"/>
 </LinearLayout>

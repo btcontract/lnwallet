@@ -19,6 +19,7 @@ object ClassNames {
   val statActivityClass: Class[StatActivity] = classOf[StatActivity]
   val qrSplitActivityClass: Class[QRSplitActivity] = classOf[QRSplitActivity]
   val qrChainActivityClass: Class[QRChainActivity] = classOf[QRChainActivity]
+  val settingsActivityClass: Class[SettingsActivity] = classOf[SettingsActivity]
   val qrInvoiceActivityClass: Class[QRInvoiceActivity] = classOf[QRInvoiceActivity]
   val remotePeerActivityClass: Class[RemotePeerActivity] = classOf[RemotePeerActivity]
   val mainActivityClass: Class[MainActivity] = classOf[MainActivity]

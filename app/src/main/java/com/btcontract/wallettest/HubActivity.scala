@@ -15,8 +15,8 @@ import immortan.utils.ImplicitJsonFormats._
 import com.btcontract.wallettest.HubActivity._
 
 import java.lang.{Integer => JInt}
+import android.view.{View, ViewGroup}
 import immortan.sqlite.{SQLiteData, Table}
-import android.view.{MenuItem, View, ViewGroup}
 import rx.lang.scala.{Observable, Subscription}
 import android.graphics.{Bitmap, BitmapFactory}
 import com.androidstudy.networkmanager.{Monitor, Tovuti}
@@ -25,11 +25,11 @@ import com.google.common.cache.{CacheBuilder, LoadingCache}
 import immortan.ChannelMaster.{OutgoingAdds, RevealedLocalFulfills}
 import fr.acinq.bitcoin.{ByteVector32, Crypto, Satoshi, SatoshiLong}
 import fr.acinq.eclair.blockchain.fee.{FeeratePerKw, FeeratePerVByte}
-import fr.acinq.eclair.blockchain.electrum.ElectrumWallet.WalletReady
+import com.chauthai.swipereveallayout.{SwipeRevealLayout, ViewBinderHelper}
 import com.google.android.material.button.{MaterialButton, MaterialButtonToggleGroup}
 import com.google.android.material.button.MaterialButtonToggleGroup.OnButtonCheckedListener
+import fr.acinq.eclair.blockchain.electrum.ElectrumWallet.WalletReady
 import com.google.android.material.textfield.TextInputLayout
-import com.chauthai.swipereveallayout.SwipeRevealLayout
 import com.btcontract.wallettest.BaseActivity.StringOps
 import org.ndeftools.util.activity.NfcReaderActivity
 import concurrent.ExecutionContext.Implicits.global
@@ -138,6 +138,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
   }
 
   val paymentsAdapter: BaseAdapter = new BaseAdapter {
+    private[this] val viewBinderHelper = new ViewBinderHelper
     override def getItem(pos: Int): TransactionDetails = allInfos(pos)
     override def getItemId(position: Int): Long = position
     override def getCount: Int = allInfos.size
@@ -145,8 +146,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
     override def getView(position: Int, savedView: View, parent: ViewGroup): View = {
       val view = if (null == savedView) getLayoutInflater.inflate(R.layout.frag_payment_line, null) else savedView
       val holder = if (null == view.getTag) new PaymentLineViewHolder(view) else view.getTag.asInstanceOf[PaymentLineViewHolder]
-      // Prevent reused layout to appear in open state as user scrolls down
-      if (holder.swipeWrap.isOpened) holder.swipeWrap.close(false)
+      viewBinderHelper.bind(holder.swipeWrap, getItem(position).hashCode.toString)
       holder.currentDetails = getItem(position)
       holder.updDetails
       view
@@ -158,6 +158,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
 
     val setItemLabel: NoboButton = swipeWrap.findViewById(R.id.setItemLabel).asInstanceOf[NoboButton]
     val removeItem: NoboButton = swipeWrap.findViewById(R.id.removeItem).asInstanceOf[NoboButton]
+    val shareItem: NoboButton = swipeWrap.findViewById(R.id.shareItem).asInstanceOf[NoboButton]
 
     val nonLinkContainer: LinearLayout = swipeWrap.findViewById(R.id.nonLinkContainer).asInstanceOf[LinearLayout]
     val detailsAndStatus: RelativeLayout = swipeWrap.findViewById(R.id.detailsAndStatus).asInstanceOf[RelativeLayout]
@@ -172,7 +173,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
     val lastAttempt: TextView = swipeWrap.findViewById(R.id.lastAttempt).asInstanceOf[TextView]
     val domainName: TextView = swipeWrap.findViewById(R.id.domainName).asInstanceOf[TextView]
     val linkImage: ImageView = swipeWrap.findViewById(R.id.linkImage).asInstanceOf[ImageView]
-    swipeWrap.setTag(this)
+    itemView.setTag(this)
 
     val paymentTypeIconViews: List[View] = paymentTypeIconIds.map(swipeWrap.findViewById)
     val iconMap: Map[Int, View] = paymentTypeIconIds.zip(paymentTypeIconViews).toMap
@@ -200,18 +201,23 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
       extraInputLayout.setHint(dialog_set_record_label)
       val builder = new AlertDialog.Builder(me).setView(container)
       mkCheckForm(doSetItemLabel, none, builder, dialog_ok, dialog_cancel)
-      swipeWrap.close(true)
     }
 
     removeItem setOnClickListener onButtonTap {
       val builder = new AlertDialog.Builder(me).setMessage(confirm_remove_item)
       mkCheckForm(alert => runAnd(alert.dismiss)(doRemoveItem), none, builder, dialog_ok, dialog_cancel)
-      swipeWrap.close(true)
     }
+
+    shareItem setOnClickListener onButtonTap(doShareItem)
 
     def doRemoveItem: Unit = currentDetails match {
       case info: PayLinkInfo => WalletApp.payMarketBag.remove(info.lnurl)
       case info: PaymentInfo => LNParams.cm.payBag.removePaymentInfo(info.paymentHash)
+      case _ =>
+    }
+
+    def doShareItem: Unit = currentDetails match {
+      case info: TxInfo => share(s"Transaction: ${info.txString}")
       case _ =>
     }
 
@@ -238,12 +244,13 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
           setVis(isVisible = true, detailsAndStatus)
           setVis(info.description.label.isDefined, labelIcon)
           amount setText LNParams.denomination.directedWithSign(info.receivedSat, info.sentSat, cardOut, cardIn, cardZero, info.isIncoming).html
-          nonLinkContainer setBackgroundResource chainTxBackground(info)
+          nonLinkContainer setBackgroundResource R.drawable.border_gray
           statusIcon setImageResource txStatusIcon(info)
           description setText txDescription(info).html
           setVis(isVisible = true, nonLinkContainer)
           setVis(isVisible = false, linkContainer)
           setVis(isVisible = false, removeItem)
+          setVis(isVisible = true, shareItem)
           swipeWrap.setLockDrag(false)
           setTxTypeIcon(info)
           setTxMeta(info)
@@ -259,6 +266,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
           setVis(isVisible = true, nonLinkContainer)
           setVis(isVisible = false, linkContainer)
           setVis(isVisible = true, removeItem)
+          setVis(isVisible = false, shareItem)
           swipeWrap.setLockDrag(false)
           setPaymentTypeIcon(info)
 
@@ -284,6 +292,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
           domainName setText info.lnurl.uri.getHost
           textMetadata setText info.meta.textPlain
           setVis(isVisible = true, removeItem)
+          setVis(isVisible = false, shareItem)
           swipeWrap.setLockDrag(false)
       }
 
@@ -296,12 +305,6 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
       case _: ChanFundingTxDescription => transactionInfo.description.label getOrElse getString(tx_description_funding)
       case _: OpReturnTxDescription => transactionInfo.description.label getOrElse getString(tx_description_op_return)
       case _: PenaltyTxDescription => transactionInfo.description.label getOrElse getString(tx_description_penalty)
-    }
-
-    private def chainTxBackground(info: TxInfo): Int = info.description match {
-      case _: HtlcClaimTxDescription if info.depth <= 0L => R.drawable.border_yellow
-      case _: PenaltyTxDescription if info.depth <= 0L => R.drawable.border_yellow
-      case _ => R.drawable.border_gray
     }
 
     private def setTxTypeIcon(info: TxInfo): Unit = info.description match {
@@ -340,14 +343,14 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
 
     private def setIncomingPaymentMeta(info: PaymentInfo): Unit = {
       val valueHuman = LNParams.cm.inProcessors.get(info.fullTag).map(info.receivedRatio).map(WalletApp.app plurOrZero pctCollected)
-      if (PaymentStatus.SUCCEEDED == info.status && valueHuman.isDefined) meta setText pctCollected.last.html // Notify user that we are not exactly done yet
-      else if (PaymentStatus.SUCCEEDED == info.status) meta setText WalletApp.app.when(info.date, WalletApp.app.dateFormat).html // Payment has been cleared in channels
+      if (PaymentStatus.SUCCEEDED == info.status && valueHuman.isEmpty) meta setText WalletApp.app.when(info.date, WalletApp.app.dateFormat).html // Payment has been cleared
+      else if (PaymentStatus.SUCCEEDED == info.status && valueHuman.isDefined) meta setText pctCollected.last.html // Notify user that we are not exactly done yet
       else meta setText valueHuman.getOrElse(pctCollected.head).html // Show either value collected so far or that we are still waiting
     }
 
     private def setOutgoingPaymentMeta(info: PaymentInfo): Unit = lastInChannelOutgoing.getOrElse(info.fullTag, Nil).size match {
-      case partsInChans if PaymentStatus.PENDING == info.status || partsInChans > 0 => meta setText WalletApp.app.plurOrZero(partsInFlight)(partsInChans).html
-      case _ => meta setText WalletApp.app.when(info.date, WalletApp.app.dateFormat).html // Payment has either succeeded or failed AND no leftovers are present
+      case activeParts if PaymentStatus.PENDING == info.status || activeParts > 0 => meta setText WalletApp.app.plurOrZero(partsInFlight)(activeParts).html
+      case _ => meta setText WalletApp.app.when(info.date, WalletApp.app.dateFormat).html // Payment has either succeeded or failed AND no leftovers
     }
 
     private def setPaymentTypeIcon(info: PaymentInfo): Unit = {
@@ -530,7 +533,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
   // Lifecycle methods
 
   override def onResume: Unit = {
-    val backupAllowed = LocalBackup.isAllowed(me)
+    val backupAllowed = LocalBackup.isAllowed(me) && WalletApp.makeChanBackup
     if (!backupAllowed) LocalBackup.askPermission(me)
     checkExternalData(noneRunnable)
     super.onResume
@@ -758,20 +761,6 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
     view.setVisibility(View.GONE)
   }
 
-  def bringMenu(view: View): Unit = {
-    val popupMenu = new PopupMenu(me, view)
-    popupMenu setOnMenuItemClickListener new PopupMenu.OnMenuItemClickListener {
-      override def onMenuItemClick(selectedPopupMenuSection: MenuItem): Boolean = {
-        if (selectedPopupMenuSection.getItemId == 1) me goTo ClassNames.statActivityClass
-        false
-      }
-    }
-
-    popupMenu.getMenu.add(0, 0, 0, menu_settings)
-    popupMenu.getMenu.add(0, 1, 1, menu_chans_stats)
-    popupMenu.show
-  }
-
   def isSearchOn: Boolean = walletCards.searchField.getVisibility == View.VISIBLE
   def keyBoardOn: Unit = WalletApp.app.showKeys(walletCards.searchField)
 
@@ -809,12 +798,14 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
     new sheets.ChoiceBottomSheet(list, CHOICE_RECEIVE_TAG, me).show(getSupportFragmentManager, "unused-tag")
   }
 
+  def goToStatPage(view: View): Unit = me goTo ClassNames.statActivityClass
+  def goToSettingsPage(view: View): Unit = me goTo ClassNames.settingsActivityClass
   def goToReceiveBitcoinPage(view: View): Unit = onChoiceMade(CHOICE_RECEIVE_TAG, 0)
   def bringLnReceivePopup(view: View): Unit = onChoiceMade(CHOICE_RECEIVE_TAG, 1)
 
   def bringSendBitcoinPopup(uri: BitcoinUri): Unit = {
     val body = getLayoutInflater.inflate(R.layout.frag_input_on_chain, null).asInstanceOf[ScrollView]
-    val manager = new RateManager(body, getString(dialog_add_btc_memo).asSome, dialog_visibility_private, LNParams.fiatRates.info.rates, WalletApp.fiatCode)
+    val manager = new RateManager(body, getString(dialog_add_btc_label).asSome, dialog_visibility_private, LNParams.fiatRates.info.rates, WalletApp.fiatCode)
     val canSend = LNParams.denomination.parsedWithSign(LNParams.chainWallets.lnWallet.info.lastBalance.toMilliSatoshi, cardIn, cardZero)
     val canSendFiat = WalletApp.currentMsatInFiatHuman(LNParams.chainWallets.lnWallet.info.lastBalance.toMilliSatoshi)
 
@@ -905,7 +896,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
 
   def bringWithdrawPopup(data: WithdrawRequest): Unit = lnReceiveGuard(contentWindow) {
     new OffChainReceiver(initMaxReceivable = data.maxWithdrawable.msat, initMinReceivable = data.minCanReceive, LNParams.cm.totalBalance) {
-      override def getManager: RateManager = new RateManager(body, getString(dialog_add_ln_memo).asSome, dialog_visibility_private, LNParams.fiatRates.info.rates, WalletApp.fiatCode)
+      override def getManager: RateManager = new RateManager(body, getString(dialog_add_ln_label).asSome, dialog_visibility_private, LNParams.fiatRates.info.rates, WalletApp.fiatCode)
       override def getDescription: PaymentDescription = PlainMetaDescription(split = None, label = manager.resultExtraInput, invoiceText = new String, meta = data.descriptionOrEmpty)
       override def getTitleText: String = getString(dialog_lnurl_withdraw).format(data.callbackUri.getHost, data.brDescription)
       override def processInvoice(prExt: PaymentRequestExt): Unit = data.requestWithdraw(prExt).foreach(none, onFail)
@@ -936,7 +927,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
       override def send(alert: AlertDialog): Unit = {
         def proceed(pf: PayRequestFinal): TimerTask = UITask {
           lnSendGuard(pf.prExt, container = contentWindow) { _ =>
-            if (!pf.isThrowAway) WalletApp.payMarketBag.saveLink(lnUrl, data, manager.resultMsat, pf.prExt.pr.paymentHash.toHex)
+            if (!pf.isThrowAway) WalletApp.payMarketBag.saveLink(lnUrl, data, manager.resultMsat, comment = manager.resultExtraInput.getOrElse(new String), pf.prExt.pr.paymentHash.toHex)
             val cmd = LNParams.cm.makeSendCmd(pf.prExt, manager.resultMsat, LNParams.cm.all.values.toList, typicalChainTxFee, WalletApp.capLNFeeToChain).modify(_.split.totalSum).setTo(manager.resultMsat)
             replaceOutgoingPayment(pf.prExt, PlainMetaDescription(split = None, label = None, invoiceText = new String, meta = data.meta.textPlain), pf.successAction, sentAmount = cmd.split.myPart)
             LNParams.cm.localSend(cmd)

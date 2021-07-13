@@ -13,9 +13,9 @@ import java.util.{Date, TimerTask}
 import android.view.{View, ViewGroup}
 import android.graphics.{Bitmap, BitmapFactory}
 import immortan.utils.{BitcoinUri, InputParser, PaymentRequestExt, Rx}
+import com.chauthai.swipereveallayout.{SwipeRevealLayout, ViewBinderHelper}
 import fr.acinq.eclair.channel.{CMD_CLOSE, Commitments, DATA_CLOSING, NormalCommits}
 import com.btcontract.wallettest.BaseActivity.StringOps
-import com.chauthai.swipereveallayout.SwipeRevealLayout
 import fr.acinq.eclair.wire.HostedChannelBranding
 import androidx.recyclerview.widget.RecyclerView
 import com.google.common.cache.LoadingCache
@@ -43,6 +43,7 @@ class StatActivity extends BaseActivity with ChoiceReceiver with HasTypicalChain
   }
 
   val chanAdapter: BaseAdapter = new BaseAdapter {
+    private[this] val viewBinderHelper = new ViewBinderHelper
     override def getItem(pos: Int): ChanAndCommits = csToDisplay(pos)
     override def getItemId(position: Int): Long = position
     override def getCount: Int = csToDisplay.size
@@ -58,8 +59,7 @@ class StatActivity extends BaseActivity with ChoiceReceiver with HasTypicalChain
         case _ => throw new RuntimeException
       }
 
-      // Prevent reused layout to appear in open state as user scrolls down
-      if (cardView.swipeWrap.isOpened) cardView.swipeWrap.close(false)
+      viewBinderHelper.bind(cardView.swipeWrap, position.toString)
       card.setTag(cardView)
       card
     }
@@ -117,7 +117,7 @@ class StatActivity extends BaseActivity with ChoiceReceiver with HasTypicalChain
 
       if (Channel isWaiting chan) {
         setVis(isVisible = false, extraInfoText)
-        channelCard setOnClickListener bringChanOptions(normalChanActions.take(1), cs)
+        channelCard setOnClickListener bringChanOptions(normalChanActions.take(2), cs)
         visibleExcept(R.id.progressBars, R.id.paymentsInFlight, R.id.canReceive, R.id.canSend)
       } else if (Channel isOperational chan) {
         channelCard setOnClickListener bringChanOptions(normalChanActions, cs)
@@ -126,15 +126,16 @@ class StatActivity extends BaseActivity with ChoiceReceiver with HasTypicalChain
         visibleExcept(goneRes = -1)
       } else {
         val closeInfoRes = chan.data match { case c: DATA_CLOSING => closedBy(c) case _ => ln_info_shutdown }
-        channelCard setOnClickListener bringChanOptions(normalChanActions.take(1), cs)
+        channelCard setOnClickListener bringChanOptions(normalChanActions.take(2), cs)
         visibleExcept(R.id.progressBars, R.id.canReceive, R.id.canSend)
         extraInfoText.setText(getString(closeInfoRes).html)
         setVis(isVisible = true, extraInfoText)
       }
 
       removeItem setOnClickListener onButtonTap {
-        val builder = confirmationBuilder(cs, confirm_ln_normal_chan_force_close)
-        mkCheckForm(alert => runAnd(alert.dismiss)(me forceCloseNc cs), none, builder, dialog_ok, dialog_cancel)
+        def proceed: Unit = chan process CMD_CLOSE(None, force = true)
+        val builder = confirmationBuilder(cs, getString(confirm_ln_normal_chan_force_close).html)
+        mkCheckForm(alert => runAnd(alert.dismiss)(proceed), none, builder, dialog_ok, dialog_cancel)
         swipeWrap.close(true)
       }
 
@@ -178,8 +179,8 @@ class StatActivity extends BaseActivity with ChoiceReceiver with HasTypicalChain
       }
 
       removeItem setOnClickListener onButtonTap {
-        if (hc.localSpec.htlcs.nonEmpty) snack(chanContainer, getString(ln_hosted_chan_remove_impossible), R.string.dialog_ok, _.dismiss)
-        else mkCheckForm(alert => runAnd(alert.dismiss)(me removeHc hc), none, confirmationBuilder(hc, confirm_ln_hosted_chan_remove), dialog_ok, dialog_cancel)
+        if (hc.localSpec.htlcs.nonEmpty) snack(chanContainer, getString(ln_hosted_chan_remove_impossible).html, R.string.dialog_ok, _.dismiss)
+        else mkCheckForm(alert => runAnd(alert.dismiss)(me removeHc hc), none, confirmationBuilder(hc, getString(confirm_ln_hosted_chan_remove).html), dialog_ok, dialog_cancel)
         swipeWrap.close(true)
       }
 
@@ -210,32 +211,34 @@ class StatActivity extends BaseActivity with ChoiceReceiver with HasTypicalChain
   }
 
   override def onChoiceMade(tag: AnyRef, pos: Int): Unit = (tag, pos) match {
-    case (cs: NormalCommits, 2) => mkCheckForm(alert => runAnd(alert.dismiss)(me closeNcToWallet cs), none, confirmationBuilder(cs, confirm_ln_normal_chan_close), dialog_ok, dialog_cancel)
-    case (hc: HostedCommits, 2) => mkCheckForm(alert => runAnd(alert.dismiss)(me drainHc hc), none, confirmationBuilder(hc, confirm_ln_hosted_chan_drain), dialog_ok, dialog_cancel)
     case (cs: NormalCommits, 1) => browseTxid(cs.commitInput.outPoint.txid)
     case (hc: HostedCommits, 1) => share(me getHcState hc)
+
+    case (cs: NormalCommits, 2) =>
+      val builder = confirmationBuilder(cs, getString(confirm_ln_normal_chan_close_wallet).html)
+      def proceed: Unit = for (chan <- me getChan cs) chan process CMD_CLOSE(None, force = false)
+      mkCheckForm(alert => runAnd(alert.dismiss)(proceed), none, builder, dialog_ok, dialog_cancel)
+
+    case (hc: HostedCommits, 2) =>
+      val builder = confirmationBuilder(hc, getString(confirm_ln_hosted_chan_drain).html)
+      mkCheckForm(alert => runAnd(alert.dismiss)(me drainHc hc), none, builder, dialog_ok, dialog_cancel)
+
     case (cs: NormalCommits, 3) => closeNcToAddress(cs)
     case (c: Commitments, 0) => share(me getDetails c)
     case _ =>
   }
 
-  def forceCloseNc(cs: NormalCommits): Unit = for (chan <- me getChan cs) chan process CMD_CLOSE(None, force = true)
-
-  def closeNcToWallet(cs: NormalCommits): Unit = for (chan <- me getChan cs) chan process CMD_CLOSE(None, force = false)
-
   def closeNcToAddress(cs: NormalCommits): Unit = {
+    def confirmResolve(bitcoinUri: BitcoinUri): Unit = {
+      def proceed: Unit = for (chan <- me getChan cs) chan process CMD_CLOSE(scriptPubKey = Script.write(bitcoinUri.pubKeyScript).asSome, force = false)
+      val builder = confirmationBuilder(cs, getString(confirm_ln_normal_chan_close_address).format(bitcoinUri.address.humanFour).html)
+      mkCheckForm(alert => runAnd(alert.dismiss)(proceed), none, builder, dialog_ok, dialog_cancel)
+    }
+
     def resolveClosingAddress: Unit = InputParser.checkAndMaybeErase {
-      case prExt: PaymentRequestExt if prExt.pr.fallbackAddress.isDefined =>
-        val closingKey = prExt.pr.fallbackAddress.map(BitcoinUri.fromRaw).map(_.pubKeyScript).map(Script.write)
-        for (chan <- me getChan cs) chan process CMD_CLOSE(scriptPubKey = closingKey, force = false)
-
-      case bitcoinUri: BitcoinUri if bitcoinUri.isValid =>
-        val closingKey = bitcoinUri.pubKeyScript.asSome.map(Script.write)
-        for (chan <- me getChan cs) chan process CMD_CLOSE(closingKey, force = false)
-
-      case _ =>
-        // User has scanned something else, cancel and inform
-        UITask(WalletApp.app quickToast error_nothing_useful).run
+      case ext: PaymentRequestExt if ext.pr.fallbackAddress.isDefined => ext.pr.fallbackAddress.map(BitcoinUri.fromRaw).foreach(confirmResolve)
+      case closingBitcoinUri: BitcoinUri if closingBitcoinUri.isValid => confirmResolve(closingBitcoinUri)
+      case _ => UITask(WalletApp.app quickToast error_nothing_useful).run
     }
 
     def onData: Runnable = UITask(resolveClosingAddress)
@@ -245,8 +248,8 @@ class StatActivity extends BaseActivity with ChoiceReceiver with HasTypicalChain
   }
 
   def drainHc(hc: HostedCommits): Unit = maxNormalReceivable match {
-    case None => snack(chanContainer, getString(ln_hosted_chan_drain_impossible), R.string.dialog_ok, _.dismiss)
-    case Some(csAndMax) if csAndMax.maxReceivable < LNParams.minPayment => snack(chanContainer, getString(ln_hosted_chan_drain_impossible), R.string.dialog_ok, _.dismiss)
+    case None => snack(chanContainer, getString(ln_hosted_chan_drain_impossible).html, R.string.dialog_ok, _.dismiss)
+    case Some(csAndMax) if csAndMax.maxReceivable < LNParams.minPayment => snack(chanContainer, getString(ln_hosted_chan_drain_impossible).html, R.string.dialog_ok, _.dismiss)
     case Some(csAndMax) => LNParams.cm.localSendToSelf(getChan(hc).toList, csAndMax, randomBytes32, typicalChainTxFee, WalletApp.capLNFeeToChain)
   }
 
@@ -361,11 +364,11 @@ class StatActivity extends BaseActivity with ChoiceReceiver with HasTypicalChain
     else ln_info_close_local
   }
 
-  private def confirmationBuilder(commits: Commitments, res: Int) = new AlertDialog.Builder(me).setTitle(commits.remoteInfo.address.toString).setMessage(res)
+  private def confirmationBuilder(commits: Commitments, msg: CharSequence) = new AlertDialog.Builder(me).setTitle(commits.remoteInfo.address.toString).setMessage(msg)
 
   private def getChan(commits: Commitments) = csToDisplay.collectFirst { case cnc if cnc.commits.channelId == commits.channelId => cnc.chan }
 
-  private def maxNormalReceivable: Option[CommitsAndMax] = LNParams.cm maxReceivable LNParams.cm.sortedReceivable(LNParams.cm.allNormal)
+  private def maxNormalReceivable = LNParams.cm.maxReceivable(LNParams.cm sortedReceivable LNParams.cm.allNormal)
 
   private def updateChanData: TimerTask = UITask {
     csToDisplay = LNParams.cm.all.values.flatMap(Channel.chanAndCommitsOpt).toList
