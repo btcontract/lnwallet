@@ -327,7 +327,9 @@
                     android:id="@+id/domainName"
                     android:textColor="@color/colorAccent"
                     android:layout_toStartOf="@+id/linkImageWrap"
-                    android:layout_below="@+id/marketLabel"/>
+                    android:layout_below="@+id/marketLabel"
+                    android:ellipsize="end"
+                    android:maxLines="1"/>
 
                 <TextView
                     style="@style/FillingView"

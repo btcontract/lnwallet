@@ -20,6 +20,13 @@ import scala.util.Try
 
 
 object LNUrl {
+  def fromIdentifier(identifier: String): LNUrl = {
+    val (user, domain) = identifier.splitAt(identifier indexOf '@')
+    val isOnionDomain: Boolean = domain.endsWith(NodeAddress.onionSuffix)
+    if (isOnionDomain) LNUrl(s"http://$domain/.well-known/lnurlp/$user")
+    else LNUrl(s"https://$domain/.well-known/lnurlp/$user")
+  }
+
   def fromBech32(bech32url: String): LNUrl = {
     val Tuple2(_, dataBody) = Bech32.decode(bech32url)
     val request = new String(Bech32.five2eight(dataBody), "UTF-8")
@@ -190,7 +197,7 @@ case class PayRequest(callback: String, maxSendable: Long, minSendable: Long, me
   }
 
   private[this] val identifiers = meta.emails ++ meta.identities
-  require(identifiers.forall(id => android.util.Patterns.EMAIL_ADDRESS.matcher(id).matches), "Email or identity format is wrong")
+  require(identifiers.forall(id => InputParser.email.findFirstMatchIn(id).isDefined), "text/email or text/identity format is wrong")
   require(meta.imageBase64s.size <= 1, "There can be at most one image/png;base64 or image/jpeg;base64 entry in metadata")
   require(identifiers.size <= 1, "There can be at most one text/email or text/identity entry in metadata")
   require(meta.texts.size == 1, "There must be exactly one text/plain entry in metadata")

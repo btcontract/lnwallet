@@ -5,7 +5,7 @@ import immortan.utils.InputParser._
 import scala.util.{Failure, Success, Try}
 import immortan.{LNParams, RemoteNodeInfo}
 import fr.acinq.eclair.payment.PaymentRequest
-import scala.util.matching.UnanchoredRegex
+import scala.util.matching.{Regex, UnanchoredRegex}
 import fr.acinq.bitcoin.Crypto.PublicKey
 import fr.acinq.eclair.wire.NodeAddress
 import immortan.crypto.Tools.trimmed
@@ -25,11 +25,19 @@ object InputParser {
   }
 
   private[this] val prefixes = PaymentRequest.prefixes.values mkString "|"
+
   private[this] val lnUrl = "(?im).*?(lnurl)([0-9]+[a-z0-9]+)".r.unanchored
+
   private[this] val shortNodeLink = "([a-fA-F0-9]{66})@([a-zA-Z0-9:.\\-_]+)".r.unanchored
+
   val nodeLink: UnanchoredRegex = "([a-fA-F0-9]{66})@([a-zA-Z0-9:.\\-_]+):([0-9]+)".r.unanchored
+
   val lnPayReq: UnanchoredRegex = s"(?im).*?($prefixes)([0-9]{1,}[a-z0-9]+){1}".r.unanchored
+
+  val email: Regex = """^[a-zA-Z0-9\.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$""".r
+
   val lightning: String = "lightning:"
+
   val bitcoin: String = "bitcoin:"
 
   def recordValue(raw: String): Unit = value = parse(raw)
@@ -38,6 +46,7 @@ object InputParser {
     case lnUrl(prefix, data) => LNUrl.fromBech32(s"$prefix$data")
     case _ if rawInput.startsWith(bitcoin) => BitcoinUri.fromRaw(rawInput)
     case _ if rawInput.startsWith(bitcoin.toUpperCase) => BitcoinUri.fromRaw(rawInput.toLowerCase)
+    case _ if email.findFirstMatchIn(rawInput).isDefined => LNUrl.fromIdentifier(identifier = rawInput)
     case nodeLink(key, host, port) => RemoteNodeInfo(PublicKey.fromBin(ByteVector fromValidHex key), NodeAddress.fromParts(host, port.toInt), host)
     case shortNodeLink(key, host) => RemoteNodeInfo(PublicKey.fromBin(ByteVector fromValidHex key), NodeAddress.fromParts(host, port = 9735), host)
     case _ if rawInput.toLowerCase.startsWith(lightning) => PaymentRequestExt.fromUri(rawInput.toLowerCase)
