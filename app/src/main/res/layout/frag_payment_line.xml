@@ -299,9 +299,8 @@
 
                 <androidx.cardview.widget.CardView
                     card_view:cardCornerRadius="@dimen/corner_radius"
-                    android:layout_centerVertical="true"
                     android:layout_alignParentEnd="true"
-                    android:id="@+id/unusedAnchorId1"
+                    android:id="@+id/linkImageWrap"
                     android:layout_height="64dp"
                     android:layout_width="64dp">
 
@@ -314,25 +313,46 @@
 
                 <TextView
                     style="@style/FillingView"
+                    android:layout_toStartOf="@id/linkImageWrap"
+                    android:drawableStart="@drawable/baseline_label_24"
+                    android:layout_marginBottom="5dp"
+                    android:drawablePadding="3dp"
+                    android:id="@+id/marketLabel"
+                    android:textStyle="bold"
+                    android:ellipsize="end"
+                    android:maxLines="1"/>
+
+                <TextView
+                    style="@style/ChipTextGray"
                     android:id="@+id/domainName"
-                    android:layout_marginBottom="4dp"
                     android:textColor="@color/colorAccent"
-                    android:layout_toStartOf="@+id/unusedAnchorId1"
-                    android:textStyle="bold"/>
+                    android:layout_toStartOf="@+id/linkImageWrap"
+                    android:layout_below="@+id/marketLabel"/>
 
                 <TextView
                     style="@style/FillingView"
                     android:id="@+id/textMetadata"
-                    android:layout_marginBottom="10dp"
-                    android:layout_toStartOf="@+id/unusedAnchorId1"
+                    android:layout_marginTop="10dp"
+                    android:layout_toStartOf="@+id/linkImageWrap"
                     android:layout_below="@+id/domainName"
+                    android:ellipsize="end"
                     android:maxLines="4"/>
 
                 <TextView
                     android:textSize="16sp"
                     android:id="@+id/lastAttempt"
+                    android:layout_marginTop="10dp"
                     android:layout_below="@+id/textMetadata"
                     style="@style/FillingView"/>
+
+                <TextView
+                    style="@style/ChipTextGray"
+                    android:id="@+id/lastComment"
+                    android:background="@drawable/border_blue"
+                    android:layout_below="@id/lastAttempt"
+                    android:layout_marginTop="10dp"
+                    android:ellipsize="end"
+                    android:maxLines="2"/>
 
             </RelativeLayout>
         </androidx.cardview.widget.CardView>

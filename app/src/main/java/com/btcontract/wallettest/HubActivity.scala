@@ -171,8 +171,11 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
     val linkContainer: RelativeLayout = swipeWrap.findViewById(R.id.linkContainer).asInstanceOf[RelativeLayout]
     val textMetadata: TextView = swipeWrap.findViewById(R.id.textMetadata).asInstanceOf[TextView]
     val lastAttempt: TextView = swipeWrap.findViewById(R.id.lastAttempt).asInstanceOf[TextView]
+    val marketLabel: TextView = swipeWrap.findViewById(R.id.marketLabel).asInstanceOf[TextView]
+    val lastComment: TextView = swipeWrap.findViewById(R.id.lastComment).asInstanceOf[TextView]
     val domainName: TextView = swipeWrap.findViewById(R.id.domainName).asInstanceOf[TextView]
     val linkImage: ImageView = swipeWrap.findViewById(R.id.linkImage).asInstanceOf[ImageView]
+    val linkImageWrap: View = swipeWrap.findViewById(R.id.linkImageWrap)
     itemView.setTag(this)
 
     val paymentTypeIconViews: List[View] = paymentTypeIconIds.map(swipeWrap.findViewById)
@@ -288,13 +291,27 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
           setVis(isVisible = false, nonLinkContainer)
           val amount = LNParams.denomination.parsedWithSign(info.lastMsat, cardIn, lnCardZero)
           lastAttempt setText getString(lnurl_pay_last_paid).format(WalletApp.app.when(info.date, WalletApp.app.dateFormat), amount).html
+
           info.imageBytesTry.map(payLinkImageMemo.get).foreach(linkImage.setImageBitmap)
-          domainName setText info.lnurl.uri.getHost
+          info.lastComment.foreach(lastComment.setText)
+          info.label.foreach(marketLabel.setText)
+
+          setVis(info.imageBytesTry.isSuccess, linkImageWrap)
+          setVis(info.lastComment.isDefined, lastComment)
+          setVis(info.label.isDefined, marketLabel)
+
+          domainName setText marketLinkCaption(info).html
           textMetadata setText info.meta.textPlain
+
           setVis(isVisible = true, removeItem)
           setVis(isVisible = false, shareItem)
           swipeWrap.setLockDrag(false)
       }
+
+    private def marketLinkCaption(info: PayLinkInfo): String =
+      if (info.meta.emails.nonEmpty) s"<b>email</b> ${info.meta.emails.head}"
+      else if (info.meta.identities.nonEmpty) info.meta.identities.head
+      else info.lnurl.uri.getHost
 
     // TX helpers
 

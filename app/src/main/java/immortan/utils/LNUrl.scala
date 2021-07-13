@@ -37,7 +37,7 @@ object LNUrl {
     val validJson = Try(raw.parseJson.asJsObject.fields)
     val hasError = validJson.map(_ apply "reason").map(json2String)
     if (validJson.isFailure) throw new Exception(s"Invalid json from vendor: $raw")
-    if (hasError.isSuccess) throw new Exception(s"Error message from vendor: ${hasError.get}")
+    if (hasError.isSuccess) throw new Exception(s"Error from vendor: ${hasError.get}")
     raw
   }
 
@@ -189,7 +189,10 @@ case class PayRequest(callback: String, maxSendable: Long, minSendable: Long, me
     PayRequestMeta(records)
   }
 
-  require(1 >= (meta.emails ++ meta.identities).size, "There can be at most one text/email or text/identity entry in metadata")
+  private[this] val identifiers = meta.emails ++ meta.identities
+  require(identifiers.forall(id => android.util.Patterns.EMAIL_ADDRESS.matcher(id).matches), "Email or identity format is wrong")
+  require(meta.imageBase64s.size <= 1, "There can be at most one image/png;base64 or image/jpeg;base64 entry in metadata")
+  require(identifiers.size <= 1, "There can be at most one text/email or text/identity entry in metadata")
   require(meta.texts.size == 1, "There must be exactly one text/plain entry in metadata")
   require(minSendable <= maxSendable, s"max=$maxSendable while min=$minSendable")
 }
