@@ -22,6 +22,7 @@ import android.graphics.{Bitmap, BitmapFactory}
 import com.androidstudy.networkmanager.{Monitor, Tovuti}
 import fr.acinq.eclair.wire.{FullPaymentTag, PaymentTagTlv}
 import com.google.common.cache.{CacheBuilder, LoadingCache}
+import fr.acinq.eclair.transactions.{RemoteFulfill, Scripts}
 import immortan.ChannelMaster.{OutgoingAdds, RevealedLocalFulfills}
 import fr.acinq.bitcoin.{ByteVector32, Crypto, Satoshi, SatoshiLong}
 import fr.acinq.eclair.blockchain.fee.{FeeratePerKw, FeeratePerVByte}
@@ -34,7 +35,6 @@ import com.btcontract.wallettest.BaseActivity.StringOps
 import org.ndeftools.util.activity.NfcReaderActivity
 import concurrent.ExecutionContext.Implicits.global
 import com.btcontract.wallettest.utils.LocalBackup
-import fr.acinq.eclair.transactions.RemoteFulfill
 import com.github.mmin18.widget.RealtimeBlurView
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.slider.Slider
@@ -61,10 +61,11 @@ object HubActivity {
   var relayedPreimageInfos: Iterable[RelayedPreimageInfo] = Iterable.empty
   var allInfos: Seq[TransactionDetails] = Nil
 
-  var lastInChannelOutgoing: Map[FullPaymentTag, OutgoingAdds] = Map.empty
-  var lastHashToReveals: Map[ByteVector32, RevealedLocalFulfills] = Map.empty
   // Run clear up method once on app start, do not re-run it every time this activity gets restarted
   lazy val markAsFailedOnce: Unit = LNParams.cm.markAsFailed(paymentInfos, LNParams.cm.allInChannelOutgoing)
+
+  var lastInChannelOutgoing: Map[FullPaymentTag, OutgoingAdds] = Map.empty
+  var lastHashToReveals: Map[ByteVector32, RevealedLocalFulfills] = Map.empty
 
   def updateLnCaches: Unit = {
     lastInChannelOutgoing = LNParams.cm.allInChannelOutgoing
@@ -73,6 +74,7 @@ object HubActivity {
 }
 
 class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataChecker with ChoiceReceiver with ChannelListener { me =>
+  def incoming(amount: MilliSatoshi): String = LNParams.denomination.directedWithSign(amount, 0L.msat, cardOut, cardIn, cardZero, isPlus = true)
   private[this] lazy val bottomBlurringArea = findViewById(R.id.bottomBlurringArea).asInstanceOf[RealtimeBlurView]
   private[this] lazy val bottomActionBar = findViewById(R.id.bottomActionBar).asInstanceOf[LinearLayout]
   private[this] lazy val contentWindow = findViewById(R.id.contentWindow).asInstanceOf[RelativeLayout]
@@ -86,6 +88,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
 
   private[this] lazy val partsInFlight = getResources.getStringArray(R.array.parts_in_flight)
   private[this] lazy val pctCollected = getResources.getStringArray(R.array.pct_collected)
+  private[this] lazy val inBlocks = getResources.getStringArray(R.array.in_blocks)
   private[this] lazy val lnSplitNotice = getString(tx_ln_notice_split)
   private[this] lazy val lnDefTitle = getString(tx_ln)
 
@@ -97,15 +100,11 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
   def reloadPayMarketInfos: Unit = payMarketInfos = WalletApp.payMarketBag.listRecentLinks(Table.DEFAULT_LIMIT.get).map(WalletApp.payMarketBag.toLinkInfo)
 
   def updAllInfos: Unit = {
-    val itemsToDisplayMap = Map(
-      R.id.bitcoinPayments -> txInfos,
-      R.id.lightningPayments -> paymentInfos,
-      R.id.relayedPayments -> relayedPreimageInfos,
-      R.id.payMarketLinks -> payMarketInfos
-    )
-
     val checkedIds = walletCards.toggleGroup.getCheckedButtonIds.asScala.map(_.toInt)
-    allInfos = DelayedRefunds(LNParams.cm.allDelayedRefundsLeft.map(_.txOut.head.amount).sum.toMilliSatoshi) match {
+    val itemsToDisplayMap = Map(R.id.bitcoinPayments -> txInfos, R.id.lightningPayments -> paymentInfos,
+      R.id.relayedPayments -> relayedPreimageInfos, R.id.payMarketLinks -> payMarketInfos)
+
+    allInfos = LNParams.cm.delayedRefunds match {
       case _ if isSearchOn => (txInfos ++ paymentInfos ++ payMarketInfos).toList.sortBy(_.seenAt)(Ordering[Long].reverse)
       case dr if dr.totalAmount > 0L.msat => (checkedIds.flatMap(itemsToDisplayMap) :+ dr).sortBy(_.seenAt)(Ordering[Long].reverse)
       case _ => checkedIds.flatMap(itemsToDisplayMap).sortBy(_.seenAt)(Ordering[Long].reverse)
@@ -156,6 +155,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
   class PaymentLineViewHolder(itemView: View) extends RecyclerView.ViewHolder(itemView) {
     val swipeWrap: SwipeRevealLayout = itemView.asInstanceOf[SwipeRevealLayout]
 
+    val paymentCardContainer: View = swipeWrap.findViewById(R.id.paymentCardContainer)
     val setItemLabel: NoboButton = swipeWrap.findViewById(R.id.setItemLabel).asInstanceOf[NoboButton]
     val removeItem: NoboButton = swipeWrap.findViewById(R.id.removeItem).asInstanceOf[NoboButton]
     val shareItem: NoboButton = swipeWrap.findViewById(R.id.shareItem).asInstanceOf[NoboButton]
@@ -183,7 +183,12 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
     var currentDetails: TransactionDetails = _
     var lastVisibleIconId: Int = -1
 
-    setItemLabel setOnClickListener onButtonTap {
+    paymentCardContainer setOnClickListener onButtonTap(showDetails)
+    setItemLabel setOnClickListener onButtonTap(doSetItemLabel)
+    removeItem setOnClickListener onButtonTap(doRemoveItem)
+    shareItem setOnClickListener onButtonTap(doShareItem)
+
+    def doSetItemLabel: Unit = {
       val container = getLayoutInflater.inflate(R.layout.frag_hint_input, null, false)
       val extraInput: EditText = container.findViewById(R.id.extraInput).asInstanceOf[EditText]
       val extraInputLayout: TextInputLayout = container.findViewById(R.id.extraInputLayout).asInstanceOf[TextInputLayout]
@@ -206,22 +211,60 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
       mkCheckForm(doSetItemLabel, none, builder, dialog_ok, dialog_cancel)
     }
 
-    removeItem setOnClickListener onButtonTap {
+    def doRemoveItem: Unit = {
+      def proceed: Unit = currentDetails match {
+        case info: PaymentInfo => LNParams.cm.payBag.removePaymentInfo(info.paymentHash)
+        case info: PayLinkInfo => WalletApp.payMarketBag.remove(info.lnurl)
+        case _ =>
+      }
+
       val builder = new AlertDialog.Builder(me).setMessage(confirm_remove_item)
-      mkCheckForm(alert => runAnd(alert.dismiss)(doRemoveItem), none, builder, dialog_ok, dialog_cancel)
-    }
-
-    shareItem setOnClickListener onButtonTap(doShareItem)
-
-    def doRemoveItem: Unit = currentDetails match {
-      case info: PayLinkInfo => WalletApp.payMarketBag.remove(info.lnurl)
-      case info: PaymentInfo => LNParams.cm.payBag.removePaymentInfo(info.paymentHash)
-      case _ =>
+      mkCheckForm(alert => runAnd(alert.dismiss)(proceed), none, builder, dialog_ok, dialog_cancel)
     }
 
     def doShareItem: Unit = currentDetails match {
-      case info: TxInfo => share(s"Transaction: ${info.txString}")
+      case info: TxInfo => share(info.txString)
       case _ =>
+    }
+
+    def showDetails: Unit = currentDetails match {
+      case info: DelayedRefunds => doShowDetails(info)
+      case _ =>
+    }
+
+    def doShowDetails(info: DelayedRefunds): Unit = {
+      val list = me selectorList new ArrayAdapter(me, R.layout.simple_list_item_2, R.id.text1, info.txToParent.toArray) {
+        override def getView(position: Int, convertView: View, parentViewGroup: ViewGroup): View = {
+          val view: View = super.getView(position, convertView, parentViewGroup)
+          val text1 = view.findViewById(R.id.text1).asInstanceOf[TextView]
+          val text2 = view.findViewById(R.id.text2).asInstanceOf[TextView]
+
+          getItem(position) match {
+            case tx ~ _ if LNParams.blockCount.get == 0L =>
+              text1.setText(incoming(tx.txOut.head.amount.toMilliSatoshi).html)
+              text2.setText(inBlocks.head)
+
+            case tx ~ Some(at) =>
+              val blocksDone = LNParams.blockCount.get - at.blockHeight
+              val blocksLeft = math.max(Scripts.csvTimeouts(tx).values.head - blocksDone, 0L)
+              text2.setText(WalletApp.app.plurOrZero(inBlocks)(blocksLeft).html)
+              text1.setText(incoming(tx.txOut.head.amount.toMilliSatoshi).html)
+
+            case tx ~ None =>
+              val txCsvDelay = Scripts.csvTimeouts(tx).values.head
+              text1.setText(incoming(tx.txOut.head.amount.toMilliSatoshi).html)
+              text2.setText(inBlocks.last format txCsvDelay)
+          }
+
+          view
+        }
+      }
+
+      val title = getString(delayed_refunding).asDefView
+      val builder = titleBodyAsViewBuilder(title, list)
+      builder.setPositiveButton(dialog_ok, null).show
+      list.setDividerHeight(0)
+      list.setDivider(null)
     }
 
     def setVisibleIcon(id: Int): Unit = if (lastVisibleIconId != id) {
@@ -235,9 +278,11 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
         case info: RelayedPreimageInfo =>
           setVis(isVisible = false, labelIcon)
           setVis(isVisible = false, detailsAndStatus)
-          meta setText WalletApp.app.when(info.date, WalletApp.app.dateFormat).html
-          amount setText LNParams.denomination.directedWithSign(info.earned, 0L.msat, cardOut, cardIn, cardZero, isPlus = true).html
+
+          meta.setText(WalletApp.app.when(info.date, WalletApp.app.dateFormat).html)
           nonLinkContainer setBackgroundResource paymentBackground(info.fullTag)
+          amount.setText(incoming(info.earned).html)
+
           setVis(isVisible = true, nonLinkContainer)
           setVis(isVisible = false, linkContainer)
           setVisibleIcon(id = R.id.lnRouted)
@@ -246,10 +291,12 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
         case info: TxInfo =>
           setVis(isVisible = true, detailsAndStatus)
           setVis(info.description.label.isDefined, labelIcon)
-          amount setText LNParams.denomination.directedWithSign(info.receivedSat, info.sentSat, cardOut, cardIn, cardZero, info.isIncoming).html
-          nonLinkContainer setBackgroundResource R.drawable.border_gray
+
           statusIcon setImageResource txStatusIcon(info)
-          description setText txDescription(info).html
+          nonLinkContainer setBackgroundResource R.drawable.border_gray
+          amount.setText(LNParams.denomination.directedWithSign(info.receivedSat, info.sentSat, cardOut, cardIn, cardZero, info.isIncoming).html)
+          description.setText(txDescription(info).html)
+
           setVis(isVisible = true, nonLinkContainer)
           setVis(isVisible = false, linkContainer)
           setVis(isVisible = false, removeItem)
@@ -261,11 +308,13 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
         case info: PaymentInfo =>
           setVis(isVisible = true, detailsAndStatus)
           setVis(info.description.label.isDefined, labelIcon)
-          amount setText LNParams.denomination.directedWithSign(info.received, info.sent, cardOut, cardIn, cardZero, info.isIncoming).html
-          if (info.isIncoming) setIncomingPaymentMeta(info) else setOutgoingPaymentMeta(info)
-          nonLinkContainer setBackgroundResource paymentBackground(info.fullTag)
+
           statusIcon setImageResource paymentStatusIcon(info)
-          description setText paymentDescription(info).html
+          nonLinkContainer setBackgroundResource paymentBackground(info.fullTag)
+          if (info.isIncoming) setIncomingPaymentMeta(info) else setOutgoingPaymentMeta(info)
+          amount.setText(LNParams.denomination.directedWithSign(info.received, info.sent, cardOut, cardIn, cardZero, info.isIncoming).html)
+          description.setText(paymentDescription(info).html)
+
           setVis(isVisible = true, nonLinkContainer)
           setVis(isVisible = false, linkContainer)
           setVis(isVisible = true, removeItem)
@@ -276,13 +325,15 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
         case info: DelayedRefunds =>
           setVis(isVisible = false, labelIcon)
           setVis(isVisible = true, detailsAndStatus)
-          amount setText LNParams.denomination.directedWithSign(info.totalAmount, 0L.msat, cardIn, cardIn, cardZero, isPlus = true).html
+
           nonLinkContainer setBackgroundResource R.drawable.border_gray
           statusIcon setImageResource R.drawable.baseline_feedback_24
-          meta setText getString(delayed_pending).html
+          amount.setText(incoming(info.totalAmount).html)
+          meta.setText(getString(delayed_pending).html)
+
           setVis(isVisible = true, nonLinkContainer)
           setVis(isVisible = false, linkContainer)
-          description setText delayed_refund
+          description setText delayed_refunding
           setVisibleIcon(id = R.id.lnBtc)
           swipeWrap.setLockDrag(true)
 
@@ -308,10 +359,11 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
           swipeWrap.setLockDrag(false)
       }
 
-    private def marketLinkCaption(info: PayLinkInfo): String =
+    private def marketLinkCaption(info: PayLinkInfo): String = {
       if (info.meta.emails.nonEmpty) s"<b>email</b> ${info.meta.emails.head}"
       else if (info.meta.identities.nonEmpty) info.meta.identities.head
       else info.lnurl.uri.getHost
+    }
 
     // TX helpers
 
@@ -365,9 +417,11 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
       else meta setText valueHuman.getOrElse(pctCollected.head).html // Show either value collected so far or that we are still waiting
     }
 
-    private def setOutgoingPaymentMeta(info: PaymentInfo): Unit = lastInChannelOutgoing.getOrElse(info.fullTag, Nil).size match {
-      case activeParts if PaymentStatus.PENDING == info.status || activeParts > 0 => meta setText WalletApp.app.plurOrZero(partsInFlight)(activeParts).html
-      case _ => meta setText WalletApp.app.when(info.date, WalletApp.app.dateFormat).html // Payment has either succeeded or failed AND no leftovers
+    private def setOutgoingPaymentMeta(info: PaymentInfo): Unit = {
+      lastInChannelOutgoing.getOrElse(info.fullTag, Nil).size match {
+        case activeParts if PaymentStatus.PENDING == info.status || activeParts > 0 => meta setText WalletApp.app.plurOrZero(partsInFlight)(activeParts).html
+        case _ => meta setText WalletApp.app.when(info.date, WalletApp.app.dateFormat).html // Payment has either succeeded or failed AND no leftovers
+      }
     }
 
     private def setPaymentTypeIcon(info: PaymentInfo): Unit = {
@@ -811,7 +865,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
 
   def bringReceiveOptions(view: View): Unit = {
     val options = Array(dialog_receive_btc, dialog_receive_ln).map(getString).map(_.html)
-    val list = makeChoiceList(options, itemId = android.R.layout.simple_expandable_list_item_1)
+    val list = me selectorList new ArrayAdapter(me, android.R.layout.simple_list_item_1, options)
     new sheets.ChoiceBottomSheet(list, CHOICE_RECEIVE_TAG, me).show(getSupportFragmentManager, "unused-tag")
   }
 

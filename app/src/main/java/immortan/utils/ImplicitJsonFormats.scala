@@ -2,7 +2,6 @@ package immortan.utils
 
 import immortan._
 import spray.json._
-import immortan.wire.ExtCodecs._
 import fr.acinq.eclair.blockchain.fee._
 import fr.acinq.eclair.wire.CommonCodecs._
 import fr.acinq.eclair.wire.LightningMessageCodecs._
@@ -11,6 +10,7 @@ import fr.acinq.bitcoin.{ByteVector32, Satoshi}
 import immortan.utils.PayRequest.{AdditionalRoute, TagAndContent}
 import immortan.utils.FiatRates.{BitpayItemList, CoinGeckoItemMap}
 import fr.acinq.eclair.blockchain.electrum.db.{ChainWalletInfo, SigningWallet, WatchingWallet}
+import fr.acinq.eclair.wire.ChannelCodecs.extendedPublicKeyCodec
 import fr.acinq.bitcoin.DeterministicWallet.ExtendedPublicKey
 import fr.acinq.eclair.wire.ChannelUpdate
 import fr.acinq.bitcoin.Crypto.PublicKey

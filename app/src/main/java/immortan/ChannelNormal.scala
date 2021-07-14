@@ -9,7 +9,7 @@ import scala.concurrent.duration._
 import fr.acinq.eclair.blockchain._
 import com.softwaremill.quicklens._
 import fr.acinq.eclair.transactions._
-import fr.acinq.bitcoin.{ByteVector32, OutPoint, ScriptFlags, Transaction}
+import fr.acinq.bitcoin.{ByteVector32, ScriptFlags, Transaction}
 import fr.acinq.eclair.transactions.Transactions.TxOwner
 import fr.acinq.eclair.blockchain.fee.FeeratePerKw
 import fr.acinq.eclair.channel.Helpers.Closing
@@ -153,10 +153,10 @@ abstract class ChannelNormal(bag: ChannelBag) extends Channel { me =>
 
       case (wait: DATA_WAIT_FOR_FUNDING_CONFIRMED, event: WatchEventConfirmed, SLEEPING | WAIT_FUNDING_DONE) =>
         // Remote peer may send a tx which is unrelated to our agreed upon channel funding, that is, we won't be able to spend our commit tx, check this right away!
-        def correct: Unit = Transaction.correctlySpends(wait.commitments.localCommit.publishableTxs.commitTx.tx, Seq(event.tx), ScriptFlags.STANDARD_SCRIPT_VERIFY_FLAGS)
+        def correct: Unit = Transaction.correctlySpends(wait.commitments.localCommit.publishableTxs.commitTx.tx, Seq(event.txConfirmedAt.tx), ScriptFlags.STANDARD_SCRIPT_VERIFY_FLAGS)
 
         if (Try(correct).isFailure) StoreBecomeSend(DATA_CLOSING(wait.commitments, System.currentTimeMillis), CLOSING) else {
-          val shortChannelId = ShortChannelId(event.blockHeight, event.txIndex, wait.commitments.commitInput.outPoint.index.toInt)
+          val shortChannelId = ShortChannelId(event.txConfirmedAt.blockHeight, event.txIndex, wait.commitments.commitInput.outPoint.index.toInt)
           val fundingLocked = FundingLocked(nextPerCommitmentPoint = wait.commitments.localParams.keys.commitmentPoint(1L), channelId = wait.channelId)
           StoreBecomeSend(DATA_WAIT_FOR_FUNDING_LOCKED(wait.commitments, shortChannelId, fundingLocked), state, fundingLocked)
           wait.deferred.foreach(process)
@@ -553,25 +553,25 @@ abstract class ChannelNormal(bag: ChannelBag) extends Channel { me =>
 
 
       case (closing: DATA_CLOSING, event: WatchEventConfirmed, CLOSING) =>
-        val lcp1Opt = for (lcp <- closing.localCommitPublished) yield Closing.updateLocalCommitPublished(lcp, event.tx)
-        val rcp1Opt = for (rcp <- closing.remoteCommitPublished) yield Closing.updateRemoteCommitPublished(rcp, event.tx)
-        val fcp1Opt = for (fcp <- closing.futureRemoteCommitPublished) yield Closing.updateRemoteCommitPublished(fcp, event.tx)
-        val rcp1NextOpt = for (rcp <- closing.nextRemoteCommitPublished) yield Closing.updateRemoteCommitPublished(rcp, event.tx)
-        val revCp1Opt = for (revokedCp <- closing.revokedCommitPublished) yield Closing.updateRevokedCommitPublished(revokedCp, event.tx)
+        val lcp1Opt = for (lcp <- closing.localCommitPublished) yield Closing.updateLocalCommitPublished(lcp, event.txConfirmedAt)
+        val rcp1Opt = for (rcp <- closing.remoteCommitPublished) yield Closing.updateRemoteCommitPublished(rcp, event.txConfirmedAt)
+        val fcp1Opt = for (fcp <- closing.futureRemoteCommitPublished) yield Closing.updateRemoteCommitPublished(fcp, event.txConfirmedAt)
+        val rcp1NextOpt = for (rcp <- closing.nextRemoteCommitPublished) yield Closing.updateRemoteCommitPublished(rcp, event.txConfirmedAt)
+        val revCp1Opt = for (revokedCp <- closing.revokedCommitPublished) yield Closing.updateRevokedCommitPublished(revokedCp, event.txConfirmedAt)
 
         val closing1: DATA_CLOSING =
           DATA_CLOSING(closing.commitments, closing.waitingSince, closing.mutualCloseProposed,
             closing.mutualClosePublished, lcp1Opt, rcp1Opt, rcp1NextOpt, fcp1Opt, revCp1Opt)
 
         val isClosed: Boolean =
-          closing1.mutualClosePublished.contains(event.tx) || lcp1Opt.exists(Closing.isLocalCommitDone) ||
+          closing1.mutualClosePublished.contains(event.txConfirmedAt.tx) || lcp1Opt.exists(Closing.isLocalCommitDone) ||
             rcp1Opt.exists(Closing.isRemoteCommitDone) || rcp1NextOpt.exists(Closing.isRemoteCommitDone) ||
             revCp1Opt.exists(Closing.isRevokedCommitDone) || fcp1Opt.exists(Closing.isRemoteCommitDone)
 
-        val overRiddenHtlcs = Closing.overriddenOutgoingHtlcs(closing1, event.tx)
+        val overRiddenHtlcs = Closing.overriddenOutgoingHtlcs(closing1, event.txConfirmedAt.tx)
         val (timedOutHtlcs, isDustOutgoingHtlcs) = Closing.isClosingTypeAlreadyKnown(closing1) map {
-          case local: Closing.LocalClose => Closing.timedoutHtlcs(closing1.commitments, local.localCommit, local.localCommitPublished, event.tx)
-          case remote: Closing.RemoteClose => Closing.timedoutHtlcs(closing1.commitments, remote.remoteCommit, remote.remoteCommitPublished, event.tx)
+          case local: Closing.LocalClose => Closing.timedoutHtlcs(closing1.commitments, local.localCommit, local.localCommitPublished, event.txConfirmedAt.tx)
+          case remote: Closing.RemoteClose => Closing.timedoutHtlcs(closing1.commitments, remote.remoteCommit, remote.remoteCommitPublished, event.txConfirmedAt.tx)
           case _: Closing.MutualClose | _: Closing.RecoveryClose | _: Closing.RevokedClose => (Set.empty, false)
         } getOrElse (Set.empty, false)
 
@@ -579,9 +579,9 @@ abstract class ChannelNormal(bag: ChannelBag) extends Channel { me =>
         StoreBecomeSend(closing1.modify(_.commitments.postCloseOutgoingResolvedIds).using(_ ++ settledOutgoingHtlcIds), CLOSING)
         for (add <- overRiddenHtlcs ++ timedOutHtlcs) events addRejectedLocally InPrincipleNotSendable(localAdd = add)
 
-        Helpers.chainFeePaid(event.tx, closing1).foreach { chainFee =>
-          // This happens when we get a confimed (mutual|commit)-as-funder/timeout/success tx
-          bag.addChannelTxFee(chainFee, event.tx.txid.toHex, ChannelTxFeesTable.TAG_CHAIN_FEE)
+        Helpers.chainFeePaid(event.txConfirmedAt.tx, closing1).foreach { chainFee =>
+          // This happens when we get a confimed (mutual or commit)-as-funder/timeout/success tx
+          bag.addChannelTxFee(chainFee, event.txConfirmedAt.tx.txid.toHex, ChannelTxFeesTable.TAG_CHAIN_FEE)
         }
 
         if (isDustOutgoingHtlcs) bag.db txWrap {
@@ -768,36 +768,36 @@ abstract class ChannelNormal(bag: ChannelBag) extends Channel { me =>
     chainWallet.watcher ! PublishAsap(closingTx)
   }
 
-  private def publishIfNeeded(txes: Iterable[Transaction], irrevocablySpent: Map[OutPoint, ByteVector32] = Map.empty): Unit =
-    txes.filterNot(Closing inputsAlreadySpent irrevocablySpent).map(PublishAsap).foreach(event => chainWallet.watcher ! event)
+  private def publishIfNeeded(txes: Iterable[Transaction], fcc: ForceCloseCommitPublished): Unit =
+    txes.filterNot(fcc.isIrrevocablySpent).map(PublishAsap).foreach(event => chainWallet.watcher ! event)
 
   // Watch utxos only we can spend to get basically resolved
-  private def watchConfirmedIfNeeded(txes: Iterable[Transaction], irrevocablySpent: Map[OutPoint, ByteVector32] = Map.empty): Unit =
-    txes.filterNot(Closing inputsAlreadySpent irrevocablySpent).map(BITCOIN_TX_CONFIRMED).foreach { replyEvent =>
+  private def watchConfirmedIfNeeded(txes: Iterable[Transaction], fcc: ForceCloseCommitPublished): Unit =
+    txes.filterNot(fcc.isIrrevocablySpent).map(BITCOIN_TX_CONFIRMED).foreach { replyEvent =>
       chainWallet.watcher ! WatchConfirmed(receiver, replyEvent.tx, replyEvent, minDepth = 1L)
     }
 
   // Watch utxos that both we and peer can spend to get triggered (spent, but not confirmed yet)
-  private def watchSpentIfNeeded(parentTx: Transaction, txes: Iterable[Transaction], irrevocablySpent: Map[OutPoint, ByteVector32] = Map.empty): Unit =
-    txes.filterNot(Closing inputsAlreadySpent irrevocablySpent).map(_.txIn.head.outPoint.index.toInt).foreach { outPointIndex =>
+  private def watchSpentIfNeeded(parentTx: Transaction, txes: Iterable[Transaction], fcc: ForceCloseCommitPublished): Unit =
+    txes.filterNot(fcc.isIrrevocablySpent).map(_.txIn.head.outPoint.index.toInt).foreach { outPointIndex =>
       chainWallet.watcher ! WatchSpent(receiver, parentTx, outPointIndex, BITCOIN_OUTPUT_SPENT)
     }
 
   private def doPublish(lcp: LocalCommitPublished): Unit = {
-    publishIfNeeded(List(lcp.commitTx) ++ lcp.claimMainDelayedOutputTx ++ lcp.htlcSuccessTxs ++ lcp.htlcTimeoutTxs ++ lcp.claimHtlcDelayedTxs, lcp.irrevocablySpent)
-    watchConfirmedIfNeeded(List(lcp.commitTx) ++ lcp.claimMainDelayedOutputTx ++ lcp.claimHtlcDelayedTxs, lcp.irrevocablySpent)
-    watchSpentIfNeeded(lcp.commitTx, lcp.htlcSuccessTxs ++ lcp.htlcTimeoutTxs, lcp.irrevocablySpent)
+    publishIfNeeded(List(lcp.commitTx) ++ lcp.claimMainDelayedOutputTx ++ lcp.htlcSuccessTxs ++ lcp.htlcTimeoutTxs ++ lcp.claimHtlcDelayedTxs, lcp)
+    watchConfirmedIfNeeded(List(lcp.commitTx) ++ lcp.claimMainDelayedOutputTx ++ lcp.claimHtlcDelayedTxs, lcp)
+    watchSpentIfNeeded(lcp.commitTx, lcp.htlcSuccessTxs ++ lcp.htlcTimeoutTxs, lcp)
   }
 
   private def doPublish(rcp: RemoteCommitPublished): Unit = {
-    publishIfNeeded(rcp.claimMainOutputTx ++ rcp.claimHtlcSuccessTxs ++ rcp.claimHtlcTimeoutTxs, rcp.irrevocablySpent)
-    watchSpentIfNeeded(rcp.commitTx, rcp.claimHtlcTimeoutTxs ++ rcp.claimHtlcSuccessTxs, rcp.irrevocablySpent)
-    watchConfirmedIfNeeded(List(rcp.commitTx) ++ rcp.claimMainOutputTx, rcp.irrevocablySpent)
+    publishIfNeeded(rcp.claimMainOutputTx ++ rcp.claimHtlcSuccessTxs ++ rcp.claimHtlcTimeoutTxs, rcp)
+    watchSpentIfNeeded(rcp.commitTx, rcp.claimHtlcTimeoutTxs ++ rcp.claimHtlcSuccessTxs, rcp)
+    watchConfirmedIfNeeded(List(rcp.commitTx) ++ rcp.claimMainOutputTx, rcp)
   }
 
   private def doPublish(rcp: RevokedCommitPublished): Unit = {
-    publishIfNeeded(rcp.claimMainOutputTx ++ rcp.mainPenaltyTx ++ rcp.htlcPenaltyTxs ++ rcp.claimHtlcDelayedPenaltyTxs, rcp.irrevocablySpent)
-    watchSpentIfNeeded(rcp.commitTx, rcp.mainPenaltyTx ++ rcp.htlcPenaltyTxs, rcp.irrevocablySpent)
-    watchConfirmedIfNeeded(List(rcp.commitTx) ++ rcp.claimMainOutputTx, rcp.irrevocablySpent)
+    publishIfNeeded(rcp.claimMainOutputTx ++ rcp.mainPenaltyTx ++ rcp.htlcPenaltyTxs ++ rcp.claimHtlcDelayedPenaltyTxs, rcp)
+    watchSpentIfNeeded(rcp.commitTx, rcp.mainPenaltyTx ++ rcp.htlcPenaltyTxs, rcp)
+    watchConfirmedIfNeeded(List(rcp.commitTx) ++ rcp.claimMainOutputTx, rcp)
   }
 }

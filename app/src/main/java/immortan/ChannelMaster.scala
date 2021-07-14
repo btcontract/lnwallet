@@ -9,13 +9,15 @@ import immortan.PaymentStatus._
 import immortan.ChannelMaster._
 import fr.acinq.eclair.channel._
 import scala.concurrent.duration._
+
 import immortan.utils.{PaymentRequestExt, Rx}
+import fr.acinq.bitcoin.{ByteVector32, Crypto}
 import fr.acinq.bitcoin.Crypto.{PrivateKey, PublicKey}
 import immortan.ChannelListener.{Malfunction, Transition}
-import fr.acinq.bitcoin.{ByteVector32, Crypto, Transaction}
 import fr.acinq.eclair.payment.{IncomingPacket, PaymentRequest}
 import fr.acinq.eclair.transactions.{LocalFulfill, RemoteFulfill, RemoteReject}
 import immortan.fsm.OutgoingPaymentMaster.CMDChanGotOnline
+import fr.acinq.eclair.blockchain.TxConfirmedAt
 import fr.acinq.eclair.router.RouteCalculation
 import java.util.concurrent.atomic.AtomicLong
 import com.google.common.cache.LoadingCache
@@ -28,6 +30,7 @@ object ChannelMaster {
   type PreimageTry = Try[ByteVector32]
   type PaymentInfoTry = Try[PaymentInfo]
   type RevealedLocalFulfills = Iterable[LocalFulfill]
+  type TxConfirmedAtOpt = Option[TxConfirmedAt]
 
   type OutgoingAdds = Iterable[UpdateAddHtlc]
   type ReasonableResolutions = Iterable[ReasonableResolution]
@@ -122,8 +125,12 @@ class ChannelMaster(val payBag: PaymentBag, val chanBag: ChannelBag, val dataBag
   }
 
   val opm: OutgoingPaymentMaster = new OutgoingPaymentMaster(me)
-  var inProcessors = Map.empty[FullPaymentTag, IncomingPaymentProcessor]
+
   var all = Map.empty[ByteVector32, Channel]
+
+  var sendTo: (Any, ByteVector32) => Unit = (change, channelId) => all.get(channelId).foreach(_ process change)
+
+  var inProcessors = Map.empty[FullPaymentTag, IncomingPaymentProcessor]
 
   // CONNECTION LISTENER
 
@@ -185,8 +192,6 @@ class ChannelMaster(val payBag: PaymentBag, val chanBag: ChannelBag, val dataBag
 
   def allIncomingRevealed: Map[ByteVector32, RevealedLocalFulfills] = all.values.flatMap(Channel.chanAndCommitsOpt).flatMap(_.commits.revealedFulfills).groupBy(_.theirAdd.paymentHash)
 
-  def allDelayedRefundsLeft: Iterable[Transaction] = all.values.map(_.data).collect { case c: DATA_CLOSING => c.forceCloseCommitPublished }.flatten.flatMap(_.delayedRefundsLeft)
-
   def allHosted: Iterable[ChannelHosted] = all.values.collect { case chan: ChannelHosted => chan }
 
   def allNormal: Iterable[ChannelNormal] = all.values.collect { case chan: ChannelNormal => chan }
@@ -195,7 +200,18 @@ class ChannelMaster(val payBag: PaymentBag, val chanBag: ChannelBag, val dataBag
 
   def allFromNode(nodeId: PublicKey): Iterable[ChanAndCommits] = all.values.flatMap(Channel.chanAndCommitsOpt).filter(_.commits.remoteInfo.nodeId == nodeId)
 
-  var sendTo: (Any, ByteVector32) => Unit = (change, channelId) => all.get(channelId).foreach(_ process change)
+  def delayedRefunds: DelayedRefunds = {
+    val commitsPublished = all.values.map(_.data).collect { case closingData: DATA_CLOSING => closingData.forceCloseCommitPublished }.flatten
+    val spentParents = commitsPublished.flatMap(_.irrevocablySpent.values).map(confirmedAt => confirmedAt.tx.txid -> confirmedAt).toMap
+
+    val result = for {
+      fcp <- commitsPublished
+      delayedTx <- fcp.delayedRefundsLeft
+      parentTxid <- delayedTx.txIn.map(_.outPoint.txid)
+      parentHeight = spentParents.get(parentTxid)
+    } yield (delayedTx, parentHeight)
+    DelayedRefunds(result.toMap)
+  }
 
   // RECEIVE/SEND UTILITIES
 

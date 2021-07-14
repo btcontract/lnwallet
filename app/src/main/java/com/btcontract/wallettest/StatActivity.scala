@@ -25,6 +25,7 @@ import androidx.cardview.widget.CardView
 import com.ornach.nobobutton.NoboButton
 import rx.lang.scala.Subscription
 import immortan.wire.HostedState
+import android.text.Spanned
 import android.os.Bundle
 
 
@@ -33,8 +34,8 @@ class StatActivity extends BaseActivity with ChoiceReceiver with HasTypicalChain
   private[this] lazy val chanList = findViewById(R.id.chanList).asInstanceOf[ListView]
 
   private[this] lazy val brandingInfos = WalletApp.txDataBag.db.txWrap(getBrandingInfos.toMap)
-  private[this] lazy val normalChanActions = getResources.getStringArray(R.array.ln_normal_chan_actions)
-  private[this] lazy val hostedChanActions = getResources.getStringArray(R.array.ln_hosted_chan_actions)
+  private[this] lazy val normalChanActions = getResources.getStringArray(R.array.ln_normal_chan_actions).map(_.html)
+  private[this] lazy val hostedChanActions = getResources.getStringArray(R.array.ln_hosted_chan_actions).map(_.html)
   private[this] var updateSubscription = Option.empty[Subscription]
   private[this] var csToDisplay = Seq.empty[ChanAndCommits]
 
@@ -136,7 +137,6 @@ class StatActivity extends BaseActivity with ChoiceReceiver with HasTypicalChain
         def proceed: Unit = chan process CMD_CLOSE(None, force = true)
         val builder = confirmationBuilder(cs, getString(confirm_ln_normal_chan_force_close).html)
         mkCheckForm(alert => runAnd(alert.dismiss)(proceed), none, builder, dialog_ok, dialog_cancel)
-        swipeWrap.close(true)
       }
 
       setVis(isVisible = false, hcBranding)
@@ -375,8 +375,8 @@ class StatActivity extends BaseActivity with ChoiceReceiver with HasTypicalChain
     chanAdapter.notifyDataSetChanged
   }
 
-  def bringChanOptions(options: Array[String], cs: Commitments): View.OnClickListener = onButtonTap {
-    val allOptions = makeChoiceList(options.map(_.html), android.R.layout.simple_expandable_list_item_1)
-    new sheets.ChoiceBottomSheet(allOptions, cs, me).show(getSupportFragmentManager, "unused-tag")
+  def bringChanOptions(options: Array[Spanned], cs: Commitments): View.OnClickListener = onButtonTap {
+    val list = me selectorList new ArrayAdapter(me, android.R.layout.simple_list_item_1, options)
+    new sheets.ChoiceBottomSheet(list, cs, me).show(getSupportFragmentManager, "unused-tag")
   }
 }

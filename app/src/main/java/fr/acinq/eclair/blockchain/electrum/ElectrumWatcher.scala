@@ -68,13 +68,6 @@ class ElectrumWatcher(blockCount: AtomicLong, client: ActorRef) extends Actor wi
       context.watch(watch.replyTo)
       context become running(height, tip, watches + watch, scriptHashStatus, block2tx, sent)
 
-    case watch@WatchSpentBasic(_, txid, outputIndex, publicKeyScript, _) =>
-      val scriptHash = computeScriptHash(publicKeyScript)
-      log.info(s"added watch-spent-basic on output=$txid:$outputIndex scriptHash=$scriptHash")
-      client ! ElectrumClient.ScriptHashSubscription(scriptHash, self)
-      context.watch(watch.replyTo)
-      context become running(height, tip, watches + watch, scriptHashStatus, block2tx, sent)
-
     case watch@WatchConfirmed(_, txid, publicKeyScript, _, _) =>
       val scriptHash = computeScriptHash(publicKeyScript)
       log.info(s"added watch-confirmed on txid=$txid scriptHash=$scriptHash")
@@ -105,15 +98,11 @@ class ElectrumWatcher(blockCount: AtomicLong, client: ActorRef) extends Actor wi
       // this is for WatchSpent/WatchSpentBasic
       val watchSpentTriggered = tx.txIn.map(_.outPoint).flatMap(outPoint => watches.collect {
         case WatchSpent(channel, txid, pos, _, event, _) if txid == outPoint.txid && pos == outPoint.index.toInt =>
-          log.info(s"output $txid:$pos spent by transaction ${tx.txid}")
-          channel ! WatchEventSpent(event, tx)
           // NB: WatchSpent are permanent because we need to detect multiple spending of the funding tx
           // They are never cleaned up but it is not a big deal for now (1 channel == 1 watch)
-          None
-        case w@WatchSpentBasic(channel, txid, pos, _, event) if txid == outPoint.txid && pos == outPoint.index.toInt =>
           log.info(s"output $txid:$pos spent by transaction ${tx.txid}")
-          channel ! WatchEventSpentBasic(event)
-          Some(w)
+          channel ! WatchEventSpent(event, tx)
+          None
       }).flatten
 
       // this is for WatchConfirmed
@@ -121,7 +110,7 @@ class ElectrumWatcher(blockCount: AtomicLong, client: ActorRef) extends Actor wi
         case w@WatchConfirmed(channel, txid, _, minDepth, BITCOIN_FUNDING_DEPTHOK) if txid == tx.txid && minDepth == 0 =>
           // special case for mempool watches (min depth = 0)
           val (dummyHeight, dummyTxIndex) = ElectrumWatcher.makeDummyShortChannelId(txid)
-          channel ! WatchEventConfirmed(BITCOIN_FUNDING_DEPTHOK, dummyHeight, dummyTxIndex, tx)
+          channel ! WatchEventConfirmed(BITCOIN_FUNDING_DEPTHOK, TxConfirmedAt(dummyHeight, tx), dummyTxIndex)
           Some(w)
         case WatchConfirmed(_, txid, _, minDepth, _) if txid == tx.txid && minDepth > 0 && item.height > 0 =>
           // min depth > 0 here
@@ -142,7 +131,7 @@ class ElectrumWatcher(blockCount: AtomicLong, client: ActorRef) extends Actor wi
       val triggered = watches.collect {
         case w@WatchConfirmed(channel, txid, _, minDepth, event) if txid == tx_hash && confirmations >= minDepth =>
           log.info(s"txid=$txid had confirmations=$confirmations in block=$txheight pos=$pos")
-          channel ! WatchEventConfirmed(event, txheight.toInt, pos, tx)
+          channel ! WatchEventConfirmed(event, TxConfirmedAt(txheight.toInt, tx), pos)
           w
       }
       context become running(height, tip, watches -- triggered, scriptHashStatus, block2tx, sent)
@@ -174,13 +163,13 @@ class ElectrumWatcher(blockCount: AtomicLong, client: ActorRef) extends Actor wi
         context become running(height, tip, watches, scriptHashStatus, block2tx, sent :+ tx)
       }
 
-    case WatchEventConfirmed(BITCOIN_PARENT_TX_CONFIRMED(tx), blockHeight, _, _) =>
+    case WatchEventConfirmed(BITCOIN_PARENT_TX_CONFIRMED(tx), _, _) =>
       log.info(s"parent tx of txid=${tx.txid} has been confirmed")
       val blockCount = this.blockCount.get()
       val cltvTimeout = Scripts.cltvTimeout(tx)
       if (cltvTimeout > blockCount) {
         log.info(s"delaying publication of txid=${tx.txid} until block=$cltvTimeout (curblock=$blockCount)")
-        val block2tx1 = block2tx.updated(cltvTimeout, block2tx.getOrElse(cltvTimeout, Seq.empty[Transaction]) :+ tx)
+        val block2tx1 = block2tx.updated(cltvTimeout, block2tx.getOrElse(cltvTimeout, Seq.empty) :+ tx)
         context become running(height, tip, watches, scriptHashStatus, block2tx1, sent)
       } else {
         publish(tx)
@@ -202,28 +191,14 @@ class ElectrumWatcher(blockCount: AtomicLong, client: ActorRef) extends Actor wi
   }
 
   def publish(tx: Transaction): Unit = {
-    log.info("publishing tx={}", tx)
     client ! ElectrumClient.BroadcastTransaction(tx)
   }
-
 }
 
 object ElectrumWatcher {
-  /**
-   * @param txid funding transaction id
-   * @return a (blockHeight, txIndex) tuple that is extracted from the input source
-   *         This is used to create unique "dummy" short channel ids for zero-conf channels
-   */
+  // A (blockHeight, txIndex) tuple that is extracted from the input source
   def makeDummyShortChannelId(txid: ByteVector32): (Int, Int) = {
-    // we use a height of 0
-    // - to make sure that the tx will be marked as "confirmed"
-    // - to easily identify scids linked to 0-conf channels
-    //
-    // this gives us a probability of collisions of 0.1% for 5 0-conf channels and 1% for 20
-    // collisions mean that users may temporarily see incorrect numbers for their 0-conf channels (until they've been confirmed)
-    // if this ever becomes a problem we could just extract some bits for our dummy height instead of just returning 0
-    val height = 0
     val txIndex = txid.bits.sliceToInt(0, 16, signed = false)
-    (height, txIndex)
+    (0, txIndex)
   }
 }

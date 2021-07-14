@@ -1,19 +1,3 @@
-/*
- * Copyright 2019 ACINQ SAS
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
-
 package fr.acinq.eclair.wire
 
 import scodec.codecs._
@@ -22,24 +6,20 @@ import fr.acinq.eclair.transactions._
 import fr.acinq.eclair.wire.CommonCodecs._
 import fr.acinq.eclair.transactions.Transactions._
 import fr.acinq.eclair.wire.LightningMessageCodecs._
+import fr.acinq.eclair.blockchain.TxConfirmedAt
 import fr.acinq.eclair.crypto.ShaChain
 
-import fr.acinq.bitcoin.DeterministicWallet.{ExtendedPrivateKey, KeyPath}
-import fr.acinq.bitcoin.{ByteVector32, OutPoint, Transaction, TxOut}
+import fr.acinq.bitcoin.DeterministicWallet.{ExtendedPrivateKey, ExtendedPublicKey, KeyPath}
+import fr.acinq.bitcoin.{OutPoint, Transaction, TxOut}
 import immortan.{HostedCommits, RemoteNodeInfo}
 import scodec.{Attempt, Codec}
 
-/**
- * Created by PM on 02/06/2017.
- */
-object ChannelCodecs {
 
-  /**
-   * All LN protocol message must be stored as length-delimited, because they may have arbitrary trailing data
-   */
+object ChannelCodecs {
+  // All LN protocol message must be stored as length-delimited, because they may have arbitrary trailing data
   def lengthDelimited[T](codec: Codec[T]): Codec[T] = variableSizeBytesLong(varintoverflow, codec)
 
-  val keyPathCodec = ("path" | listOfN(uint16, uint32)).xmap[KeyPath](l => new KeyPath(l), _.path.toList).as[KeyPath]
+  val keyPathCodec = (listOfN(uint16, uint32) withContext "path").xmap[KeyPath](KeyPath.apply, _.path.toList).as[KeyPath]
 
   val extendedPrivateKeyCodec = {
     ("secretkeybytes" | bytes32) ::
@@ -48,6 +28,14 @@ object ChannelCodecs {
       ("path" | keyPathCodec) ::
       ("parent" | int64)
   }.as[ExtendedPrivateKey]
+
+  val extendedPublicKeyCodec = {
+    ("publickeybytes" | varsizebinarydata) ::
+      ("chaincode" | bytes32) ::
+      ("depth" | uint16) ::
+      ("path" | keyPathCodec) ::
+      ("parent" | int64)
+  }.as[ExtendedPublicKey]
 
   val channelVersionCodec: Codec[ChannelVersion] = bits(ChannelVersion.LENGTH_BITS).as[ChannelVersion]
 
@@ -144,8 +132,6 @@ object ChannelCodecs {
       ("sentAfterLocalCommitIndex" | uint64overflow)
   }.as[WaitingForRevocation]
 
-  val spentMapCodec = mapCodec(outPointCodec, bytes32)
-
   val channelKeysCodec = {
     ("path" | keyPathCodec) ::
       ("shaSeed" | bytes32) ::
@@ -211,42 +197,49 @@ object ChannelCodecs {
   }.as[NormalCommits]
 
   val closingTxProposedCodec = {
-    ("unsignedTx" | txCodec) ::
-      ("localClosingSigned" | lengthDelimited(closingSignedCodec))
+    (txCodec withContext "unsignedTx") ::
+      (lengthDelimited(closingSignedCodec) withContext "localClosingSigned")
   }.as[ClosingTxProposed]
 
+  val txConfirmedAtCodec = {
+    (uint24 withContext "blockHeight") ::
+      (txCodec withContext "tx")
+  }.as[TxConfirmedAt]
+
+  val spentMapCodec = mapCodec(outPointCodec, txConfirmedAtCodec)
+
   val localCommitPublishedCodec = {
-    ("commitTx" | txCodec) ::
-      ("claimMainDelayedOutputTx" | optional(bool8, txCodec)) ::
-      ("htlcSuccessTxs" | listOfN(uint16, txCodec)) ::
-      ("htlcTimeoutTxs" | listOfN(uint16, txCodec)) ::
-      ("claimHtlcDelayedTx" | listOfN(uint16, txCodec)) ::
-      ("spent" | spentMapCodec)
+    (txCodec withContext "commitTx") ::
+      (optional(bool8, txCodec) withContext "claimMainDelayedOutputTx") ::
+      (listOfN(uint16, txCodec) withContext "htlcSuccessTxs") ::
+      (listOfN(uint16, txCodec) withContext "htlcTimeoutTxs") ::
+      (listOfN(uint16, txCodec) withContext "claimHtlcDelayedTx") ::
+      (spentMapCodec withContext "irrevocablySpent")
   }.as[LocalCommitPublished]
 
   val remoteCommitPublishedCodec = {
-    ("commitTx" | txCodec) ::
-      ("claimMainOutputTx" | optional(bool8, txCodec)) ::
-      ("claimHtlcSuccessTxs" | listOfN(uint16, txCodec)) ::
-      ("claimHtlcTimeoutTxs" | listOfN(uint16, txCodec)) ::
-      ("spent" | spentMapCodec)
+    (txCodec withContext "commitTx") ::
+      (optional(bool8, txCodec) withContext "claimMainOutputTx") ::
+      (listOfN(uint16, txCodec) withContext "claimHtlcSuccessTxs") ::
+      (listOfN(uint16, txCodec) withContext "claimHtlcTimeoutTxs") ::
+      (spentMapCodec withContext "irrevocablySpent")
   }.as[RemoteCommitPublished]
 
   val revokedCommitPublishedCodec = {
-    ("commitTx" | txCodec) ::
-      ("claimMainOutputTx" | optional(bool8, txCodec)) ::
-      ("mainPenaltyTx" | optional(bool8, txCodec)) ::
-      ("htlcPenaltyTxs" | listOfN(uint16, txCodec)) ::
-      ("claimHtlcDelayedPenaltyTxs" | listOfN(uint16, txCodec)) ::
-      ("spent" | spentMapCodec)
+    (txCodec withContext "commitTx") ::
+      (optional(bool8, txCodec) withContext "claimMainOutputTx") ::
+      (optional(bool8, txCodec) withContext "mainPenaltyTx") ::
+      (listOfN(uint16, txCodec) withContext "htlcPenaltyTxs") ::
+      (listOfN(uint16, txCodec) withContext "claimHtlcDelayedPenaltyTxs") ::
+      (spentMapCodec withContext "irrevocablySpent")
   }.as[RevokedCommitPublished]
 
   val DATA_WAIT_FOR_FUNDING_CONFIRMED_Codec = {
-    ("commitments" | commitmentsCodec) ::
-      ("fundingTx" | optional(bool8, txCodec)) ::
-      ("waitingSince" | int64) ::
-      ("lastSent" | either(bool8, lengthDelimited(fundingCreatedCodec), lengthDelimited(fundingSignedCodec))) ::
-      ("deferred" | optional(bool8, lengthDelimited(fundingLockedCodec)))
+    (commitmentsCodec withContext "commitments") ::
+      (optional(bool8, txCodec) withContext "fundingTx") ::
+      (int64 withContext "waitingSince") ::
+      (either(bool8, lengthDelimited(fundingCreatedCodec), lengthDelimited(fundingSignedCodec)) withContext "lastSent") ::
+      (optional(bool8, lengthDelimited(fundingLockedCodec)) withContext "deferred")
   }.as[DATA_WAIT_FOR_FUNDING_CONFIRMED]
 
   val DATA_WAIT_FOR_FUNDING_LOCKED_Codec = {

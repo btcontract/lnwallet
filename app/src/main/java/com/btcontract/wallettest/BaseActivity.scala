@@ -20,8 +20,7 @@ import immortan.utils.{Denomination, InputParser, PaymentRequestExt}
 import fr.acinq.eclair.blockchain.fee.{FeeratePerKw, FeeratePerVByte}
 import immortan.crypto.Tools.{Any2Some, Fiat2Btc, none, runAnd, trimmed}
 import com.google.android.material.snackbar.{BaseTransientBottomBar, Snackbar}
-import android.widget.{ArrayAdapter, Button, EditText, ImageView, LinearLayout, ListView, TextView}
-
+import android.widget.{Button, EditText, ImageView, LinearLayout, ListAdapter, ListView, TextView}
 import com.cottacush.android.currencyedittext.CurrencyEditText
 import com.google.android.material.textfield.TextInputLayout
 import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
@@ -177,13 +176,13 @@ trait BaseActivity extends AppCompatActivity { me =>
     new TimerTask { def run: Unit = me runOnUiThread runnableExec }
   }
 
-  // Builders
-
-  def makeChoiceList[T <: Object](actions: Array[T], itemId: Int = android.R.layout.simple_list_item_1): ListView = {
+  def selectorList(listAdapter: ListAdapter): ListView = {
     val list = getLayoutInflater.inflate(R.layout.frag_selector_list, null).asInstanceOf[ListView]
-    list setAdapter new ArrayAdapter(me, itemId, actions)
+    list.setAdapter(listAdapter)
     list
   }
+
+  // Builders
 
   def clickableTextField(view: View): TextView = {
     val field: TextView = view.asInstanceOf[TextView]

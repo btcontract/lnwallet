@@ -60,10 +60,9 @@ trait Commitments {
 }
 
 case class NormalCommits(channelFlags: Byte, channelId: ByteVector32, channelVersion: ChannelVersion, remoteNextCommitInfo: Either[WaitingForRevocation, PublicKey],
-                         remotePerCommitmentSecrets: ShaChain, updateOpt: Option[ChannelUpdate], postCloseOutgoingResolvedIds: Set[Long], remoteInfo: RemoteNodeInfo,
-                         localParams: LocalParams, remoteParams: RemoteParams, localCommit: LocalCommit, remoteCommit: RemoteCommit, localChanges: LocalChanges,
-                         remoteChanges: RemoteChanges, localNextHtlcId: Long, remoteNextHtlcId: Long, commitInput: InputInfo,
-                         startedAt: Long = System.currentTimeMillis) extends Commitments { me =>
+                         remotePerCommitmentSecrets: ShaChain, updateOpt: Option[ChannelUpdate], postCloseOutgoingResolvedIds: Set[Long], remoteInfo: RemoteNodeInfo, localParams: LocalParams,
+                         remoteParams: RemoteParams, localCommit: LocalCommit, remoteCommit: RemoteCommit, localChanges: LocalChanges, remoteChanges: RemoteChanges, localNextHtlcId: Long,
+                         remoteNextHtlcId: Long, commitInput: InputInfo, startedAt: Long = System.currentTimeMillis) extends Commitments { me =>
 
   val minSendable: MilliSatoshi = remoteParams.htlcMinimum.max(localParams.htlcMinimum)
 

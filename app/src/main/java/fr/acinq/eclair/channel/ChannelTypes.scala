@@ -6,12 +6,12 @@ import fr.acinq.bitcoin._
 import fr.acinq.eclair.wire._
 import fr.acinq.bitcoin.DeterministicWallet._
 import fr.acinq.eclair.transactions.Transactions._
+import fr.acinq.eclair.blockchain.{MakeFundingTxResponse, TxConfirmedAt}
 import fr.acinq.eclair.transactions.{CommitmentSpec, Transactions}
 import fr.acinq.bitcoin.Crypto.{PrivateKey, PublicKey}
 import scodec.bits.{BitVector, ByteVector}
 import immortan.{LNParams, RemoteNodeInfo}
 
-import fr.acinq.eclair.blockchain.MakeFundingTxResponse
 import fr.acinq.eclair.crypto.Sphinx.PacketAndSecrets
 import fr.acinq.eclair.blockchain.fee.FeeratePerKw
 import fr.acinq.eclair.wire.Onion.FinalPayload
@@ -113,30 +113,30 @@ sealed trait HasNormalCommitments extends PersistentChannelData {
 case class ClosingTxProposed(unsignedTx: Transaction, localClosingSigned: ClosingSigned)
 
 sealed trait ForceCloseCommitPublished {
-  lazy val irrevocablySpentTxIds: Set[ByteVector32] = irrevocablySpent.values.toSet
-  lazy val isCommitConfirmed: Boolean = irrevocablySpentTxIds contains commitTx.txid
-
-  val irrevocablySpent: Map[OutPoint, ByteVector32]
+  def isIrrevocablySpent(tx: Transaction): Boolean = irrevocablySpent.values.exists(_.tx.txid == tx.txid)
+  lazy val isCommitConfirmed: Boolean = isIrrevocablySpent(commitTx)
+  val irrevocablySpent: Map[OutPoint, TxConfirmedAt]
   val delayedRefundsLeft: Seq[Transaction]
   val commitTx: Transaction
 }
 
 case class LocalCommitPublished(commitTx: Transaction, claimMainDelayedOutputTx: Option[Transaction], htlcSuccessTxs: List[Transaction], htlcTimeoutTxs: List[Transaction],
-                                claimHtlcDelayedTxs: List[Transaction], irrevocablySpent: Map[OutPoint, ByteVector32] = Map.empty) extends ForceCloseCommitPublished {
+                                claimHtlcDelayedTxs: List[Transaction], irrevocablySpent: Map[OutPoint, TxConfirmedAt] = Map.empty) extends ForceCloseCommitPublished {
 
-  lazy val delayedRefundsLeft: Seq[Transaction] = (claimMainDelayedOutputTx.toList ++ claimHtlcDelayedTxs).filterNot(delayTx => irrevocablySpentTxIds contains delayTx.txid)
+  lazy val delayedRefundsLeft: Seq[Transaction] = (claimMainDelayedOutputTx.toList ++ claimHtlcDelayedTxs).filterNot(isIrrevocablySpent)
 }
 
-case class RemoteCommitPublished(commitTx: Transaction, claimMainOutputTx: Option[Transaction], claimHtlcSuccessTxs: List[Transaction],
-                                 claimHtlcTimeoutTxs: List[Transaction], irrevocablySpent: Map[OutPoint, ByteVector32] = Map.empty) extends ForceCloseCommitPublished {
+case class RemoteCommitPublished(commitTx: Transaction,
+                                 claimMainOutputTx: Option[Transaction], claimHtlcSuccessTxs: List[Transaction], claimHtlcTimeoutTxs: List[Transaction],
+                                 irrevocablySpent: Map[OutPoint, TxConfirmedAt] = Map.empty) extends ForceCloseCommitPublished {
 
-  lazy val delayedRefundsLeft: Seq[Transaction] = claimHtlcTimeoutTxs.filterNot(delayTx => irrevocablySpentTxIds contains delayTx.txid)
+  lazy val delayedRefundsLeft: Seq[Transaction] = claimHtlcTimeoutTxs.filterNot(isIrrevocablySpent)
 }
 
 case class RevokedCommitPublished(commitTx: Transaction, claimMainOutputTx: Option[Transaction], mainPenaltyTx: Option[Transaction], htlcPenaltyTxs: List[Transaction],
-                                  claimHtlcDelayedPenaltyTxs: List[Transaction], irrevocablySpent: Map[OutPoint, ByteVector32] = Map.empty) extends ForceCloseCommitPublished {
+                                  claimHtlcDelayedPenaltyTxs: List[Transaction], irrevocablySpent: Map[OutPoint, TxConfirmedAt] = Map.empty) extends ForceCloseCommitPublished {
 
-  lazy val delayedRefundsLeft: Seq[Transaction] = claimHtlcDelayedPenaltyTxs.filterNot(delayTx => irrevocablySpentTxIds contains delayTx.txid)
+  lazy val delayedRefundsLeft: Seq[Transaction] = claimHtlcDelayedPenaltyTxs.filterNot(isIrrevocablySpent)
 
   lazy val penaltyTxs: Seq[Transaction] = claimMainOutputTx.toList ++ mainPenaltyTx.toList ++ htlcPenaltyTxs ++ claimHtlcDelayedPenaltyTxs
 }
@@ -182,14 +182,14 @@ final case class DATA_CLOSING(commitments: NormalCommits, waitingSince: Long, mu
     remoteCommitPublished.toList.flatMap(rcp => rcp.commitTx +: rcp.claimMainOutputTx.toList) ++
       nextRemoteCommitPublished.toList.flatMap(rcp => rcp.commitTx +: rcp.claimMainOutputTx.toList) ++
       futureRemoteCommitPublished.toList.flatMap(rcp => rcp.commitTx +: rcp.claimMainOutputTx.toList) ++
-      localCommitPublished.toList.flatMap(_.claimMainDelayedOutputTx) ++
+      localCommitPublished.toList.flatMap(lcp => lcp.commitTx +: lcp.claimMainDelayedOutputTx.toList) ++
       mutualCloseProposed ++ mutualClosePublished
 
   lazy val paymentLeftoverRefunds: Seq[Transaction] =
     // Txs which are involved in getting our success/timeout HTLC UTXOs back
     remoteCommitPublished.toList.flatMap(rcp => rcp.claimHtlcSuccessTxs ++ rcp.claimHtlcTimeoutTxs) ++
-    nextRemoteCommitPublished.toList.flatMap(rcp => rcp.claimHtlcSuccessTxs ++ rcp.claimHtlcTimeoutTxs) ++
-    futureRemoteCommitPublished.toList.flatMap(rcp => rcp.claimHtlcSuccessTxs ++ rcp.claimHtlcTimeoutTxs) ++
+      nextRemoteCommitPublished.toList.flatMap(rcp => rcp.claimHtlcSuccessTxs ++ rcp.claimHtlcTimeoutTxs) ++
+      futureRemoteCommitPublished.toList.flatMap(rcp => rcp.claimHtlcSuccessTxs ++ rcp.claimHtlcTimeoutTxs) ++
       localCommitPublished.toList.flatMap(lcp => lcp.claimHtlcDelayedTxs ++ lcp.htlcSuccessTxs ++ lcp.htlcTimeoutTxs)
 
   lazy val forceCloseCommitPublished: Option[ForceCloseCommitPublished] = {

@@ -9,7 +9,7 @@
     <string name="lightning_wallet">Lightning</string>
     <string name="total_balance">Total balance</string>
     <string name="hosted_channel">HOSTED CHANNEL</string>
-    <string name="delayed_refund">Delayed channel refunding</string>
+    <string name="delayed_refunding">Delayed channel refunding</string>
     <string name="paste_from_clipboard">Paste from clipboard</string>
     <string name="copied_to_clipboard">Copied to clipboard</string>
     <string name="add_address">More fresh addresses</string>
@@ -207,6 +207,13 @@
         <item>%1$d\%% collected</item>
         <item>%1$d\%% collected</item>
         <item>finalizing</item>
+    </array>
+
+    <array name="in_blocks">
+        <item>waiting</item>
+        <item>%1$d block</item>
+        <item>%1$d blocks</item>
+        <item>%1$d+ blocks</item>
     </array>
 
     <!-- lnurl -->
