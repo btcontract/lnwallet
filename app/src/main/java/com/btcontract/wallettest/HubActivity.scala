@@ -183,7 +183,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
     var currentDetails: TransactionDetails = _
     var lastVisibleIconId: Int = -1
 
-    paymentCardContainer setOnClickListener onButtonTap(showDetails)
+    paymentCardContainer setOnClickListener onButtonTap(ractOnTap)
     setItemLabel setOnClickListener onButtonTap(doSetItemLabel)
     removeItem setOnClickListener onButtonTap(doRemoveItem)
     shareItem setOnClickListener onButtonTap(doShareItem)
@@ -199,7 +199,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
         alert.dismiss
 
         currentDetails match {
-          case info: PayLinkInfo => WalletApp.payMarketBag.updateLabel(trimmedLabel.getOrElse(new String), info.lnurl)
+          case info: PayLinkInfo => WalletApp.payMarketBag.updateLabel(trimmedLabel.getOrElse(new String), info.lnurlLink)
           case info: PaymentInfo => LNParams.cm.payBag.updDescription(info.description.modify(_.label).setTo(trimmedLabel), info.paymentHash)
           case info: TxInfo => WalletApp.txDataBag.updDescription(info.description.modify(_.label).setTo(trimmedLabel), info.txid)
           case _ =>
@@ -214,7 +214,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
     def doRemoveItem: Unit = {
       def proceed: Unit = currentDetails match {
         case info: PaymentInfo => LNParams.cm.payBag.removePaymentInfo(info.paymentHash)
-        case info: PayLinkInfo => WalletApp.payMarketBag.remove(info.lnurl)
+        case info: PayLinkInfo => WalletApp.payMarketBag.remove(info.lnurlLink)
         case _ =>
       }
 
@@ -227,8 +227,9 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
       case _ =>
     }
 
-    def showDetails: Unit = currentDetails match {
+    def ractOnTap: Unit = currentDetails match {
       case info: DelayedRefunds => doShowDetails(info)
+      case info: PayLinkInfo => doCallPayLink(info)
       case _ =>
     }
 
@@ -265,6 +266,11 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
       builder.setPositiveButton(dialog_ok, null).show
       list.setDividerHeight(0)
       list.setDivider(null)
+    }
+
+    def doCallPayLink(info: PayLinkInfo): Unit = {
+      InputParser.value = info.lnurlLink
+      checkExternalData(noneRunnable)
     }
 
     def setVisibleIcon(id: Int): Unit = if (lastVisibleIconId != id) {
@@ -362,7 +368,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
     private def marketLinkCaption(info: PayLinkInfo): String = {
       if (info.meta.emails.nonEmpty) s"<b>email</b> ${info.meta.emails.head}"
       else if (info.meta.identities.nonEmpty) info.meta.identities.head
-      else info.lnurl.uri.getHost
+      else info.lnurlLink.uri.getHost
     }
 
     // TX helpers

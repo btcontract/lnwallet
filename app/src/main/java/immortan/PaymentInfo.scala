@@ -50,7 +50,7 @@ case class PayLinkInfo(lnurlString: String, metaString: String, lastMsat: MilliS
 
   lazy val imageBytesTry: Try[Bytes] = Try(Base64 decode meta.imageBase64s.head)
 
-  lazy val lnurl: LNUrl = LNUrl(lnurlString)
+  lazy val lnurlLink: LNUrl = LNUrl(lnurlString)
 }
 
 case class DelayedRefunds(txToParent: Map[Transaction, TxConfirmedAtOpt], seenAt: Long = Long.MaxValue) extends TransactionDetails {
