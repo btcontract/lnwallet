@@ -147,7 +147,7 @@ case class TxInfo(txString: String, txidString: String, depth: Long, receivedSat
                   incoming: Long, doubleSpent: Long) extends TransactionDetails {
 
   lazy val isIncoming: Boolean = 1L == incoming
-
+  
   lazy val isDoubleSpent: Boolean = 1L == doubleSpent
 
   lazy val fiatRateSnapshot: Fiat2Btc = to[Fiat2Btc](fiatRatesString)

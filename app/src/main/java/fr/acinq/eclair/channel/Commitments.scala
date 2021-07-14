@@ -64,25 +64,25 @@ case class NormalCommits(channelFlags: Byte, channelId: ByteVector32, channelVer
                          remoteParams: RemoteParams, localCommit: LocalCommit, remoteCommit: RemoteCommit, localChanges: LocalChanges, remoteChanges: RemoteChanges, localNextHtlcId: Long,
                          remoteNextHtlcId: Long, commitInput: InputInfo, startedAt: Long = System.currentTimeMillis) extends Commitments { me =>
 
-  val minSendable: MilliSatoshi = remoteParams.htlcMinimum.max(localParams.htlcMinimum)
+  lazy val minSendable: MilliSatoshi = remoteParams.htlcMinimum.max(localParams.htlcMinimum)
 
-  val maxSendInFlight: MilliSatoshi = remoteParams.maxHtlcValueInFlightMsat.toMilliSatoshi
+  lazy val maxSendInFlight: MilliSatoshi = remoteParams.maxHtlcValueInFlightMsat.toMilliSatoshi
 
-  val latestReducedRemoteSpec: CommitmentSpec = {
+  lazy val latestReducedRemoteSpec: CommitmentSpec = {
     val latestRemoteCommit = remoteNextCommitInfo.left.toOption.map(_.nextRemoteCommit).getOrElse(remoteCommit)
     CommitmentSpec.reduce(latestRemoteCommit.spec, remoteChanges.acked, localChanges.proposed)
   }
 
-  val allOutgoing: Set[UpdateAddHtlc] = {
+  lazy val allOutgoing: Set[UpdateAddHtlc] = {
     val allOutgoingAdds = localCommit.spec.outgoingAdds ++ localChanges.adds
     allOutgoingAdds.filterNot(add => postCloseOutgoingResolvedIds contains add.id)
   }
 
-  val crossSignedIncoming: Set[UpdateAddHtlcExt] = for (theirAdd <- remoteCommit.spec.outgoingAdds) yield UpdateAddHtlcExt(theirAdd, remoteInfo)
+  lazy val crossSignedIncoming: Set[UpdateAddHtlcExt] = for (theirAdd <- remoteCommit.spec.outgoingAdds) yield UpdateAddHtlcExt(theirAdd, remoteInfo)
 
-  val revealedFulfills: Set[LocalFulfill] = getPendingFulfills(Helpers extractRevealedPreimages localChanges.all)
+  lazy val revealedFulfills: Set[LocalFulfill] = getPendingFulfills(Helpers extractRevealedPreimages localChanges.all)
 
-  val availableForSend: MilliSatoshi = {
+  lazy val availableForSend: MilliSatoshi = {
     // We need to base the next current commitment on the last sig we sent, even if we didn't yet receive their revocation
     val balanceNoFees = latestReducedRemoteSpec.toRemote - remoteParams.channelReserve
 
@@ -107,7 +107,7 @@ case class NormalCommits(channelFlags: Byte, channelId: ByteVector32, channelVer
     }
   }
 
-  val availableForReceive: MilliSatoshi = {
+  lazy val availableForReceive: MilliSatoshi = {
     val reduced = CommitmentSpec.reduce(localCommit.spec, localChanges.acked, remoteChanges.proposed)
     val balanceNoFees = reduced.toRemote - localParams.channelReserve
 

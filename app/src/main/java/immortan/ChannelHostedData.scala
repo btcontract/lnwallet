@@ -19,32 +19,32 @@ case class HostedCommits(remoteInfo: RemoteNodeInfo, localSpec: CommitmentSpec, 
                          remoteError: Option[Fail], resizeProposal: Option[ResizeChannel] = None, overrideProposal: Option[StateOverride] = None,
                          startedAt: Long = System.currentTimeMillis) extends PersistentChannelData with Commitments { me =>
 
-  val error: Option[Fail] = localError.orElse(remoteError)
+  lazy val error: Option[Fail] = localError.orElse(remoteError)
 
-  val nextTotalLocal: Long = lastCrossSignedState.localUpdates + nextLocalUpdates.size
+  lazy val nextTotalLocal: Long = lastCrossSignedState.localUpdates + nextLocalUpdates.size
 
-  val nextTotalRemote: Long = lastCrossSignedState.remoteUpdates + nextRemoteUpdates.size
+  lazy val nextTotalRemote: Long = lastCrossSignedState.remoteUpdates + nextRemoteUpdates.size
 
-  val nextLocalSpec: CommitmentSpec = CommitmentSpec.reduce(localSpec, nextLocalUpdates, nextRemoteUpdates)
+  lazy val nextLocalSpec: CommitmentSpec = CommitmentSpec.reduce(localSpec, nextLocalUpdates, nextRemoteUpdates)
 
-  val channelId: ByteVector32 = hostedChanId(remoteInfo.nodeSpecificPubKey.value, remoteInfo.nodeId.value)
+  lazy val channelId: ByteVector32 = hostedChanId(remoteInfo.nodeSpecificPubKey.value, remoteInfo.nodeId.value)
 
-  val allOutgoing: Set[UpdateAddHtlc] = {
+  lazy val allOutgoing: Set[UpdateAddHtlc] = {
     val allOutgoingAdds = localSpec.outgoingAdds ++ nextLocalSpec.outgoingAdds
     allOutgoingAdds.filterNot(add => postErrorOutgoingResolvedIds contains add.id)
   }
 
-  val crossSignedIncoming: Set[UpdateAddHtlcExt] = for (theirAdd <- localSpec.incomingAdds) yield UpdateAddHtlcExt(theirAdd, remoteInfo)
+  lazy val crossSignedIncoming: Set[UpdateAddHtlcExt] = for (theirAdd <- localSpec.incomingAdds) yield UpdateAddHtlcExt(theirAdd, remoteInfo)
 
-  val revealedFulfills: Set[LocalFulfill] = getPendingFulfills(Helpers extractRevealedPreimages nextLocalUpdates)
+  lazy val revealedFulfills: Set[LocalFulfill] = getPendingFulfills(Helpers extractRevealedPreimages nextLocalUpdates)
 
-  val maxSendInFlight: MilliSatoshi = lastCrossSignedState.initHostedChannel.maxHtlcValueInFlightMsat.toMilliSatoshi
+  lazy val maxSendInFlight: MilliSatoshi = lastCrossSignedState.initHostedChannel.maxHtlcValueInFlightMsat.toMilliSatoshi
 
-  val minSendable: MilliSatoshi = lastCrossSignedState.initHostedChannel.htlcMinimumMsat
+  lazy val minSendable: MilliSatoshi = lastCrossSignedState.initHostedChannel.htlcMinimumMsat
 
-  val availableForReceive: MilliSatoshi = nextLocalSpec.toRemote
+  lazy val availableForReceive: MilliSatoshi = nextLocalSpec.toRemote
 
-  val availableForSend: MilliSatoshi = nextLocalSpec.toLocal
+  lazy val availableForSend: MilliSatoshi = nextLocalSpec.toLocal
 
   def nextLocalUnsignedLCSS(blockDay: Long): LastCrossSignedState =
     LastCrossSignedState(lastCrossSignedState.isHost, lastCrossSignedState.refundScriptPubKey, lastCrossSignedState.initHostedChannel,

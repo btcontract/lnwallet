@@ -288,7 +288,7 @@
     <string name="ln_hosted_chan_state">%1$s\n\n\nState snapshot\n%2$s\n\nRevealed preimages\n%3$s</string>
 
     <array name="ln_normal_chan_actions">
-        <item><![CDATA[Share <b>Lightnig Channel</b> details]]></item>
+        <item><![CDATA[Share <b>Lightning Channel</b> details]]></item>
         <item><![CDATA[View funding transaction]]></item>
         <item><![CDATA[Close channel to wallet]]></item>
         <item><![CDATA[Close channel to address]]></item>

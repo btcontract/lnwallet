@@ -530,7 +530,7 @@ abstract class ChannelNormal(bag: ChannelBag) extends Channel { me =>
 
 
       case (closing: DATA_CLOSING, WatchEventSpent(BITCOIN_OUTPUT_SPENT, tx), CLOSING) =>
-        // One of outputs in local/remote/revoked commit was spent, we should watch it gets confirmed
+        // An output in local/remote/revoked commit was spent, add it to irrevocably spent once confirmed
         chainWallet.watcher ! WatchConfirmed(receiver, tx, event = BITCOIN_TX_CONFIRMED(tx), minDepth = 1L)
         // Peer might have just used a preimage on chain to claim our timeout HTLCs UTXO: consider a payment sent then
         val remoteFulfills = Closing.extractPreimages(closing.commitments.localCommit, tx).map(RemoteFulfill.tupled)
