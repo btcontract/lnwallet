@@ -2,6 +2,7 @@ package com.btcontract.wallettest
 
 import immortan._
 import R.string._
+import android.widget._
 import fr.acinq.eclair._
 import com.softwaremill.quicklens._
 import com.btcontract.wallettest.Colors._
@@ -20,7 +21,6 @@ import immortan.utils.{Denomination, InputParser, PaymentRequestExt}
 import fr.acinq.eclair.blockchain.fee.{FeeratePerKw, FeeratePerVByte}
 import immortan.crypto.Tools.{Any2Some, Fiat2Btc, none, runAnd, trimmed}
 import com.google.android.material.snackbar.{BaseTransientBottomBar, Snackbar}
-import android.widget.{Button, EditText, ImageView, LinearLayout, ListAdapter, ListView, TextView}
 import com.cottacush.android.currencyedittext.CurrencyEditText
 import com.google.android.material.textfield.TextInputLayout
 import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
@@ -52,7 +52,7 @@ object BaseActivity {
     def html: Spanned = android.text.Html.fromHtml(source)
     def humanFour: String = source.grouped(4).mkString(s"\u0020")
 
-    def shortAddress: String = {
+    def short: String = {
       val secondFirst = source.slice(4, 8)
       val doubleSmall = "<sup><small><small>&#8230;</small></small></sup>"
       s"${source take 4}&#160;$secondFirst&#160;$doubleSmall&#160;${source takeRight 4}"
@@ -114,9 +114,9 @@ trait BaseActivity extends AppCompatActivity { me =>
     case _ =>
   }
 
-  def share(text: String): Unit = startActivity {
-    val share = new Intent setAction Intent.ACTION_SEND
-    share.setType("text/plain").putExtra(Intent.EXTRA_TEXT, text)
+  def share(text: CharSequence): Unit = startActivity {
+    val shareAction = new Intent setAction Intent.ACTION_SEND
+    shareAction.setType("text/plain").putExtra(Intent.EXTRA_TEXT, text)
   }
 
   // Snackbar
@@ -251,13 +251,23 @@ trait BaseActivity extends AppCompatActivity { me =>
     else sheet.show(getSupportFragmentManager, "scanner-bottom-sheet-fragment")
   }
 
+  def addFlowChip(flow: FlowLayout, chipText: String, backgroundRes: Int, shareText: Option[String] = None): Unit = {
+    val text = getLayoutInflater.inflate(R.layout.frag_chip_text, flow, false).asInstanceOf[TextView]
+    text setOnClickListener onButtonTap(shareText.orElse(text.getText.asSome) foreach share)
+    text.setBackgroundResource(backgroundRes)
+    flow.setVisibility(View.VISIBLE)
+    text.setText(chipText.html)
+    flow.addView(text)
+  }
+
   // Rich popup title
 
   implicit class TitleView(titleText: String) {
     val view: LinearLayout = getLayoutInflater.inflate(R.layout.frag_top_tip, null).asInstanceOf[LinearLayout]
     val flow: FlowLayout = view.findViewById(R.id.tipExtraTags).asInstanceOf[FlowLayout]
     val backArrow: ImageView = view.findViewById(R.id.backArrow).asInstanceOf[ImageView]
-    clickableTextField(view findViewById R.id.tipTitle).setText(titleText.html)
+    val tipTitle: TextView = clickableTextField(view findViewById R.id.tipTitle)
+    tipTitle.setText(titleText.html)
 
     def asDefView: LinearLayout = {
       view.setBackgroundColor(0x22AAAAAA)
@@ -268,14 +278,6 @@ trait BaseActivity extends AppCompatActivity { me =>
       val resultColor = ContextCompat.getColor(me, colorRes)
       view.setBackgroundColor(resultColor)
       view
-    }
-
-    def addChipText(chipText: String, backgroundRes: Int): Unit = {
-      val text = getLayoutInflater.inflate(R.layout.frag_chip_text, flow, false)
-      text.asInstanceOf[TextView].setText(chipText.html)
-      text.setBackgroundResource(backgroundRes)
-      flow.setVisibility(View.VISIBLE)
-      flow.addView(text)
     }
   }
 

@@ -40,7 +40,7 @@ object LNParams {
   val maxToLocalDelay: CltvExpiryDelta = CltvExpiryDelta(2016) // We ask peer to delay their payment for this long in case of force-close
   val maxFundingSatoshis: Satoshi = Satoshi(10000000000L) // Proposed channels of capacity more than this are not allowed
   val maxReserveToFundingRatio: Double = 0.05 // %
-  val maxNegotiationIterations: Int = 50
+  val maxNegotiationIterations: Int = 20
   val maxChainConnectionsCount: Int = 5
   val maxAcceptedHtlcs: Int = 483
 
@@ -60,7 +60,7 @@ object LNParams {
   val minPayment: MilliSatoshi = MilliSatoshi(1000L) // We can neither send nor receive LN payments which are below this value
   val minFundingSatoshis: Satoshi = Satoshi(200000L) // Proposed channels of capacity less than this are not allowed
   val minDustLimit: Satoshi = Satoshi(546L)
-  val minDepthBlocks: Int = 2
+  val minDepthBlocks: Int = 3
 
   // Variables to be assigned at runtime
 

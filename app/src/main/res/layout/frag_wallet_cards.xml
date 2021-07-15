@@ -123,107 +123,86 @@
 
         <!-- Lightning card -->
 
-        <com.chauthai.swipereveallayout.SwipeRevealLayout
+        <androidx.cardview.widget.CardView
+            card_view:cardCornerRadius="@dimen/corner_radius"
+            android:layout_marginStart="15dp"
+            android:layout_marginEnd="15dp"
             android:layout_marginTop="5dp"
-            style="@style/FillingView"
-            app:dragEdge="left">
+            android:onClick="goToStatPage"
+            style="@style/Card">
 
-            <RelativeLayout
-                android:layout_width="wrap_content"
-                android:layout_height="match_parent">
+            <LinearLayout
+                android:padding="15dp"
+                android:orientation="vertical"
+                android:background="@drawable/panel_lightning_bg"
+                style="@style/FillingView">
 
-                <com.ornach.nobobutton.NoboButton
-                    android:layout_marginStart="10dp"
-                    app:nb_drawableResource="@drawable/outline_info_24"
-                    android:layout_centerVertical="true"
-                    android:onClick="goToStatPage"
-                    style="@style/GrayButton"/>
+                <!-- Text and balance -->
 
-            </RelativeLayout>
+                <RelativeLayout style="@style/FillingView">
 
-            <FrameLayout style="@style/FillingView">
+                    <TextView
+                        android:layout_marginEnd="3dp"
+                        android:textColor="@color/colorAccent"
+                        android:text="@string/lightning_wallet"
+                        android:layout_centerVertical="true"
+                        style="@style/BoundedView"/>
 
-                <androidx.cardview.widget.CardView
-                    card_view:cardCornerRadius="@dimen/corner_radius"
-                    android:onClick="bringLnReceivePopup"
-                    android:layout_marginStart="15dp"
-                    android:layout_marginEnd="15dp"
-                    style="@style/Card">
+                    <TextView
+                        android:id="@+id/totalLightningBalance"
+                        android:layout_alignParentEnd="true"
+                        android:layout_centerVertical="true"
+                        style="@style/Emphasized"/>
+
+                    <ImageView
+                        android:background="@drawable/baseline_add_24"
+                        android:layout_centerVertical="true"
+                        android:layout_alignParentEnd="true"
+                        android:id="@+id/addChannelTip"
+                        style="@style/BoundedView"/>
+
+                </RelativeLayout>
+
+                <!-- Indicators and payment state -->
+
+                <LinearLayout
+                    android:gravity="center"
+                    android:paddingTop="10dp"
+                    android:id="@+id/channelStateIndicators"
+                    android:orientation="horizontal"
+                    style="@style/FillingView">
+
+                    <com.indicator.ChannelIndicatorLine
+                        android:id="@+id/channelIndicator"
+                        android:layout_height="wrap_content"
+                        android:layout_width="0dp"
+                        android:layout_weight="1"/>
+
+                    <!-- Payment state line -->
 
                     <LinearLayout
-                        android:padding="15dp"
-                        android:orientation="vertical"
-                        android:background="@drawable/panel_lightning_bg"
-                        style="@style/FillingView">
+                        android:orientation="horizontal"
+                        style="@style/BoundedView">
 
-                        <!-- Text and balance -->
+                        <TextView
+                            style="@style/InFlightView"
+                            android:id="@+id/inFlightIncoming"
+                            android:drawableStart="@drawable/baseline_arrow_downward_18"/>
 
-                        <RelativeLayout style="@style/FillingView">
+                        <TextView
+                            style="@style/InFlightView"
+                            android:id="@+id/inFlightOutgoing"
+                            android:drawableStart="@drawable/baseline_arrow_upward_18"/>
 
-                            <TextView
-                                android:layout_marginEnd="3dp"
-                                android:textColor="@color/colorAccent"
-                                android:text="@string/lightning_wallet"
-                                android:layout_centerVertical="true"
-                                style="@style/BoundedView"/>
+                        <TextView
+                            style="@style/InFlightView"
+                            android:id="@+id/inFlightRelayed"
+                            android:drawableStart="@drawable/baseline_swap_horiz_18"/>
 
-                            <TextView
-                                android:id="@+id/totalLightningBalance"
-                                android:layout_alignParentEnd="true"
-                                android:layout_centerVertical="true"
-                                style="@style/Emphasized"/>
-
-                            <ImageView
-                                android:background="@drawable/baseline_add_24"
-                                android:layout_centerVertical="true"
-                                android:layout_alignParentEnd="true"
-                                android:id="@+id/addChannelTip"
-                                style="@style/BoundedView"/>
-
-                        </RelativeLayout>
-
-                        <!-- Indicators and payment state -->
-
-                        <LinearLayout
-                            android:gravity="center"
-                            android:paddingTop="10dp"
-                            android:id="@+id/channelStateIndicators"
-                            android:orientation="horizontal"
-                            style="@style/FillingView">
-
-                            <com.indicator.ChannelIndicatorLine
-                                android:id="@+id/channelIndicator"
-                                android:layout_height="wrap_content"
-                                android:layout_width="0dp"
-                                android:layout_weight="1"/>
-
-                            <!-- Payment state line -->
-
-                            <LinearLayout
-                                android:orientation="horizontal"
-                                style="@style/BoundedView">
-
-                                <TextView
-                                    style="@style/InFlightView"
-                                    android:id="@+id/inFlightIncoming"
-                                    android:drawableStart="@drawable/baseline_arrow_downward_18"/>
-
-                                <TextView
-                                    style="@style/InFlightView"
-                                    android:id="@+id/inFlightOutgoing"
-                                    android:drawableStart="@drawable/baseline_arrow_upward_18"/>
-
-                                <TextView
-                                    style="@style/InFlightView"
-                                    android:id="@+id/inFlightRelayed"
-                                    android:drawableStart="@drawable/baseline_swap_horiz_18"/>
-
-                            </LinearLayout>
-                        </LinearLayout>
                     </LinearLayout>
-                </androidx.cardview.widget.CardView>
-            </FrameLayout>
-        </com.chauthai.swipereveallayout.SwipeRevealLayout>
+                </LinearLayout>
+            </LinearLayout>
+        </androidx.cardview.widget.CardView>
 
         <!-- Button and search bar -->
 

@@ -230,11 +230,12 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
     def ractOnTap: Unit = currentDetails match {
       case info: DelayedRefunds => doShowDetails(info)
       case info: PayLinkInfo => doCallPayLink(info)
+      case info: TxInfo => doShowDetails(info)
       case _ =>
     }
 
     def doShowDetails(info: DelayedRefunds): Unit = {
-      val list = me selectorList new ArrayAdapter(me, R.layout.simple_list_item_2, R.id.text1, info.txToParent.toArray) {
+      val adapter = new ArrayAdapter(me, R.layout.simple_list_item_2, R.id.text1, info.txToParent.toArray) {
         override def getView(position: Int, convertView: View, parentViewGroup: ViewGroup): View = {
           val view: View = super.getView(position, convertView, parentViewGroup)
           val text1 = view.findViewById(R.id.text1).asInstanceOf[TextView]
@@ -261,11 +262,38 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
         }
       }
 
-      val title = getString(delayed_refunding).asDefView
-      val builder = titleBodyAsViewBuilder(title, list)
-      builder.setPositiveButton(dialog_ok, null).show
+      val list = selectorList(adapter)
+      val title = s"<b>${me getString delayed_refunding}</b>".asDefView
+      titleBodyAsViewBuilder(title, list).show
       list.setDividerHeight(0)
       list.setDivider(null)
+    }
+
+    def doShowDetails(info: TxInfo): Unit = {
+      val stamp = WalletApp.app.dateTimeFormat.format(info.date)
+      val isPlainDesc = info.description.isInstanceOf[PlainTxDescription]
+      val finalDesc = if (isPlainDesc) new String else "<br><b>" + txDescription(info) + "</b></br>"
+      val when = if (info.isIncoming) getString(popup_received_at).format(stamp) else getString(popup_sent_at).format(stamp)
+      val amountHuman = LNParams.denomination.directedWithSign(info.receivedSat, info.sentSat, cardOut, cardIn, cardZero, info.isIncoming)
+      val title = new TitleView(s"<b>${me getString tx_btc}</b>$finalDesc<br>$when<br><b>$amountHuman</b>")
+
+      addFlowChip(title.flow, getString(popup_txid).format(info.txidString.short), R.drawable.border_green, info.txidString.asSome)
+      for (address <- info.description.toAddress) addFlowChip(title.flow, getString(popup_to_address).format(address.short), R.drawable.border_yellow, address.asSome)
+      for (nodeId <- info.description.withNodeId) addFlowChip(title.flow, getString(popup_with_node).format(nodeId.toString.short), R.drawable.border_blue, nodeId.toString.asSome)
+      for (label <- info.description.label) addFlowChip(title.flow, getString(popup_label).format(label), R.drawable.border_blue)
+
+      val content = new TitleView(new String)
+      content.view.setBackgroundColor(0x00000000)
+      content.tipTitle.setVisibility(View.GONE)
+      content.flow.setPadding(0, 0, 0, 0)
+
+      val amount = if (info.isIncoming) info.receivedSat.toMilliSatoshi else info.sentSat.toMilliSatoshi
+      val fee = LNParams.denomination.directedWithSign(0L.msat, info.feeSat.toMilliSatoshi, cardOut, cardIn, cardZero, isPlus = false)
+      addFlowChip(content.flow, getString(popup_prior_chain_balance) format LNParams.denomination.parsedWithSign(info.balanceSnapshot, cardIn, cardZero), R.drawable.border_gray)
+      addFlowChip(content.flow, getString(popup_then) format WalletApp.msatInFiatHuman(info.fiatRateSnapshot, WalletApp.fiatCode, amount), R.drawable.border_gray)
+      addFlowChip(content.flow, getString(popup_now) format WalletApp.currentMsatInFiatHuman(amount), R.drawable.border_gray)
+      if (!info.isIncoming) addFlowChip(content.flow, getString(popup_chain_fee) format fee, R.drawable.border_gray)
+      titleBodyAsViewBuilder(title.asDefView, content.view).show
     }
 
     def doCallPayLink(info: PayLinkInfo): Unit = {
@@ -301,7 +329,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
           statusIcon setImageResource txStatusIcon(info)
           nonLinkContainer setBackgroundResource R.drawable.border_gray
           amount.setText(LNParams.denomination.directedWithSign(info.receivedSat, info.sentSat, cardOut, cardIn, cardZero, info.isIncoming).html)
-          description.setText(txDescription(info).html)
+          description.setText(info.description.label getOrElse txDescription(info).html)
 
           setVis(isVisible = true, nonLinkContainer)
           setVis(isVisible = false, linkContainer)
@@ -374,12 +402,12 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
     // TX helpers
 
     private def txDescription(transactionInfo: TxInfo): String = transactionInfo.description match {
-      case plain: PlainTxDescription => plain.label orElse plain.addresses.headOption.map(_.shortAddress) getOrElse getString(tx_btc)
-      case _: ChanRefundingTxDescription => transactionInfo.description.label getOrElse getString(tx_description_refunding)
-      case _: HtlcClaimTxDescription => transactionInfo.description.label getOrElse getString(tx_description_htlc_claiming)
-      case _: ChanFundingTxDescription => transactionInfo.description.label getOrElse getString(tx_description_funding)
-      case _: OpReturnTxDescription => transactionInfo.description.label getOrElse getString(tx_description_op_return)
-      case _: PenaltyTxDescription => transactionInfo.description.label getOrElse getString(tx_description_penalty)
+      case plain: PlainTxDescription => plain.toAddress.map(_.short) getOrElse getString(tx_btc)
+      case _: ChanRefundingTxDescription => getString(tx_description_refunding)
+      case _: HtlcClaimTxDescription => getString(tx_description_htlc_claiming)
+      case _: ChanFundingTxDescription => getString(tx_description_funding)
+      case _: OpReturnTxDescription => getString(tx_description_op_return)
+      case _: PenaltyTxDescription => getString(tx_description_penalty)
     }
 
     private def setTxTypeIcon(info: TxInfo): Unit = info.description match {
@@ -666,8 +694,8 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
             override val alert: AlertDialog = {
               val title = new TitleView(getString(dialog_split_ln) format prExt.brDescription)
               val builder = titleBodyAsViewBuilder(title.asColoredView(R.color.cardLightning), manager.content)
-              title.addChipText(getString(dialog_ln_requested) format LNParams.denomination.parsedWithSign(origAmount, cardIn, cardZero), R.drawable.border_blue)
-              title.addChipText(getString(dialog_ln_left) format LNParams.denomination.parsedWithSign(prExt.splitLeftover, cardIn, cardZero), R.drawable.border_blue)
+              addFlowChip(title.flow, getString(dialog_ln_requested) format LNParams.denomination.parsedWithSign(origAmount, cardIn, cardZero), R.drawable.border_blue)
+              addFlowChip(title.flow, getString(dialog_ln_left) format LNParams.denomination.parsedWithSign(prExt.splitLeftover, cardIn, cardZero), R.drawable.border_blue)
               mkCheckFormNeutral(send, none, neutral, builder, dialog_pay, dialog_cancel, dialog_split)
             }
 
@@ -686,7 +714,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
               val title = new TitleView(getString(dialog_send_ln) format prExt.brDescription)
               val totalHuman = LNParams.denomination.parsedWithSign(origAmount, cardIn, cardZero)
               val builder = titleBodyAsViewBuilder(title.asColoredView(R.color.cardLightning), manager.content)
-              title.addChipText(getString(dialog_ln_requested).format(totalHuman), R.drawable.border_blue)
+              addFlowChip(title.flow, getString(dialog_ln_requested).format(totalHuman), R.drawable.border_blue)
               mkCheckFormNeutral(send, none, neutral, builder, dialog_pay, dialog_cancel, dialog_split)
             }
 
@@ -772,7 +800,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
     case _ =>
   }
 
-  def INIT(state: Bundle): Unit =
+  def INIT(state: Bundle): Unit = {
     if (WalletApp.isAlive && LNParams.isOperational) {
       setContentView(com.btcontract.wallettest.R.layout.activity_hub)
       for (channel <- LNParams.cm.all.values) channel.listeners += me
@@ -828,6 +856,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
       WalletApp.freePossiblyUsedResouces
       me exitTo ClassNames.mainActivityClass
     }
+  }
 
   // VIEW HANDLERS
 
@@ -878,7 +907,6 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
   def goToStatPage(view: View): Unit = me goTo ClassNames.statActivityClass
   def goToSettingsPage(view: View): Unit = me goTo ClassNames.settingsActivityClass
   def goToReceiveBitcoinPage(view: View): Unit = onChoiceMade(CHOICE_RECEIVE_TAG, 0)
-  def bringLnReceivePopup(view: View): Unit = onChoiceMade(CHOICE_RECEIVE_TAG, 1)
 
   def bringSendBitcoinPopup(uri: BitcoinUri): Unit = {
     val body = getLayoutInflater.inflate(R.layout.frag_input_on_chain, null).asInstanceOf[ScrollView]
@@ -916,7 +944,7 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
       val neutralRes = if (uri.amount.isDefined) -1 else dialog_max
       val label = uri.label.map(label => s"<br><br><b>$label</b>").getOrElse(new String)
       val message = uri.message.map(message => s"<br><i>$message<i>").getOrElse(new String)
-      val builder = titleBodyAsViewBuilder(getString(dialog_send_btc).format(uri.address.shortAddress, label + message).asColoredView(R.color.cardBitcoin), manager.content)
+      val builder = titleBodyAsViewBuilder(getString(dialog_send_btc).format(uri.address.short, label + message).asColoredView(R.color.cardBitcoin), manager.content)
       if (uri.prExt.isEmpty) mkCheckFormNeutral(attempt, none, _ => manager.updateText(LNParams.chainWallets.lnWallet.info.lastBalance.toMilliSatoshi), builder, dialog_pay, dialog_cancel, neutralRes)
       else mkCheckFormNeutral(attempt, none, switchToLn, builder, dialog_pay, dialog_cancel, lightning_wallet)
     }

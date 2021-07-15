@@ -38,7 +38,7 @@ class QRChainActivity extends QRActivity { me =>
         holder.qrCopy setOnClickListener onButtonTap(WalletApp.app copy address)
         holder.qrCode setOnClickListener onButtonTap(WalletApp.app copy address)
         holder.qrShare setOnClickListener onButtonTap(share)
-        holder.qrLabel setText address.shortAddress.html
+        holder.qrLabel setText address.short.html
         holder.qrCode setImageBitmap bitmap
       }
   }

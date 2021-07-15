@@ -295,13 +295,14 @@ class WalletApp extends Application { me =>
   // Special handling for cases when user has chosen large font OR full BTC denomination and screen size is constrained
   lazy val tooFewSpace: Boolean = getFloat(getContentResolver, FONT_SCALE, 1) > 1 && scrWidth < 2.4 || !WalletApp.useSatDenom
 
-  lazy val dateFormat: SimpleDateFormat = {
-    val format = (DateFormat.is24HourFormat(me), tooFewSpace) match {
-      case (is24Hour, false) => if (is24Hour) "d MMM yyyy" else "MMM dd, yyyy"
-      case (is24Hour, true) => if (is24Hour) "dd/MM/yy" else "MM/dd/yy"
-    }
+  lazy val dateFormat: SimpleDateFormat = (DateFormat.is24HourFormat(me), tooFewSpace) match {
+    case (is24Hour, false) => if (is24Hour) new SimpleDateFormat("d MMM yyyy") else new SimpleDateFormat("MMM dd, yyyy")
+    case (is24Hour, true) => if (is24Hour) new SimpleDateFormat("dd/MM/yy") else new SimpleDateFormat("MM/dd/yy")
+  }
 
-    new SimpleDateFormat(format)
+  lazy val dateTimeFormat: SimpleDateFormat = DateFormat.is24HourFormat(me) match {
+    case true => new SimpleDateFormat("MMM dd, yyyy' <small>'HH:mm'</small>'")
+    case false => new SimpleDateFormat("d MMM yyyy' <small>'h:mma'</small>'")
   }
 
   lazy val plur: (Array[String], Long) => String = getString(R.string.lang) match {

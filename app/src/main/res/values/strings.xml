@@ -46,8 +46,6 @@
 
     <string name="action_recovery_phrase_title">Wallet recovery phrase</string>
     <string name="action_recovery_phrase_hint">Type recovery words</string>
-
-    <string name="menu_settings">Adjust wallet settings</string>
     <string name="menu_chans_stats">Channels and stats</string>
 
     <string name="dialog_ok">OK</string>
@@ -156,6 +154,18 @@
 
     <string name="tx_state_confs">depth %1$s of %2$s</string>
     <string name="tx_state_double_spent">failed</string>
+
+    <string name="popup_sent_at"><![CDATA[<b>Sent&#160;at</b>&#160;%1$s]]></string>
+    <string name="popup_received_at"><![CDATA[<b>received&#160;at</b>&#160;%1$s]]></string>
+    <string name="popup_to_address"><![CDATA[<b>to&#160;address</b>&#160;%1$s]]></string>
+    <string name="popup_with_node"><![CDATA[<b>with&#160;node</b>&#160;%1$s]]></string>
+    <string name="popup_label"><![CDATA[<b>label</b>&#160;%1$s]]></string>
+    <string name="popup_txid"><![CDATA[<b>txid</b>&#160;%1$s]]></string>
+
+    <string name="popup_prior_chain_balance"><![CDATA[<b>prior&#160;balance</b>&#160;%1$s]]></string>
+    <string name="popup_chain_fee"><![CDATA[<b>chain&#160;fee</b>&#160;%1$s]]></string>
+    <string name="popup_then"><![CDATA[<b>then</b>&#160;%1$s]]></string>
+    <string name="popup_now"><![CDATA[<b>now</b>&#160;%1$s]]></string>
 
     <!-- /special tx/payment descriptions -->
 
