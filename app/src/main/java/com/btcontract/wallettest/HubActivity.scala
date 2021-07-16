@@ -223,7 +223,11 @@ class HubActivity extends NfcReaderActivity with BaseActivity with ExternalDataC
     }
 
     def doShareItem: Unit = currentDetails match {
-      case info: TxInfo => share(info.txString)
+      case info: TxInfo => me share getString(share_chain_tx).format(info.txString)
+      case info: PayLinkInfo => me share getString(share_lnurl_pay).format(info.lnurlString)
+      case info: PaymentInfo =>
+        val preimage = Some(info.preimage).filter(ChannelMaster.NO_PREIMAGE.!=).map(_.toHex)
+        me share getString(share_ln_payment).format(info.prExt.raw, preimage getOrElse "n/a")
       case _ =>
     }
 

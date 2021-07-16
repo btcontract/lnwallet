@@ -26,6 +26,10 @@
 
     <string name="setup_create_new_hint">A completely fresh Bitcoin wallet with a new recovery phrase will be generated from scratch.</string>
 
+    <string name="share_lnurl_pay">lnurlp:%1$s</string>
+    <string name="share_chain_tx">Bitcoin transaction hex: %1$s</string>
+    <string name="share_ln_payment">Signed invoice: %1$s\n\nProof of payment: %2$s</string>
+
     <string name="setup_backup_file_hint">
         Provide a file containing Lightning backup, then provide a recovery
         phrase to fully restore Bitcoin wallet along with Lightning channels.
@@ -199,7 +203,6 @@
     <string name="rpa_no_feature_support">Can not open channels with this node since some important features are not supported by remote peer.</string>
     <string name="rpa_hc_warn"><![CDATA[<br><b>Attention!</b><br><br>Your hosted channel funds will be stored on a host side, make sure you trust this peer to not exit scam.]]></string>
     <string name="rpa_request_channel">Share your node ID with remote peer and keep this page open to get an incoming channel. Only private channel requests will be accepted.</string>
-
     <string name="rpa_request_hc">Request hosted channel</string>
     <string name="rpa_share_node_id">Share node ID</string>
     <string name="rpa_open_nc">Fund new channel</string>
