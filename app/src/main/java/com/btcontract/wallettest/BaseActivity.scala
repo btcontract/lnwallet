@@ -4,6 +4,7 @@ import immortan._
 import R.string._
 import android.widget._
 import fr.acinq.eclair._
+import immortan.crypto.Tools._
 import com.softwaremill.quicklens._
 import com.btcontract.wallettest.Colors._
 
@@ -19,7 +20,6 @@ import com.google.zxing.{BarcodeFormat, EncodeHintType}
 import androidx.core.content.{ContextCompat, FileProvider}
 import immortan.utils.{Denomination, InputParser, PaymentRequestExt}
 import fr.acinq.eclair.blockchain.fee.{FeeratePerKw, FeeratePerVByte}
-import immortan.crypto.Tools.{Any2Some, Fiat2Btc, none, runAnd, trimmed}
 import com.google.android.material.snackbar.{BaseTransientBottomBar, Snackbar}
 import com.cottacush.android.currencyedittext.CurrencyEditText
 import com.google.android.material.textfield.TextInputLayout
@@ -58,6 +58,10 @@ object BaseActivity {
       s"${source take 4}&#160;$secondFirst&#160;$doubleSmall&#160;${source takeRight 4}"
     }
   }
+
+  def totalLnBalance: MilliSatoshi = LNParams.cm.all.values.filter(Channel.isOperationalOrWaiting).map(Channel.estimateBalance).sum
+  def totalChainBalance: MilliSatoshi = LNParams.chainWallets.wallets.map(_.info.lastBalance).sum.toMilliSatoshi
+  def totalBalance: MilliSatoshi = totalLnBalance + totalChainBalance
 }
 
 object Colors {
@@ -170,6 +174,9 @@ trait BaseActivity extends AppCompatActivity { me =>
     val nextMode = if (isVisible) View.VISIBLE else View.GONE
     if (view.getVisibility != nextMode) view.setVisibility(nextMode)
   }
+
+  def setVisMany(items: (Boolean, View)*): Unit =
+    for (isVisible ~ view <- items) setVis(isVisible, view)
 
   def UITask(fun: => Any): TimerTask = {
     val runnableExec = new Runnable { override def run: Unit = fun }
@@ -460,7 +467,7 @@ trait BaseActivity extends AppCompatActivity { me =>
     }
   }
 
-  abstract class OffChainReceiver(initMaxReceivable: MilliSatoshi, initMinReceivable: MilliSatoshi, lnBalance: MilliSatoshi) {
+  abstract class OffChainReceiver(initMaxReceivable: MilliSatoshi, initMinReceivable: MilliSatoshi) {
     val CommitsAndMax(cs, maxReceivable) = LNParams.cm.maxReceivable(LNParams.cm sortedReceivable LNParams.cm.all.values).get
     val body: ViewGroup = getLayoutInflater.inflate(R.layout.frag_input_off_chain, null).asInstanceOf[ViewGroup]
     val manager: RateManager = getManager
@@ -474,7 +481,7 @@ trait BaseActivity extends AppCompatActivity { me =>
       val preimage: ByteVector32 = randomBytes32
       val description: PaymentDescription = getDescription
       val prExt = LNParams.cm.makePrExt(toReceive = manager.resultMsat, allowedChans = cs, description, preimage)
-      LNParams.cm.payBag.replaceIncomingPayment(prExt, preimage, description, lnBalance, LNParams.fiatRates.info.rates)
+      LNParams.cm.payBag.replaceIncomingPayment(prExt, preimage, description, BaseActivity.totalBalance, LNParams.fiatRates.info.rates)
       processInvoice(prExt)
       alert.dismiss
     }
@@ -510,7 +517,7 @@ trait HasTypicalChainFee {
   }
 
   def replaceOutgoingPayment(ext: PaymentRequestExt, description: PaymentDescription, action: Option[PaymentAction], sentAmount: MilliSatoshi): Unit =
-    LNParams.cm.payBag.replaceOutgoingPayment(ext, description, action, sentAmount, LNParams.cm.totalBalance, LNParams.fiatRates.info.rates, typicalChainTxFee)
+    LNParams.cm.payBag.replaceOutgoingPayment(ext, description, action, sentAmount, BaseActivity.totalBalance, LNParams.fiatRates.info.rates, typicalChainTxFee)
 }
 
 trait QRActivity extends BaseActivity { me =>

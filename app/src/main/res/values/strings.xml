@@ -155,8 +155,8 @@
     <string name="tx_state_confs">depth %1$s of %2$s</string>
     <string name="tx_state_double_spent">failed</string>
 
-    <string name="popup_sent_at"><![CDATA[<b>Sent&#160;at</b>&#160;%1$s]]></string>
-    <string name="popup_received_at"><![CDATA[<b>received&#160;at</b>&#160;%1$s]]></string>
+    <string name="popup_sent_at"><![CDATA[<b>Sent</b>&#160;%1$s]]></string>
+    <string name="popup_received_at"><![CDATA[<b>Received</b>&#160;%1$s]]></string>
     <string name="popup_to_address"><![CDATA[<b>to&#160;address</b>&#160;%1$s]]></string>
     <string name="popup_with_node"><![CDATA[<b>with&#160;node</b>&#160;%1$s]]></string>
     <string name="popup_label"><![CDATA[<b>label</b>&#160;%1$s]]></string>
@@ -231,7 +231,7 @@
     <string name="dialog_lnurl_decrypt_fail">Failed to decrypt a message, please contact vendor to sort this out.</string>
     <string name="dialog_lnurl_withdraw"><![CDATA[<b>Lightning</b> withdraw link<br><br><b>%1$s</b>%2$s]]></string>
     <string name="dialog_lnurl_pay"><![CDATA[<b>Lightning</b> payment link<br><br><b>%1$s</b>%2$s]]></string>
-    <string name="lnurl_pay_last_paid"><![CDATA[Last paid <strong>%2$s</strong> | %1$s]]></string>
+    <string name="lnurl_pay_last_paid"><![CDATA[Last paid <strong>%1$s</strong> | %2$s]]></string>
 
     <string name="dialog_lnurl_processing"><![CDATA[Processing&#8230;<br><br><b>%1$s</b>]]></string>
     <string name="dialog_lnurl_splitting"><![CDATA[Requesting invoice&#8230;<br><br><b>%1$s</b>]]></string>

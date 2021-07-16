@@ -39,7 +39,7 @@ object LNParams {
   val maxCltvExpiryDelta: CltvExpiryDelta = CltvExpiryDelta(1008) // A relative expiry per single channel hop can not exceed this much blocks
   val maxToLocalDelay: CltvExpiryDelta = CltvExpiryDelta(2016) // We ask peer to delay their payment for this long in case of force-close
   val maxFundingSatoshis: Satoshi = Satoshi(10000000000L) // Proposed channels of capacity more than this are not allowed
-  val maxReserveToFundingRatio: Double = 0.05 // %
+  val maxReserveToFundingRatio: Double = 0.02 // %
   val maxNegotiationIterations: Int = 20
   val maxChainConnectionsCount: Int = 5
   val maxAcceptedHtlcs: Int = 483
@@ -49,7 +49,7 @@ object LNParams {
 
   val shouldSendUpdateFeerateDiff = 5.0
   val shouldRejectPaymentFeerateDiff = 20.0
-  val shouldForceClosePaymentFeerateDiff = 50.0
+  val shouldForceClosePaymentFeerateDiff = 40.0
 
   val ourRoutingOurCltvExpiryDelta: CltvExpiryDelta = CltvExpiryDelta(144 * 2) // We will reserve this many blocks for our incoming routed HTLC
   val minRoutingCltvExpiryDelta: CltvExpiryDelta = CltvExpiryDelta(144 * 3) // Ask relayer to set CLTV expiry delta to at least this many blocks
